@@ -4,6 +4,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove
 from dotenv import load_dotenv
 from textwrap import dedent
+from typing import Dict, List, Optional
+from aiogram.types import Message as TelegramMessage
 
 from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
@@ -18,6 +20,8 @@ app = App()
 # Load environment variables
 load_dotenv()
 
+# Dictionary to track log messages for each user
+log_messages: Dict[int, List[TelegramMessage]] = {}
 
 date_of_event = {
     TargetCity.PERM: "22 Марта, Сб",
@@ -34,7 +38,7 @@ padezhi = {
 
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
-@router.message()  # general chat handler
+@router.message(F.text, F.chat.type == "private")  # only handle private messages
 async def start_handler(message: Message, state: FSMContext):
     """
     Main scenario flow.
@@ -75,24 +79,28 @@ async def start_handler(message: Message, state: FSMContext):
 
 async def handle_registered_user(message: Message, state: FSMContext, registration):
     """Handle interaction with already registered user"""
-    
+
     # Get all user registrations
     registrations = await app.get_user_registrations(message.from_user.id)
-    
+
     if len(registrations) > 1:
         # User has multiple registrations
         info_text = "Вы зарегистрированы на встречи выпускников в нескольких городах:\n\n"
-        
+
         for reg in registrations:
             city = reg["target_city"]
             city_enum = next((c for c in TargetCity if c.value == city), None)
-            
-            info_text += f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
+
+            info_text += (
+                f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
+            )
             info_text += f"  ФИО: {reg['full_name']}\n"
-            info_text += f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
-        
+            info_text += (
+                f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
+            )
+
         info_text += "Что вы хотите сделать?"
-        
+
         response = await ask_user_choice(
             message.chat.id,
             info_text,
@@ -104,7 +112,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             state=state,
             timeout=None,
         )
-        
+
         if response == "register_another":
             await register_user(message, state, reuse_info=registration)
         elif response == "manage":
@@ -120,7 +128,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         reg = registration
         city = reg["target_city"]
         city_enum = next((c for c in TargetCity if c.value == city), None)
-        
+
         info_text = dedent(
             f"""
             Вы зарегистрированы на встречу выпускников:
@@ -133,7 +141,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             Что вы хотите сделать?
             """
         )
-        
+
         response = await ask_user_choice(
             message.chat.id,
             info_text,
@@ -146,27 +154,33 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             state=state,
             timeout=None,
         )
-        
+
         if response == "change":
             # Delete current registration and start new one
             await app.delete_user_registration(message.from_user.id, city)
             await send_safe(message.chat.id, "Давайте обновим вашу регистрацию.")
             await register_user(message, state)
-        
+
         elif response == "cancel":
             # Delete registration
             await app.delete_user_registration(message.from_user.id, city)
+
+            # Log cancellation
+            await app.log_registration_canceled(
+                message.from_user.id, message.from_user.username, city
+            )
+
             await send_safe(
                 message.chat.id,
                 "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
                 reply_markup=ReplyKeyboardRemove(),
             )
-        
+
         elif response == "register_another":
             # Keep existing registration and start new one with reused info
             await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
             await register_user(message, state, reuse_info=registration)
-        
+
         else:  # "nothing"
             await send_safe(
                 message.chat.id,
@@ -177,16 +191,16 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
 async def manage_registrations(message: Message, state: FSMContext, registrations):
     """Allow user to manage multiple registrations"""
-    
+
     # Create choices for each city
     choices = {}
     for reg in registrations:
         city = reg["target_city"]
         choices[city] = f"Управлять регистрацией в городе {city}"
-    
+
     choices["all"] = "Отменить все регистрации"
     choices["back"] = "Вернуться назад"
-    
+
     response = await ask_user_choice(
         message.chat.id,
         "Выберите регистрацию для управления:",
@@ -194,7 +208,7 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         state=state,
         timeout=None,
     )
-    
+
     if response == "all":
         # Confirm deletion of all registrations
         confirm = await ask_user_choice(
@@ -204,9 +218,13 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             state=state,
             timeout=None,
         )
-        
+
         if confirm == "yes":
             await app.delete_user_registration(message.from_user.id)
+
+            # Log cancellation of all registrations
+            await app.log_registration_canceled(message.from_user.id, message.from_user.username)
+
             await send_safe(
                 message.chat.id,
                 "Все ваши регистрации отменены. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
@@ -215,18 +233,18 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         else:
             # Go back to registration management
             await manage_registrations(message, state, registrations)
-    
+
     elif response == "back":
         # Go back to main menu
         await handle_registered_user(message, state, registrations[0])
-    
+
     else:
         # Manage specific city registration
         city = response
         reg = next(r for r in registrations if r["target_city"] == city)
-        
+
         city_enum = next((c for c in TargetCity if c.value == city), None)
-        
+
         info_text = dedent(
             f"""
             Регистрация в городе {city}:
@@ -239,38 +257,43 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             Что вы хотите сделать?
             """
         )
-        
+
         action = await ask_user_choice(
             message.chat.id,
             info_text,
             choices={
                 "change": "Изменить данные",
                 "cancel": "Отменить регистрацию",
-                "back": "Вернуться назад"
+                "back": "Вернуться назад",
             },
             state=state,
             timeout=None,
         )
-        
+
         if action == "change":
             # Delete this registration and start new one
             await app.delete_user_registration(message.from_user.id, city)
             await send_safe(message.chat.id, f"Давайте обновим вашу регистрацию в городе {city}.")
-            
+
             # Pre-select the city for the new registration
             await register_user(message, state, preselected_city=city)
-        
+
         elif action == "cancel":
             # Delete this registration
             await app.delete_user_registration(message.from_user.id, city)
-            
+
+            # Log cancellation
+            await app.log_registration_canceled(
+                message.from_user.id, message.from_user.username, city
+            )
+
             # Check if user has other registrations
             remaining = await app.get_user_registrations(message.from_user.id)
-            
+
             if remaining:
                 await send_safe(
                     message.chat.id,
-                    f"Регистрация в городе {city} отменена. У вас остались другие регистрации."
+                    f"Регистрация в городе {city} отменена. У вас остались другие регистрации.",
                 )
                 await handle_registered_user(message, state, remaining[0])
             else:
@@ -279,43 +302,62 @@ async def manage_registrations(message: Message, state: FSMContext, registration
                     "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
                     reply_markup=ReplyKeyboardRemove(),
                 )
-        
+
         else:  # "back"
             # Go back to registration management
             await manage_registrations(message, state, registrations)
 
 
-async def register_user(message: Message, state: FSMContext, preselected_city=None, reuse_info=None):
-    """
-    Register a user for an event
-    
-    Args:
-        message: The message that triggered this handler
-        state: FSM context for managing conversation state
-        preselected_city: Optional city to preselect (for updating registration)
-        reuse_info: Optional user info to reuse (for registering in another city)
-    """
+async def register_user(
+    message: Message, state: FSMContext, preselected_city=None, reuse_info=None
+):
+    """Register a user for an event"""
     user_id = message.from_user.id
-    
+    username = message.from_user.username
+
+    # Initialize log messages list for this user if not exists
+    if user_id not in log_messages:
+        log_messages[user_id] = []
+
+    # Log registration start
+    log_msg = await app.log_registration_step(
+        user_id,
+        username,
+        "Начало регистрации",
+        f"Предвыбранный город: {preselected_city}, Повторное использование данных: {'Да' if reuse_info else 'Нет'}",
+    )
+    if log_msg:
+        log_messages[user_id].append(log_msg)
+
     # Get existing registrations to avoid duplicates
     existing_registrations = await app.get_user_registrations(user_id)
     existing_cities = [reg["target_city"] for reg in existing_registrations]
-    
+
     # step 1 - greet user, ask location
     location = None
-    
+
     if preselected_city:
         # Use preselected city if provided
         location = next((c for c in TargetCity if c.value == preselected_city), None)
-    
+
+        # Log preselected city
+        log_msg = await app.log_registration_step(
+            user_id,
+            username,
+            "Выбор города",
+            f"Предвыбранный город: {location.value if location else preselected_city}",
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
     if not location:
         # Filter out cities the user is already registered for
         available_cities = {
-            city.value: f"{city.value} ({date_of_event[city]})" 
-            for city in TargetCity 
+            city.value: f"{city.value} ({date_of_event[city]})"
+            for city in TargetCity
             if city.value not in existing_cities
         }
-        
+
         # If no cities left, inform the user
         if not available_cities:
             await send_safe(
@@ -323,8 +365,19 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
                 "Вы уже зарегистрированы на встречи во всех доступных городах!",
                 reply_markup=ReplyKeyboardRemove(),
             )
+
+            # Log no cities available
+            log_msg = await app.log_registration_step(
+                user_id,
+                username,
+                "Нет доступных городов",
+                "Пользователь уже зарегистрирован во всех городах",
+            )
+            if log_msg:
+                log_messages[user_id].append(log_msg)
+
             return
-        
+
         question = dedent(
             """
             Выберите город, где планируете посетить встречу:
@@ -340,12 +393,19 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
         )
         location = TargetCity(response)
 
+        # Log city selection
+        log_msg = await app.log_registration_step(
+            user_id, username, "Выбор города", f"Выбранный город: {location.value}"
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
     # If we have info to reuse, skip asking for name and class
     if reuse_info:
         full_name = reuse_info["full_name"]
         graduation_year = reuse_info["graduation_year"]
         class_letter = reuse_info["class_letter"]
-        
+
         # Confirm reusing the information
         confirm_text = dedent(
             f"""
@@ -356,7 +416,7 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
             Класс: {class_letter}
             """
         )
-        
+
         confirm = await ask_user_choice(
             message.chat.id,
             confirm_text,
@@ -364,11 +424,21 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
             state=state,
             timeout=None,
         )
-        
+
+        # Log reuse decision
+        log_msg = await app.log_registration_step(
+            user_id,
+            username,
+            "Повторное использование данных",
+            f"Решение: {'Использовать существующие данные' if confirm == 'yes' else 'Ввести новые данные'}",
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
         if confirm == "no":
             # User wants to enter new info
             reuse_info = None
-    
+
     # If not reusing info, ask for it
     if not reuse_info:
         question = dedent(
@@ -388,6 +458,13 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
                 timeout=None,
             )
 
+        # Log full name
+        log_msg = await app.log_registration_step(
+            user_id, username, "Ввод ФИО", f"ФИО: {full_name}"
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
         # step 3 - ask for year of graduation and class letter
         question = dedent(
             """
@@ -406,6 +483,16 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
 
         graduation_year, class_letter = app.parse_graduation_year_and_class_letter(response)
 
+        # Log graduation info
+        log_msg = await app.log_registration_step(
+            user_id,
+            username,
+            "Ввод года выпуска и класса",
+            f"Год: {graduation_year}, Класс: {class_letter}",
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
     registered_user = RegisteredUser(
         full_name=full_name,
         graduation_year=graduation_year,
@@ -418,6 +505,16 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
         registered_user, user_id=message.from_user.id, username=message.from_user.username
     )
 
+    # Log registration completion
+    log_msg = await app.log_registration_step(
+        user_id,
+        username,
+        "Регистрация завершена",
+        f"Город: {location.value}, ФИО: {full_name}, Год: {graduation_year}, Класс: {class_letter}",
+    )
+    if log_msg:
+        log_messages[user_id].append(log_msg)
+
     await send_safe(
         message.chat.id,
         f"Спасибо, {html.bold(full_name)}!\n"
@@ -425,6 +522,39 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
         f"в {padezhi[location]} {date_of_event[location]}.",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+    # Log to events chat
+    registration_data = {
+        "full_name": full_name,
+        "graduation_year": graduation_year,
+        "class_letter": class_letter,
+        "target_city": location.value,
+    }
+    await app.log_registration_complete(user_id, username, registration_data)
+
+    # Delete all log messages for this user
+    await delete_log_messages(user_id)
+
+
+# Add this function to delete log messages
+async def delete_log_messages(user_id: int) -> None:
+    """Delete all log messages for a user"""
+    if user_id not in log_messages:
+        return
+
+    from botspot.core.dependency_manager import get_dependency_manager
+
+    deps = get_dependency_manager()
+    bot = deps.bot
+
+    for msg in log_messages[user_id]:
+        try:
+            await bot.delete_message(chat_id=msg.chat.id, message_id=msg.message_id)
+        except Exception as e:
+            logger.error(f"Failed to delete log message: {e}")
+
+    # Clear the list
+    log_messages[user_id] = []
 
 
 @commands_menu.add_command("export", "Экспорт списка зарегистрированных участников")
