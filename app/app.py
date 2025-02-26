@@ -1,9 +1,11 @@
 from enum import Enum
 from pydantic import SecretStr, BaseModel
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, Tuple
 from aiogram.types import Message
 from loguru import logger
+import re
+import datetime
 
 
 from botspot import get_database
@@ -112,27 +114,120 @@ class App:
 
         return result.deleted_count > 0
 
-    # def validate_graduation_year(self):
-
-    def parse_graduation_year_and_class_letter(self, year_and_class: str) -> tuple[int, str]:
+    def validate_full_name(self, full_name: str) -> Tuple[bool, str]:
+        """
+        Validate a user's full name
+        
+        Args:
+            full_name: The full name to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        # Check if name has at least 2 words
+        words = full_name.strip().split()
+        if len(words) < 2:
+            return False, "ФИО должно содержать как минимум имя и фамилию."
+        
+        # Check if name contains only Russian letters, spaces, and hyphens
+        if not re.match(r'^[а-яА-ЯёЁ\s\-]+$', full_name):
+            return False, "ФИО должно содержать только русские буквы."
+        
+        return True, ""
+    
+    def validate_graduation_year(self, year: int) -> Tuple[bool, str]:
+        """
+        Validate a graduation year
+        
+        Args:
+            year: The graduation year to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        current_year = datetime.datetime.now().year
+        
+        # Check if year is in valid range
+        if year < 1996:
+            return False, f"Год выпуска должен быть не раньше 1996."
+        
+        if year > current_year:
+            if year <= current_year + 4:
+                return False, f"Извините, регистрация только для выпускников. Приходите после выпуска!"
+            else:
+                return False, f"Год выпуска не может быть позже {current_year + 4}."
+        
+        return True, ""
+    
+    def validate_class_letter(self, letter: str) -> Tuple[bool, str]:
+        """
+        Validate a class letter
+        
+        Args:
+            letter: The class letter to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not letter:
+            return False, "Пожалуйста, укажите букву класса."
+        
+        # Check if letter contains only Russian letters
+        if not re.match(r'^[а-яА-ЯёЁ]+$', letter):
+            return False, "Буква класса должна быть на русском языке."
+        
+        return True, ""
+    
+    def parse_graduation_year_and_class_letter(self, year_and_class: str) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+        """
+        Parse graduation year and class letter from user input
+        
+        Args:
+            year_and_class: The user input to parse
+            
+        Returns:
+            Tuple of (year, class_letter, error_message)
+        """
         year_and_class = year_and_class.strip()
-
+        
         # Case 0: the class letter is not specified
         if year_and_class.isdigit():
-            return int(year_and_class), ""
-
-        # Case 1 - "2025 Б"
-        parts = year_and_class.split()
-        if len(parts) == 2:
-            return int(parts[0]), parts[1].upper()
-
-        # Case 2 - "2025Б"
-        if len(year_and_class) > 4 and year_and_class[0:4].isdigit():
-            return int(year_and_class[0:4]), year_and_class[4:].upper()
-
-        # Case 4: fallback to simple split
-        year, class_letter = year_and_class.split(maxsplit=1)
-        return int(year), class_letter.upper()
+            year = int(year_and_class)
+            valid, error = self.validate_graduation_year(year)
+            if not valid:
+                return None, None, error
+            return year, "", "Пожалуйста, укажите также букву класса."
+        
+        try:
+            # Case 1 - "2025 Б"
+            parts = year_and_class.split()
+            if len(parts) == 2:
+                year = int(parts[0])
+                letter = parts[1].upper()
+            # Case 2 - "2025Б"
+            elif len(year_and_class) > 4 and year_and_class[0:4].isdigit():
+                year = int(year_and_class[0:4])
+                letter = year_and_class[4:].upper()
+            # Case 3: fallback to simple split
+            else:
+                year, letter = year_and_class.split(maxsplit=1)
+                year = int(year)
+                letter = letter.upper()
+            
+            # Validate year
+            valid_year, error_year = self.validate_graduation_year(year)
+            if not valid_year:
+                return None, None, error_year
+            
+            # Validate letter
+            valid_letter, error_letter = self.validate_class_letter(letter)
+            if not valid_letter:
+                return None, None, error_letter
+            
+            return year, letter, None
+            
+        except (ValueError, IndexError):
+            return None, None, "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2025 Б')."
 
     def export_registered_users(self):
         return self.sheet_exporter.export_registered_users()

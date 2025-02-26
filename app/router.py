@@ -441,48 +441,84 @@ async def register_user(
 
     # If not reusing info, ask for it
     if not reuse_info:
-        question = dedent(
-            """
-            Как вас зовут?
-            Пожалуйста, введите полное ФИО.
-            """
-        )
-
-        # step 2 - ask for full name
+        # Ask for full name with validation
         full_name = None
         while full_name is None:
-            full_name = await ask_user(
-                message.chat.id,
-                question,
-                state=state,
-                timeout=None,
+            question = dedent(
+                """
+                Как вас зовут?
+                Пожалуйста, введите полное ФИО.
+                """
             )
-
-        # Log full name
-        log_msg = await app.log_registration_step(
-            user_id, username, "Ввод ФИО", f"ФИО: {full_name}"
-        )
-        if log_msg:
-            log_messages[user_id].append(log_msg)
-
-        # step 3 - ask for year of graduation and class letter
-        question = dedent(
-            """
-            Пожалуйста, введите год выпуска и букву класса.
-            Например, "2025 Б".
-            """
-        )
-        response = None
-        while response is None:
+            
             response = await ask_user(
                 message.chat.id,
                 question,
                 state=state,
                 timeout=None,
             )
-
-        graduation_year, class_letter = app.parse_graduation_year_and_class_letter(response)
-
+            
+            # Validate full name
+            valid, error = app.validate_full_name(response)
+            if valid:
+                full_name = response
+            else:
+                await send_safe(message.chat.id, f"❌ {error} Пожалуйста, попробуйте еще раз.")
+        
+        # Log full name
+        log_msg = await app.log_registration_step(
+            user_id,
+            username,
+            "Ввод ФИО",
+            f"ФИО: {full_name}",
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+        
+        # Ask for graduation year and class letter with validation
+        graduation_year = None
+        class_letter = None
+        
+        while graduation_year is None or class_letter is None or not class_letter:
+            if graduation_year is not None and class_letter is None:
+                # We have a year but need a class letter
+                question = "А букву класса?"
+            else:
+                question = dedent(
+                    """
+                    Пожалуйста, введите год выпуска и букву класса.
+                    Например, "2025 Б".
+                    """
+                )
+            
+            response = await ask_user(
+                message.chat.id,
+                question,
+                state=state,
+                timeout=None,
+            )
+            
+            # If we already have a year and just need the letter
+            if graduation_year is not None and class_letter is None:
+                # Validate just the class letter
+                valid, error = app.validate_class_letter(response)
+                if valid:
+                    class_letter = response.upper()
+                else:
+                    await send_safe(message.chat.id, f"❌ {error} Пожалуйста, попробуйте еще раз.")
+            else:
+                # Parse and validate both year and letter
+                year, letter, error = app.parse_graduation_year_and_class_letter(response)
+                
+                if error:
+                    await send_safe(message.chat.id, f"❌ {error}")
+                    # If we got a valid year but no letter, save the year
+                    if year is not None and letter == "":
+                        graduation_year = year
+                else:
+                    graduation_year = year
+                    class_letter = letter
+        
         # Log graduation info
         log_msg = await app.log_registration_step(
             user_id,
@@ -492,7 +528,7 @@ async def register_user(
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
-
+    
     registered_user = RegisteredUser(
         full_name=full_name,
         graduation_year=graduation_year,
