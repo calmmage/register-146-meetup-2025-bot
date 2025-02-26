@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "project-name"
-version = "0.0.1"
+name = "register-146-meetup-2025-bot"
+version = "0.1.0"
 description = ""
 authors = ["Petr Lavrov <calmmage@gmail.com>"]
 readme = "README.md"
@@ -10,9 +10,9 @@ packages = [
 
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
-# calmlib>=1.0.11
+# calmlib>=1.0.17
 calmlib = { git = "https://github.com/calmmage/calmlib.git", branch = "main" }
-# botspot>=0.3.0
+# botspot>=0.4.0
 botspot = { git = "https://github.com/calmmage/botspot.git", branch = "main" }
 
 loguru = ">=0.7"
