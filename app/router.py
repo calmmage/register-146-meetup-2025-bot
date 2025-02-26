@@ -75,120 +75,336 @@ async def start_handler(message: Message, state: FSMContext):
 
 async def handle_registered_user(message: Message, state: FSMContext, registration):
     """Handle interaction with already registered user"""
-
-    # Format the existing registration info
-    city = registration["target_city"]
-    city_enum = next((c for c in TargetCity if c.value == city), None)
-
-    info_text = dedent(
-        f"""
-        Вы уже зарегистрированы на встречу выпускников:
+    
+    # Get all user registrations
+    registrations = await app.get_user_registrations(message.from_user.id)
+    
+    if len(registrations) > 1:
+        # User has multiple registrations
+        info_text = "Вы зарегистрированы на встречи выпускников в нескольких городах:\n\n"
         
-        ФИО: {registration["full_name"]}
-        Год выпуска: {registration["graduation_year"]}
-        Класс: {registration["class_letter"]}
-        Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
+        for reg in registrations:
+            city = reg["target_city"]
+            city_enum = next((c for c in TargetCity if c.value == city), None)
+            
+            info_text += f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
+            info_text += f"  ФИО: {reg['full_name']}\n"
+            info_text += f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
         
-        Что вы хотите сделать?
-    """
-    )
+        info_text += "Что вы хотите сделать?"
+        
+        response = await ask_user_choice(
+            message.chat.id,
+            info_text,
+            choices={
+                "register_another": "Зарегистрироваться в другом городе",
+                "manage": "Управлять регистрациями",
+                "nothing": "Ничего, всё в порядке",
+            },
+            state=state,
+            timeout=None,
+        )
+        
+        if response == "register_another":
+            await register_user(message, state, reuse_info=registration)
+        elif response == "manage":
+            await manage_registrations(message, state, registrations)
+        else:  # "nothing"
+            await send_safe(
+                message.chat.id,
+                "Отлично! Ваши регистрации в силе. До встречи!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+    else:
+        # User has only one registration
+        reg = registration
+        city = reg["target_city"]
+        city_enum = next((c for c in TargetCity if c.value == city), None)
+        
+        info_text = dedent(
+            f"""
+            Вы зарегистрированы на встречу выпускников:
+            
+            ФИО: {reg["full_name"]}
+            Год выпуска: {reg["graduation_year"]}
+            Класс: {reg["class_letter"]}
+            Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
+            
+            Что вы хотите сделать?
+            """
+        )
+        
+        response = await ask_user_choice(
+            message.chat.id,
+            info_text,
+            choices={
+                "change": "Изменить данные регистрации",
+                "cancel": "Отменить регистрацию",
+                "register_another": "Зарегистрироваться в другом городе",
+                "nothing": "Ничего, всё в порядке",
+            },
+            state=state,
+            timeout=None,
+        )
+        
+        if response == "change":
+            # Delete current registration and start new one
+            await app.delete_user_registration(message.from_user.id, city)
+            await send_safe(message.chat.id, "Давайте обновим вашу регистрацию.")
+            await register_user(message, state)
+        
+        elif response == "cancel":
+            # Delete registration
+            await app.delete_user_registration(message.from_user.id, city)
+            await send_safe(
+                message.chat.id,
+                "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        
+        elif response == "register_another":
+            # Keep existing registration and start new one with reused info
+            await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
+            await register_user(message, state, reuse_info=registration)
+        
+        else:  # "nothing"
+            await send_safe(
+                message.chat.id,
+                "Отлично! Ваша регистрация в силе. До встречи!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
 
+
+async def manage_registrations(message: Message, state: FSMContext, registrations):
+    """Allow user to manage multiple registrations"""
+    
+    # Create choices for each city
+    choices = {}
+    for reg in registrations:
+        city = reg["target_city"]
+        choices[city] = f"Управлять регистрацией в городе {city}"
+    
+    choices["all"] = "Отменить все регистрации"
+    choices["back"] = "Вернуться назад"
+    
     response = await ask_user_choice(
         message.chat.id,
-        info_text,
-        choices={
-            "change": "Изменить данные регистрации",
-            "cancel": "Отменить регистрацию",
-            "register_another": "Зарегистрироваться в другом городе",
-            "nothing": "Ничего, всё в порядке",
-        },
-        state=state,
-        timeout=None,
-    )
-
-    if response == "change":
-        # Delete current registration and start new one
-        await app.delete_user_registration(message.from_user.id)
-        await send_safe(message.chat.id, "Давайте обновим вашу регистрацию.")
-        await register_user(message, state)
-
-    elif response == "cancel":
-        # Delete registration
-        await app.delete_user_registration(message.from_user.id)
-        await send_safe(
-            message.chat.id,
-            "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-
-    elif response == "register_another":
-        # Keep existing registration and start new one
-        await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
-        await register_user(message, state)
-
-    else:  # "nothing"
-        await send_safe(
-            message.chat.id,
-            "Отлично! Ваша регистрация в силе. До встречи!",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-
-
-async def register_user(message: Message, state: FSMContext):
-    # step 1 - greet user, ask location
-
-    question = dedent(
-        """
-        Привет! Это бот для регистрации на встречу выпускников школы 146.
-        Выберите город, где планируете посетить встречу:
-        """
-    )
-
-    choices = {city.value: f"{city.value} ({date_of_event[city]})" for city in TargetCity}
-
-    response = await ask_user_choice(
-        message.chat.id,
-        question,
+        "Выберите регистрацию для управления:",
         choices=choices,
         state=state,
         timeout=None,
     )
-    location = TargetCity(response)
-
-    question = dedent(
-        """
-        Как вас зовут?
-        Пожалуйста, введите полное ФИО.
-        """
-    )
-
-    # step 2 - ask for full name
-    full_name = None
-    while full_name is None:
-        full_name = await ask_user(
+    
+    if response == "all":
+        # Confirm deletion of all registrations
+        confirm = await ask_user_choice(
             message.chat.id,
-            question,
+            "Вы уверены, что хотите отменить ВСЕ регистрации?",
+            choices={"yes": "Да, отменить все", "no": "Нет, вернуться назад"},
             state=state,
             timeout=None,
         )
-
-    # step 3 - ask for year of graduation and class letter
-    question = dedent(
-        """
-        Пожалуйста, введите год выпуска и букву класса.
-        Например, "2025 Б".
-        """
-    )
-    response = None
-    while response is None:
-        response = await ask_user(
+        
+        if confirm == "yes":
+            await app.delete_user_registration(message.from_user.id)
+            await send_safe(
+                message.chat.id,
+                "Все ваши регистрации отменены. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            # Go back to registration management
+            await manage_registrations(message, state, registrations)
+    
+    elif response == "back":
+        # Go back to main menu
+        await handle_registered_user(message, state, registrations[0])
+    
+    else:
+        # Manage specific city registration
+        city = response
+        reg = next(r for r in registrations if r["target_city"] == city)
+        
+        city_enum = next((c for c in TargetCity if c.value == city), None)
+        
+        info_text = dedent(
+            f"""
+            Регистрация в городе {city}:
+            
+            ФИО: {reg["full_name"]}
+            Год выпуска: {reg["graduation_year"]}
+            Класс: {reg["class_letter"]}
+            Дата: {date_of_event[city_enum] if city_enum else "неизвестна"}
+            
+            Что вы хотите сделать?
+            """
+        )
+        
+        action = await ask_user_choice(
             message.chat.id,
-            question,
+            info_text,
+            choices={
+                "change": "Изменить данные",
+                "cancel": "Отменить регистрацию",
+                "back": "Вернуться назад"
+            },
             state=state,
             timeout=None,
         )
+        
+        if action == "change":
+            # Delete this registration and start new one
+            await app.delete_user_registration(message.from_user.id, city)
+            await send_safe(message.chat.id, f"Давайте обновим вашу регистрацию в городе {city}.")
+            
+            # Pre-select the city for the new registration
+            await register_user(message, state, preselected_city=city)
+        
+        elif action == "cancel":
+            # Delete this registration
+            await app.delete_user_registration(message.from_user.id, city)
+            
+            # Check if user has other registrations
+            remaining = await app.get_user_registrations(message.from_user.id)
+            
+            if remaining:
+                await send_safe(
+                    message.chat.id,
+                    f"Регистрация в городе {city} отменена. У вас остались другие регистрации."
+                )
+                await handle_registered_user(message, state, remaining[0])
+            else:
+                await send_safe(
+                    message.chat.id,
+                    "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+        
+        else:  # "back"
+            # Go back to registration management
+            await manage_registrations(message, state, registrations)
 
-    graduation_year, class_letter = app.parse_graduation_year_and_class_letter(response)
+
+async def register_user(message: Message, state: FSMContext, preselected_city=None, reuse_info=None):
+    """
+    Register a user for an event
+    
+    Args:
+        message: The message that triggered this handler
+        state: FSM context for managing conversation state
+        preselected_city: Optional city to preselect (for updating registration)
+        reuse_info: Optional user info to reuse (for registering in another city)
+    """
+    user_id = message.from_user.id
+    
+    # Get existing registrations to avoid duplicates
+    existing_registrations = await app.get_user_registrations(user_id)
+    existing_cities = [reg["target_city"] for reg in existing_registrations]
+    
+    # step 1 - greet user, ask location
+    location = None
+    
+    if preselected_city:
+        # Use preselected city if provided
+        location = next((c for c in TargetCity if c.value == preselected_city), None)
+    
+    if not location:
+        # Filter out cities the user is already registered for
+        available_cities = {
+            city.value: f"{city.value} ({date_of_event[city]})" 
+            for city in TargetCity 
+            if city.value not in existing_cities
+        }
+        
+        # If no cities left, inform the user
+        if not available_cities:
+            await send_safe(
+                message.chat.id,
+                "Вы уже зарегистрированы на встречи во всех доступных городах!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        
+        question = dedent(
+            """
+            Выберите город, где планируете посетить встречу:
+            """
+        )
+
+        response = await ask_user_choice(
+            message.chat.id,
+            question,
+            choices=available_cities,
+            state=state,
+            timeout=None,
+        )
+        location = TargetCity(response)
+
+    # If we have info to reuse, skip asking for name and class
+    if reuse_info:
+        full_name = reuse_info["full_name"]
+        graduation_year = reuse_info["graduation_year"]
+        class_letter = reuse_info["class_letter"]
+        
+        # Confirm reusing the information
+        confirm_text = dedent(
+            f"""
+            Хотите использовать те же данные для регистрации в городе {location.value}?
+            
+            ФИО: {full_name}
+            Год выпуска: {graduation_year}
+            Класс: {class_letter}
+            """
+        )
+        
+        confirm = await ask_user_choice(
+            message.chat.id,
+            confirm_text,
+            choices={"yes": "Да, использовать эти данные", "no": "Нет, ввести новые данные"},
+            state=state,
+            timeout=None,
+        )
+        
+        if confirm == "no":
+            # User wants to enter new info
+            reuse_info = None
+    
+    # If not reusing info, ask for it
+    if not reuse_info:
+        question = dedent(
+            """
+            Как вас зовут?
+            Пожалуйста, введите полное ФИО.
+            """
+        )
+
+        # step 2 - ask for full name
+        full_name = None
+        while full_name is None:
+            full_name = await ask_user(
+                message.chat.id,
+                question,
+                state=state,
+                timeout=None,
+            )
+
+        # step 3 - ask for year of graduation and class letter
+        question = dedent(
+            """
+            Пожалуйста, введите год выпуска и букву класса.
+            Например, "2025 Б".
+            """
+        )
+        response = None
+        while response is None:
+            response = await ask_user(
+                message.chat.id,
+                question,
+                state=state,
+                timeout=None,
+            )
+
+        graduation_year, class_letter = app.parse_graduation_year_and_class_letter(response)
 
     registered_user = RegisteredUser(
         full_name=full_name,

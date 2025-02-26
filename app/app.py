@@ -66,12 +66,17 @@ class App:
         if username is not None:
             data["username"] = username
         
-        # Check if user already exists and update instead of insert if they do
+        # Check if user is already registered for this specific city
         if user_id is not None:
-            existing = await self.get_user_registration(user_id)
+            existing = await self.collection.find_one({
+                "user_id": user_id,
+                "target_city": data["target_city"]
+            })
+            
             if existing:
+                # Update existing registration for this city
                 await self.collection.update_one(
-                    {"user_id": user_id},
+                    {"_id": existing["_id"]},
                     {"$set": data}
                 )
                 return
@@ -79,14 +84,32 @@ class App:
         # Insert new record
         await self.collection.insert_one(data)
 
-    async def get_user_registration(self, user_id: int):
-        """Get existing registration for a user"""
-        result = await self.collection.find_one({"user_id": user_id})
-        return result
+    async def get_user_registrations(self, user_id: int):
+        """Get all registrations for a user"""
+        cursor = self.collection.find({"user_id": user_id})
+        return await cursor.to_list(length=None)
 
-    async def delete_user_registration(self, user_id: int):
-        """Delete a user's registration"""
-        result = await self.collection.delete_one({"user_id": user_id})
+    async def get_user_registration(self, user_id: int):
+        """Get existing registration for a user (returns first one found)"""
+        registrations = await self.get_user_registrations(user_id)
+        return registrations[0] if registrations else None
+
+    async def delete_user_registration(self, user_id: int, city: str = None):
+        """
+        Delete a user's registration
+        
+        Args:
+            user_id: The user's Telegram ID
+            city: Optional city to delete specific registration. If None, deletes all.
+        """
+        if city:
+            result = await self.collection.delete_one({
+                "user_id": user_id,
+                "target_city": city
+            })
+        else:
+            result = await self.collection.delete_many({"user_id": user_id})
+        
         return result.deleted_count > 0
 
     # def validate_graduation_year(self):
