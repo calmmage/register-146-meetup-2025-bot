@@ -1,11 +1,11 @@
-from pathlib import Path
-import json
-import gspread
-import os
 import base64
+import gspread
+import json
+import os
 from google.oauth2.service_account import Credentials
 from loguru import logger
-from app.app import App, TargetCity
+
+from app.app import App
 
 # Define the scopes for Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -79,7 +79,8 @@ class SheetExporter:
             sheet = client.open_by_key(self.spreadsheet_id).sheet1
 
             # Prepare headers and data
-            headers = ["Full Name", "Graduation Year", "Class", "City"]
+            
+            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече"]
             sheet.update("A1:D1", [headers])
 
             # Prepare user data
@@ -113,36 +114,39 @@ class SheetExporter:
             # Get all registered users from MongoDB
             cursor = self.app.collection.find({})
             users = await cursor.to_list(length=None)
-            
+
             if not users:
                 logger.info("No users to export")
                 return None, "No users to export"
-            
+
             # Create CSV content
             import csv
             from io import StringIO
-            
+
             output = StringIO()
             writer = csv.writer(output)
-            
+
             # Write headers
-            writer.writerow(["Full Name", "Graduation Year", "Class", "City"])
-            
+            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече"]
+            writer.writerow(headers)
+
             # Write user data
             for user in users:
-                writer.writerow([
-                    user["full_name"],
-                    user["graduation_year"],
-                    user["class_letter"],
-                    user["target_city"],
-                ])
-            
+                writer.writerow(
+                    [
+                        user["full_name"],
+                        user["graduation_year"],
+                        user["class_letter"],
+                        user["target_city"],
+                    ]
+                )
+
             csv_content = output.getvalue()
             output.close()
-            
+
             logger.success(f"Successfully exported {len(users)} users to CSV")
             return csv_content, f"Successfully exported {len(users)} users to CSV"
-            
+
         except Exception as e:
             logger.error(f"Error exporting data to CSV: {e}")
             return None, f"Error exporting data to CSV: {e}"
