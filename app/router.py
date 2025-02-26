@@ -1,15 +1,15 @@
-from aiogram import Router, html
+from aiogram import Router, html, F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove, BufferedInputFile
+from aiogram.types import Message, ReplyKeyboardRemove
 from dotenv import load_dotenv
 from textwrap import dedent
-from io import BytesIO
 
 from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
+from botspot.core.dependency_manager import get_dependency_manager
 from botspot.user_interactions import ask_user, ask_user_choice
-from botspot.utils import send_safe
+from botspot.utils import send_safe, is_admin
 from botspot.utils.admin_filter import AdminFilter
 
 router = Router()
@@ -34,20 +34,104 @@ padezhi = {
 
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
+@router.message()  # general chat handler
 async def start_handler(message: Message, state: FSMContext):
     """
     Main scenario flow.
     """
 
-    # todo: check if user is already registered
-    # if not -> main flow
-    # todo: if yes -> give options:
-    # - cancel registration
-    # - show registration info
-    # - change registration info
-    # - register for another city
+    if is_admin(message.from_user):
+        # Show admin options
+        response = await ask_user_choice(
+            message.chat.id,
+            "Вы администратор бота. Что вы хотите сделать?",
+            choices={
+                "register": "Зарегистрироваться на встречу",
+                "export": "Экспортировать данные",
+                "view_stats": "Посмотреть статистику",
+            },
+            state=state,
+            timeout=None,
+        )
 
-    await register_user(message, state)
+        if response == "export":
+            await export_handler(message, state)
+            return
+        elif response == "view_stats":
+            await show_stats(message)
+            return
+        # For "register", continue with normal flow
+
+    # Check if user is already registered
+    existing_registration = await app.get_user_registration(message.from_user.id)
+
+    if existing_registration:
+        # User is already registered, show options
+        await handle_registered_user(message, state, existing_registration)
+    else:
+        # New user, start registration
+        await register_user(message, state)
+
+
+async def handle_registered_user(message: Message, state: FSMContext, registration):
+    """Handle interaction with already registered user"""
+
+    # Format the existing registration info
+    city = registration["target_city"]
+    city_enum = next((c for c in TargetCity if c.value == city), None)
+
+    info_text = dedent(
+        f"""
+        Вы уже зарегистрированы на встречу выпускников:
+        
+        ФИО: {registration["full_name"]}
+        Год выпуска: {registration["graduation_year"]}
+        Класс: {registration["class_letter"]}
+        Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
+        
+        Что вы хотите сделать?
+    """
+    )
+
+    response = await ask_user_choice(
+        message.chat.id,
+        info_text,
+        choices={
+            "change": "Изменить данные регистрации",
+            "cancel": "Отменить регистрацию",
+            "register_another": "Зарегистрироваться в другом городе",
+            "nothing": "Ничего, всё в порядке",
+        },
+        state=state,
+        timeout=None,
+    )
+
+    if response == "change":
+        # Delete current registration and start new one
+        await app.delete_user_registration(message.from_user.id)
+        await send_safe(message.chat.id, "Давайте обновим вашу регистрацию.")
+        await register_user(message, state)
+
+    elif response == "cancel":
+        # Delete registration
+        await app.delete_user_registration(message.from_user.id)
+        await send_safe(
+            message.chat.id,
+            "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+    elif response == "register_another":
+        # Keep existing registration and start new one
+        await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
+        await register_user(message, state)
+
+    else:  # "nothing"
+        await send_safe(
+            message.chat.id,
+            "Отлично! Ваша регистрация в силе. До встречи!",
+            reply_markup=ReplyKeyboardRemove(),
+        )
 
 
 async def register_user(message: Message, state: FSMContext):
@@ -113,7 +197,10 @@ async def register_user(message: Message, state: FSMContext):
         target_city=location,
     )
 
-    await app.save_registered_user(registered_user)
+    # Save with user_id and username
+    await app.save_registered_user(
+        registered_user, user_id=message.from_user.id, username=message.from_user.username
+    )
 
     await send_safe(
         message.chat.id,
@@ -158,22 +245,33 @@ async def export_handler(message: Message, state: FSMContext):
     await notif.delete()
 
 
-# @router.message()
-# async def chat_handler():
-#     text = "Привет! Это бот для регистрации на встречу выпускников школы 146.\n"
-#     "ask"
+# General message handler for any text
+@router.message(F.text)
+async def general_message_handler(message: Message, state: FSMContext):
+    """Handle any text message by routing to the start command"""
+    await send_safe(
+        message.chat.id, "Для регистрации или управления вашей записью используйте команду /start"
+    )
+    # Option 2: Uncomment to just run the basic flow for any message
+    # await start_handler(message, state)
 
-# @commands_menu.add_command("help", "Show this help message")
-# @router.message(Command("help"))
-# async def help_handler(message: Message):
-#     """Basic help command handler"""
-#     await send_safe(
-#         message.chat.id,
-#         f"This is {app.name}. Use /start to begin."
-#         "Available commands:\n"
-#         "/start - Start the bot\n"
-#         "/help - Show this help message\n"
-#         "/help_botspot - Show Botspot help\n"
-#         "/timezone - Set your timezone\n"
-#         "/error_test - Test error handling",
-#     )
+
+async def show_stats(message: Message):
+    """Show registration statistics"""
+    # Count registrations by city
+    cursor = app.collection.aggregate([{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}])
+    stats = await cursor.to_list(length=None)
+
+    # Format stats
+    stats_text = "Статистика регистраций:\n\n"
+    total = 0
+
+    for stat in stats:
+        city = stat["_id"]
+        count = stat["count"]
+        total += count
+        stats_text += f"{city}: {count} человек\n"
+
+    stats_text += f"\nВсего: {total} человек"
+
+    await send_safe(message.chat.id, stats_text)

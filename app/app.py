@@ -30,6 +30,8 @@ class RegisteredUser(BaseModel):
     graduation_year: int
     class_letter: str
     target_city: TargetCity
+    user_id: Optional[int] = None
+    username: Optional[str] = None
 
 
 class App:
@@ -51,12 +53,41 @@ class App:
             self._collection = get_database().get_collection(self.registration_collection_name)
         return self._collection
 
-    async def save_registered_user(self, registered_user: RegisteredUser):
+    async def save_registered_user(self, registered_user: RegisteredUser, user_id: int = None, username: str = None):
+        """Save a user registration with optional user_id and username"""
         # Convert the model to a dict and extract the enum value before saving
         data = registered_user.model_dump()
         # Convert the enum to its string value for MongoDB storage
         data["target_city"] = data["target_city"].value
+        
+        # Add user_id and username if provided
+        if user_id is not None:
+            data["user_id"] = user_id
+        if username is not None:
+            data["username"] = username
+        
+        # Check if user already exists and update instead of insert if they do
+        if user_id is not None:
+            existing = await self.get_user_registration(user_id)
+            if existing:
+                await self.collection.update_one(
+                    {"user_id": user_id},
+                    {"$set": data}
+                )
+                return
+        
+        # Insert new record
         await self.collection.insert_one(data)
+
+    async def get_user_registration(self, user_id: int):
+        """Get existing registration for a user"""
+        result = await self.collection.find_one({"user_id": user_id})
+        return result
+
+    async def delete_user_registration(self, user_id: int):
+        """Delete a user's registration"""
+        result = await self.collection.delete_one({"user_id": user_id})
+        return result.deleted_count > 0
 
     # def validate_graduation_year(self):
 

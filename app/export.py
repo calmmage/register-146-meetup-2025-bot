@@ -80,8 +80,8 @@ class SheetExporter:
 
             # Prepare headers and data
             
-            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече"]
-            sheet.update("A1:D1", [headers])
+            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече", "Telegram Username"]
+            sheet.update("A1:E1", [headers])
 
             # Prepare user data
             rows = []
@@ -92,11 +92,12 @@ class SheetExporter:
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
+                        user.get("username", "")
                     ]
                 )
 
             # Update the sheet with user data
-            sheet.update(f"A2:D{len(rows)+1}", rows)
+            sheet.update(f"A2:E{len(rows)+1}", rows)
 
             message = f"Successfully exported  {len(rows)}  users to Google Sheets\n"
             message += "Available at: " + sheet.url
@@ -127,7 +128,7 @@ class SheetExporter:
             writer = csv.writer(output)
 
             # Write headers
-            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече"]
+            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече", "Telegram Username"]
             writer.writerow(headers)
 
             # Write user data
@@ -138,6 +139,7 @@ class SheetExporter:
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
+                        user.get("username", "")
                     ]
                 )
 
