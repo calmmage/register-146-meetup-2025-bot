@@ -1,15 +1,26 @@
+import asyncio
+import os
 from aiogram import Router, html, F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import (
+    CallbackQuery,
+    ReplyKeyboardRemove,
+    FSInputFile,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+)
+from datetime import datetime
 from dotenv import load_dotenv
+from loguru import logger
 from textwrap import dedent
-from typing import Dict, List, Optional
-from aiogram.types import Message as TelegramMessage
+from typing import Dict, List
 
 from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
-from botspot.core.dependency_manager import get_dependency_manager
 from botspot.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 from botspot.utils.admin_filter import AdminFilter
@@ -21,7 +32,7 @@ app = App()
 load_dotenv()
 
 # Dictionary to track log messages for each user
-log_messages: Dict[int, List[TelegramMessage]] = {}
+log_messages: Dict[int, List[Message]] = {}
 
 date_of_event = {
     TargetCity.PERM: "22 Марта, Сб",
@@ -34,6 +45,26 @@ padezhi = {
     TargetCity.MOSCOW: "Москве",
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
 }
+
+# Add payment QR codes and details
+payment_details = {
+    TargetCity.MOSCOW.value: {
+        "card": "1234 5678 9012 3456",
+        "name": "Иванов Иван Иванович",
+        "qr_code": "moscow_payment_qr.png",
+    },
+    TargetCity.PERM.value: {
+        "card": "9876 5432 1098 7654",
+        "name": "Петров Петр Петрович",
+        "qr_code": "perm_payment_qr.png",
+    },
+    TargetCity.SAINT_PETERSBURG.value: {
+        "info": "Оплата не требуется. Все расходы участники несут самостоятельно."
+    },
+}
+
+# Create directory for payment QR codes if it doesn't exist
+os.makedirs(os.path.join("assets", "payment_qr"), exist_ok=True)
 
 
 @commands_menu.add_command("start", "Start the bot")
@@ -450,21 +481,21 @@ async def register_user(
                 Пожалуйста, введите полное ФИО.
                 """
             )
-            
+
             response = await ask_user(
                 message.chat.id,
                 question,
                 state=state,
                 timeout=None,
             )
-            
+
             # Validate full name
             valid, error = app.validate_full_name(response)
             if valid:
                 full_name = response
             else:
                 await send_safe(message.chat.id, f"❌ {error} Пожалуйста, попробуйте еще раз.")
-        
+
         # Log full name
         log_msg = await app.log_registration_step(
             user_id,
@@ -474,11 +505,11 @@ async def register_user(
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
-        
+
         # Ask for graduation year and class letter with validation
         graduation_year = None
         class_letter = None
-        
+
         while graduation_year is None or class_letter is None or not class_letter:
             if graduation_year is not None and class_letter is None:
                 # We have a year but need a class letter
@@ -490,14 +521,14 @@ async def register_user(
                     Например, "2025 Б".
                     """
                 )
-            
+
             response = await ask_user(
                 message.chat.id,
                 question,
                 state=state,
                 timeout=None,
             )
-            
+
             # If we already have a year and just need the letter
             if graduation_year is not None and class_letter is None:
                 # Validate just the class letter
@@ -509,7 +540,7 @@ async def register_user(
             else:
                 # Parse and validate both year and letter
                 year, letter, error = app.parse_graduation_year_and_class_letter(response)
-                
+
                 if error:
                     await send_safe(message.chat.id, f"❌ {error}")
                     # If we got a valid year but no letter, save the year
@@ -518,7 +549,7 @@ async def register_user(
                 else:
                     graduation_year = year
                     class_letter = letter
-        
+
         # Log graduation info
         log_msg = await app.log_registration_step(
             user_id,
@@ -528,17 +559,17 @@ async def register_user(
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
-    
-    registered_user = RegisteredUser(
-        full_name=full_name,
-        graduation_year=graduation_year,
-        class_letter=class_letter,
-        target_city=location,
-    )
 
-    # Save with user_id and username
+    # Save the registration
     await app.save_registered_user(
-        registered_user, user_id=message.from_user.id, username=message.from_user.username
+        RegisteredUser(
+            full_name=full_name,
+            graduation_year=graduation_year,
+            class_letter=class_letter,
+            target_city=location,
+        ),
+        user_id=user_id,
+        username=username,
     )
 
     # Log registration completion
@@ -546,30 +577,38 @@ async def register_user(
         user_id,
         username,
         "Регистрация завершена",
-        f"Город: {location.value}, ФИО: {full_name}, Год: {graduation_year}, Класс: {class_letter}",
+        f"Город: {location.value}, ФИО: {full_name}, Выпуск: {graduation_year} {class_letter}",
     )
     if log_msg:
         log_messages[user_id].append(log_msg)
 
-    await send_safe(
-        message.chat.id,
-        f"Спасибо, {html.bold(full_name)}!\n"
-        "Вы зарегистрированы на встречу выпускников школы 146 "
-        f"в {padezhi[location]} {date_of_event[location]}.",
-        reply_markup=ReplyKeyboardRemove(),
+    # Log to events chat
+    await app.log_registration_completed(
+        user_id, username, full_name, graduation_year, class_letter, location.value
     )
 
-    # Log to events chat
-    registration_data = {
-        "full_name": full_name,
-        "graduation_year": graduation_year,
-        "class_letter": class_letter,
-        "target_city": location.value,
-    }
-    await app.log_registration_complete(user_id, username, registration_data)
-
-    # Delete all log messages for this user
+    # Clear log messages
     await delete_log_messages(user_id)
+
+    # Send confirmation message with payment info in one message
+    confirmation_msg = (
+        f"Спасибо, {full_name}!\n"
+        f"Вы зарегистрированы на встречу выпускников школы 146 "
+        f"в {padezhi[location]} {date_of_event[location]}. "
+    )
+    
+    if location.value != TargetCity.SAINT_PETERSBURG.value:
+        confirmation_msg += "Сейчас пришлем информацию об оплате..."
+        await send_safe(message.chat.id, confirmation_msg)
+        # Process payment after registration
+        await process_payment(message, state, location.value, graduation_year)
+    else:
+        confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
+        await send_safe(
+            message.chat.id,
+            confirmation_msg,
+            reply_markup=ReplyKeyboardRemove(),
+        )
 
 
 # Add this function to delete log messages
@@ -657,3 +696,355 @@ async def show_stats(message: Message):
     stats_text += f"\nВсего: {total} человек"
 
     await send_safe(message.chat.id, stats_text)
+
+
+async def process_payment(message: Message, state: FSMContext, city: str, graduation_year: int):
+    """Process payment for an event registration"""
+    user_id = message.from_user.id
+    username = message.from_user.username
+    
+    # Show typing status and delay
+    try:
+        from botspot.core.dependency_manager import get_dependency_manager
+        deps = get_dependency_manager()
+        if hasattr(deps, "bot"):
+            bot = deps.bot
+            await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+            await asyncio.sleep(3)  # 3 second delay
+        else:
+            logger.warning("Bot not available in dependency manager, skipping typing indicator")
+            await asyncio.sleep(3)
+    except Exception as e:
+        logger.warning(f"Could not show typing indicator: {e}")
+        await asyncio.sleep(3)
+    
+    # Check if it's an early registration (before March 15)
+    early_registration_date = datetime.strptime("2025-03-15", "%Y-%m-%d")
+    today = datetime.now()
+    early_registration = today < early_registration_date
+    
+    # Calculate payment amount
+    regular_amount, final_amount = app.calculate_payment_amount(
+        city, graduation_year, early_registration
+    )
+    
+    # Prepare payment message - split into parts for better UX
+    payment_msg_part1 = dedent(
+        f"""
+        💰 Оплата мероприятия
+        
+        Для оплаты мероприятия используется следующая формула:
+        
+        Москва → 1000р + 200 * (2025 - год выпуска)
+        Пермь → 500р + 100 * (2025 - год выпуска)
+        Санкт-Петербург - за свой счет
+    """
+    )
+    
+    # Send part 1
+    await send_safe(message.chat.id, payment_msg_part1)
+    
+    # Delay between messages
+    await asyncio.sleep(10)
+
+    # Prepare part 2 with payment calculation
+    if early_registration:
+        discount_amount = regular_amount - final_amount
+        payment_msg_part2 = dedent(
+            f"""
+            Для вас минимальный взнос: {final_amount} руб.
+            
+            🎁 У вас ранняя регистрация (до 15 марта)!
+            Скидка: {discount_amount} руб.
+            
+            А если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+        """
+        )
+    else:
+        payment_msg_part2 = dedent(
+            f"""
+            Для вас минимальный взнос: {final_amount} руб.
+            
+            А если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+        """
+        )
+
+    # Send part 2
+    await send_safe(message.chat.id, payment_msg_part2)
+
+    # Delay between messages
+    await asyncio.sleep(5)
+
+    # Prepare part 3 with payment details
+    payment_msg_part3 = dedent(
+        f"""
+        Реквизиты для оплаты:
+        Карта: {payment_details[city]["card"]}
+        Получатель: {payment_details[city]["name"]}
+    """
+    )
+
+    # Send part 3
+    await send_safe(message.chat.id, payment_msg_part3)
+
+    # Delay between messages
+    await asyncio.sleep(10)
+
+    # Send QR code if available
+    qr_path = os.path.join("assets", "payment_qr", payment_details[city]["qr_code"])
+    if os.path.exists(qr_path):
+        try:
+            await send_safe(message.chat.id, "QR-код для оплаты:", file=FSInputFile(qr_path))
+        except Exception as e:
+            logger.warning(f"Could not send QR code: {e}")
+            await send_safe(
+                message.chat.id,
+                "QR-код временно недоступен. Пожалуйста, используйте реквизиты выше.",
+            )
+
+    # Ask for payment confirmation
+    await send_safe(
+        message.chat.id,
+        "Пожалуйста, отправьте скриншот подтверждения оплаты или нажмите кнопку ниже, если хотите оплатить позже.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Оплачу позже")]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        ),
+    )
+
+    # For now, just assume the user will pay later
+    logger.info(f"User {user_id} will pay later for {city}")
+
+    # Save payment info with pending status
+    await app.save_payment_info(user_id, city, final_amount)
+
+    # Notify user
+    await send_safe(
+        message.chat.id,
+        "Хорошо! Вы можете оплатить позже, используя команду /pay",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+    # Log to events chat
+    try:
+        await app.log_payment_submission(
+            user_id, username, registration, final_amount, regular_amount
+        )
+    except Exception as e:
+        logger.warning(f"Could not log payment submission: {e}")
+
+
+# Add payment command handler
+@commands_menu.add_command("pay", "Оплатить участие")
+@router.message(Command("pay"))
+async def pay_handler(message: Message, state: FSMContext):
+    """Handle payment for registered users"""
+    user_id = message.from_user.id
+
+    # Check if user is registered
+    registrations = await app.get_user_registrations(user_id)
+
+    if not registrations:
+        await send_safe(
+            message.chat.id,
+            "Вы еще не зарегистрированы на встречу. Используйте /start для регистрации.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    # Filter registrations that require payment
+    payment_registrations = [
+        reg for reg in registrations if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value
+    ]
+
+    if not payment_registrations:
+        await send_safe(
+            message.chat.id,
+            "У вас нет регистраций, требующих оплаты.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    # If user has multiple registrations requiring payment, ask which one to pay for
+    if len(payment_registrations) > 1:
+        choices = {}
+        for reg in payment_registrations:
+            city = reg["target_city"]
+            city_enum = next((c for c in TargetCity if c.value == city), None)
+            status = reg.get("payment_status", "не оплачено")
+            status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+
+            choices[city] = f"{city} ({date_of_event[city_enum]}) - {status_emoji} {status}"
+
+        response = await ask_user_choice(
+            message.chat.id,
+            "У вас несколько регистраций. Для какого города вы хотите оплатить участие?",
+            choices=choices,
+            state=state,
+            timeout=None,
+        )
+
+        # Find the selected registration
+        selected_reg = next(
+            (reg for reg in payment_registrations if reg["target_city"] == response), None
+        )
+    else:
+        # Only one registration requiring payment
+        selected_reg = payment_registrations[0]
+
+    # Process payment for the selected registration
+    await process_payment(
+        message, state, selected_reg["target_city"], selected_reg["graduation_year"]
+    )
+
+
+# Add callback handlers for payment verification
+@router.callback_query(lambda c: c.data and c.data.startswith("payment_"))
+async def payment_verification_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Handle payment verification callbacks from admins"""
+    # Extract data from callback
+    parts = callback_query.data.split("_")
+    action = parts[1]  # confirm, decline, or pending
+    user_id = int(parts[2])
+    city = parts[3]
+
+    # Get the registration
+    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+
+    if not registration:
+        await callback_query.answer("Регистрация не найдена")
+        return
+
+    admin_id = callback_query.from_user.id
+    admin_username = callback_query.from_user.username
+
+    # Check if user is admin
+    if not is_admin(callback_query.from_user):
+        await callback_query.answer("Только администраторы могут проверять платежи")
+        return
+
+    # Handle different actions
+    if action == "confirm":
+        # Confirm payment
+        await app.update_payment_status(user_id, city, "confirmed")
+
+        # Log confirmation
+        await app.log_payment_verification(
+            user_id,
+            registration.get("username", ""),
+            registration,
+            "confirmed",
+            f"Подтверждено администратором {admin_username or admin_id}",
+        )
+
+        # Notify user
+        await send_safe(
+            user_id,
+            f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Спасибо за оплату.",
+        )
+
+        await callback_query.answer("Платеж подтвержден")
+
+    elif action == "decline":
+        # Ask admin for reason
+        await callback_query.answer("Укажите причину отклонения")
+
+        # Store callback data in state for later use
+        await state.update_data(payment_decline_user_id=user_id, payment_decline_city=city)
+
+        # Ask for reason in private chat with admin
+        await send_safe(
+            admin_id,
+            f"Укажите причину отклонения платежа для пользователя {registration.get('username', user_id)} ({registration['full_name']}):",
+        )
+
+        # Set state to wait for reason
+        await state.set_state("waiting_for_payment_decline_reason")
+
+    elif action == "pending":
+        # Mark as pending for further review
+        await app.update_payment_status(user_id, city, "pending")
+
+        # Log pending status
+        await app.log_payment_verification(
+            user_id,
+            registration.get("username", ""),
+            registration,
+            "pending",
+            f"Отложено администратором {admin_username or admin_id}",
+        )
+
+        # Notify user
+        await send_safe(
+            user_id,
+            f"⏳ Ваш платеж для участия во встрече в городе {city} находится на проверке. Мы свяжемся с вами, если потребуется дополнительная информация.",
+        )
+
+        await callback_query.answer("Платеж отмечен как требующий дополнительной проверки")
+
+    # Update the inline keyboard to reflect the action
+    await callback_query.message.edit_reply_markup(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ Платеж {action}ed администратором {admin_username or admin_id}",
+                        callback_data="payment_done",
+                    )
+                ]
+            ]
+        )
+    )
+
+
+# Handler for payment decline reason
+@router.message(lambda message: message.text and message.chat.type == "private")
+async def payment_decline_reason_handler(message: Message, state: FSMContext):
+    """Handle payment decline reason from admin"""
+    # Check if we're waiting for a decline reason
+    current_state = await state.get_state()
+    if current_state != "waiting_for_payment_decline_reason":
+        return
+
+    # Get stored data
+    data = await state.get_data()
+    user_id = data.get("payment_decline_user_id")
+    city = data.get("payment_decline_city")
+
+    if not user_id or not city:
+        await send_safe(message.chat.id, "Ошибка: данные о платеже не найдены")
+        await state.clear()
+        return
+
+    # Get the registration
+    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+
+    if not registration:
+        await send_safe(message.chat.id, "Ошибка: регистрация не найдена")
+        await state.clear()
+        return
+
+    # Update payment status with reason
+    reason = message.text
+    await app.update_payment_status(user_id, city, "declined", reason)
+
+    # Log decline
+    await app.log_payment_verification(
+        user_id, registration.get("username", ""), registration, "declined", reason
+    )
+
+    # Notify user
+    await send_safe(
+        user_id,
+        f"❌ Ваш платеж для участия во встрече в городе {city} отклонен.\n\nПричина: {reason}\n\nПожалуйста, используйте команду /pay чтобы повторить попытку оплаты.",
+    )
+
+    # Confirm to admin
+    await send_safe(
+        message.chat.id,
+        f"Платеж отклонен. Пользователь {registration.get('username', user_id)} ({registration['full_name']}) уведомлен.",
+    )
+
+    # Clear state
+    await state.clear()
