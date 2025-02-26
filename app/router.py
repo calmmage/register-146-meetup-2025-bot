@@ -427,34 +427,34 @@ async def register_user(message: Message, state: FSMContext, preselected_city=No
     )
 
 
-@commands_menu.add_command("export", "Export registered users to Google Sheets or CSV")
+@commands_menu.add_command("export", "Экспорт списка зарегистрированных участников")
 @router.message(AdminFilter(), Command("export"))
 async def export_handler(message: Message, state: FSMContext):
-    """Export registered users to Google Sheets or CSV"""
-    notif = await send_safe(message.chat.id, "Preparing export...")
+    """Экспорт списка зарегистрированных участников в Google Sheets или CSV"""
+    notif = await send_safe(message.chat.id, "Подготовка экспорта...")
 
     # Ask user for export format
     response = await ask_user_choice(
         message.chat.id,
-        "Choose export format:",
-        choices={"sheets": "Google Sheets", "csv": "CSV File"},
+        "Выберите формат экспорта:",
+        choices={"sheets": "Google Таблицы", "csv": "CSV Файл"},
         state=state,
         timeout=None,
     )
 
     if response == "sheets":
         # Export to Google Sheets
-        await notif.edit_text("Exporting data to Google Sheets...")
+        await notif.edit_text("Экспорт данных в Google Таблицы...")
         result = await app.export_registered_users()
         await send_safe(message.chat.id, result)
     else:
         # Export to CSV
-        await notif.edit_text("Exporting data to CSV file...")
+        await notif.edit_text("Экспорт данных в CSV файл...")
         csv_content, result_message = await app.export_to_csv()
 
         if csv_content:
             # Send the CSV content as a file using send_safe
-            await send_safe(message.chat.id, csv_content, filename="registered_users.csv")
+            await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
         else:
             await send_safe(message.chat.id, result_message)
 
@@ -473,7 +473,7 @@ async def general_message_handler(message: Message, state: FSMContext):
 
 
 async def show_stats(message: Message):
-    """Show registration statistics"""
+    """Показать статистику регистраций"""
     # Count registrations by city
     cursor = app.collection.aggregate([{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}])
     stats = await cursor.to_list(length=None)

@@ -71,15 +71,14 @@ class SheetExporter:
             users = await cursor.to_list(length=None)
 
             if not users:
-                logger.info("No users to export")
-                return "No users to export"
+                logger.info("Нет пользователей для экспорта")
+                return "Нет пользователей для экспорта"
 
             # Connect to Google Sheets
             client = self._get_client()
             sheet = client.open_by_key(self.spreadsheet_id).sheet1
 
             # Prepare headers and data
-            
             headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече", "Telegram Username"]
             sheet.update("A1:E1", [headers])
 
@@ -99,15 +98,15 @@ class SheetExporter:
             # Update the sheet with user data
             sheet.update(f"A2:E{len(rows)+1}", rows)
 
-            message = f"Successfully exported  {len(rows)}  users to Google Sheets\n"
-            message += "Available at: " + sheet.url
+            message = f"Успешно экспортировано {len(rows)} пользователей в Google Таблицы\n"
+            message += "Доступно по ссылке: " + sheet.url
             logger.success(message)
 
             return message
 
         except Exception as e:
-            logger.error(f"Error exporting data: {e}")
-            return f"Error exporting data: {e}"
+            logger.error(f"Ошибка при экспорте данных: {e}")
+            return f"Ошибка при экспорте данных: {e}"
 
     async def export_to_csv(self):
         """Export all registered users to a CSV file"""
@@ -117,8 +116,8 @@ class SheetExporter:
             users = await cursor.to_list(length=None)
 
             if not users:
-                logger.info("No users to export")
-                return None, "No users to export"
+                logger.info("Нет пользователей для экспорта")
+                return None, "Нет пользователей для экспорта"
 
             # Create CSV content
             import csv
@@ -146,9 +145,9 @@ class SheetExporter:
             csv_content = output.getvalue()
             output.close()
 
-            logger.success(f"Successfully exported {len(users)} users to CSV")
-            return csv_content, f"Successfully exported {len(users)} users to CSV"
+            logger.success(f"Успешно экспортировано {len(users)} пользователей в CSV")
+            return csv_content, f"Успешно экспортировано {len(users)} пользователей в CSV"
 
         except Exception as e:
-            logger.error(f"Error exporting data to CSV: {e}")
-            return None, f"Error exporting data to CSV: {e}"
+            logger.error(f"Ошибка при экспорте данных в CSV: {e}")
+            return None, f"Ошибка при экспорте данных в CSV: {e}"
