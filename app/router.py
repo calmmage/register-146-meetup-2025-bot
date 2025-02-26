@@ -1,9 +1,10 @@
 from aiogram import Router, html
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardRemove, BufferedInputFile
 from dotenv import load_dotenv
 from textwrap import dedent
+from io import BytesIO
 
 from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
@@ -123,14 +124,37 @@ async def register_user(message: Message, state: FSMContext):
     )
 
 
-@commands_menu.add_command("export", "Export registered users to Google Sheets")
+@commands_menu.add_command("export", "Export registered users to Google Sheets or CSV")
 @router.message(AdminFilter(), Command("export"))
-async def export_handler(message: Message):
-    """Export registered users to Google Sheets"""
-    notif = await send_safe(message.chat.id, "Exporting data to Google Sheets...")
-    result = await app.export_registered_users()
+async def export_handler(message: Message, state: FSMContext):
+    """Export registered users to Google Sheets or CSV"""
+    notif = await send_safe(message.chat.id, "Preparing export...")
 
-    await send_safe(message.chat.id, result)
+    # Ask user for export format
+    response = await ask_user_choice(
+        message.chat.id,
+        "Choose export format:",
+        choices={"sheets": "Google Sheets", "csv": "CSV File"},
+        state=state,
+        timeout=None,
+    )
+
+    if response == "sheets":
+        # Export to Google Sheets
+        await notif.edit_text("Exporting data to Google Sheets...")
+        result = await app.export_registered_users()
+        await send_safe(message.chat.id, result)
+    else:
+        # Export to CSV
+        await notif.edit_text("Exporting data to CSV file...")
+        csv_content, result_message = await app.export_to_csv()
+
+        if csv_content:
+            # Send the CSV content as a file using send_safe
+            await send_safe(message.chat.id, csv_content, filename="registered_users.csv")
+        else:
+            await send_safe(message.chat.id, result_message)
+
     await notif.delete()
 
 

@@ -82,3 +82,7 @@ class App:
 
     def export_registered_users(self):
         return self.sheet_exporter.export_registered_users()
+
+    async def export_to_csv(self):
+        """Export registered users to CSV"""
+        return await self.sheet_exporter.export_to_csv()

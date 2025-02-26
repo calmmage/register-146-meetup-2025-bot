@@ -106,3 +106,43 @@ class SheetExporter:
         except Exception as e:
             logger.error(f"Error exporting data: {e}")
             return f"Error exporting data: {e}"
+
+    async def export_to_csv(self):
+        """Export all registered users to a CSV file"""
+        try:
+            # Get all registered users from MongoDB
+            cursor = self.app.collection.find({})
+            users = await cursor.to_list(length=None)
+            
+            if not users:
+                logger.info("No users to export")
+                return None, "No users to export"
+            
+            # Create CSV content
+            import csv
+            from io import StringIO
+            
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Write headers
+            writer.writerow(["Full Name", "Graduation Year", "Class", "City"])
+            
+            # Write user data
+            for user in users:
+                writer.writerow([
+                    user["full_name"],
+                    user["graduation_year"],
+                    user["class_letter"],
+                    user["target_city"],
+                ])
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            logger.success(f"Successfully exported {len(users)} users to CSV")
+            return csv_content, f"Successfully exported {len(users)} users to CSV"
+            
+        except Exception as e:
+            logger.error(f"Error exporting data to CSV: {e}")
+            return None, f"Error exporting data to CSV: {e}"
