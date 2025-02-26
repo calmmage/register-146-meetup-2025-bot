@@ -1,9 +1,10 @@
+from enum import Enum
 from pydantic import SecretStr, BaseModel
 from pydantic_settings import BaseSettings
+from typing import Optional
+
 
 from botspot import get_database
-
-from enum import Enum
 
 
 class TargetCity(Enum):
@@ -16,6 +17,7 @@ class AppConfig(BaseSettings):
     """Basic app configuration"""
 
     telegram_bot_token: SecretStr
+    spreadsheet_id: Optional[str] = None
 
     class Config:
         env_file = ".env"
@@ -36,7 +38,10 @@ class App:
     registration_collection_name = "registered_users"
 
     def __init__(self, **kwargs):
+        from app.export import SheetExporter
+
         self.config = AppConfig(**kwargs)
+        self.sheet_exporter = SheetExporter(self.config.spreadsheet_id, app=self)
 
         self._collection = None
 
@@ -74,3 +79,6 @@ class App:
         # Case 4: fallback to simple split
         year, class_letter = year_and_class.split(maxsplit=1)
         return int(year), class_letter.upper()
+
+    def export_registered_users(self):
+        return self.sheet_exporter.export_registered_users()

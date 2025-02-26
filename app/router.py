@@ -1,15 +1,21 @@
 from aiogram import Router, html
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, ReplyKeyboardRemove
+from dotenv import load_dotenv
+from textwrap import dedent
+
+from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
 from botspot.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe
-from textwrap import dedent
-from app.app import App, TargetCity, RegisteredUser
+from botspot.utils.admin_filter import AdminFilter
 
 router = Router()
 app = App()
+
+# Load environment variables
+load_dotenv()
 
 
 date_of_event = {
@@ -115,6 +121,17 @@ async def register_user(message: Message, state: FSMContext):
         f"в {padezhi[location]} {date_of_event[location]}.",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+
+@commands_menu.add_command("export", "Export registered users to Google Sheets")
+@router.message(AdminFilter(), Command("export"))
+async def export_handler(message: Message):
+    """Export registered users to Google Sheets"""
+    notif = await send_safe(message.chat.id, "Exporting data to Google Sheets...")
+    result = await app.export_registered_users()
+
+    await send_safe(message.chat.id, result)
+    await notif.delete()
 
 
 # @router.message()
