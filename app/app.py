@@ -346,8 +346,6 @@ class App:
         message = f"❌ ОТМЕНА РЕГИСТРАЦИИ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {full_name}\n"
-        # message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
-        message += f"🏙️ Город: {city}\n"
 
         if city:
             message += f"🏙️ Город: {city}\n"
