@@ -67,47 +67,6 @@ payment_details = {
 os.makedirs(os.path.join("assets", "payment_qr"), exist_ok=True)
 
 
-@commands_menu.add_command("start", "Start the bot")
-@router.message(CommandStart())
-@router.message(F.text, F.chat.type == "private")  # only handle private messages
-async def start_handler(message: Message, state: FSMContext):
-    """
-    Main scenario flow.
-    """
-
-    if is_admin(message.from_user):
-        # Show admin options
-        response = await ask_user_choice(
-            message.chat.id,
-            "Вы администратор бота. Что вы хотите сделать?",
-            choices={
-                "register": "Зарегистрироваться на встречу",
-                "export": "Экспортировать данные",
-                "view_stats": "Посмотреть статистику",
-            },
-            state=state,
-            timeout=None,
-        )
-
-        if response == "export":
-            await export_handler(message, state)
-            return
-        elif response == "view_stats":
-            await show_stats(message)
-            return
-        # For "register", continue with normal flow
-
-    # Check if user is already registered
-    existing_registration = await app.get_user_registration(message.from_user.id)
-
-    if existing_registration:
-        # User is already registered, show options
-        await handle_registered_user(message, state, existing_registration)
-    else:
-        # New user, start registration
-        await register_user(message, state)
-
-
 async def handle_registered_user(message: Message, state: FSMContext, registration):
     """Handle interaction with already registered user"""
 
@@ -596,7 +555,7 @@ async def register_user(
         f"Вы зарегистрированы на встречу выпускников школы 146 "
         f"в {padezhi[location]} {date_of_event[location]}. "
     )
-    
+
     if location.value != TargetCity.SAINT_PETERSBURG.value:
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
@@ -702,10 +661,11 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     """Process payment for an event registration"""
     user_id = message.from_user.id
     username = message.from_user.username
-    
+
     # Show typing status and delay
     try:
         from botspot.core.dependency_manager import get_dependency_manager
+
         deps = get_dependency_manager()
         if hasattr(deps, "bot"):
             bot = deps.bot
@@ -717,17 +677,17 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     except Exception as e:
         logger.warning(f"Could not show typing indicator: {e}")
         await asyncio.sleep(3)
-    
+
     # Check if it's an early registration (before March 15)
     early_registration_date = datetime.strptime("2025-03-15", "%Y-%m-%d")
     today = datetime.now()
     early_registration = today < early_registration_date
-    
+
     # Calculate payment amount
     regular_amount, final_amount = app.calculate_payment_amount(
         city, graduation_year, early_registration
     )
-    
+
     # Prepare payment message - split into parts for better UX
     payment_msg_part1 = dedent(
         f"""
@@ -740,10 +700,10 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         Санкт-Петербург - за свой счет
     """
     )
-    
+
     # Send part 1
     await send_safe(message.chat.id, payment_msg_part1)
-    
+
     # Delay between messages
     await asyncio.sleep(10)
 
@@ -1048,3 +1008,44 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
 
     # Clear state
     await state.clear()
+
+
+@commands_menu.add_command("start", "Start the bot")
+@router.message(CommandStart())
+@router.message(F.text, F.chat.type == "private")  # only handle private messages
+async def start_handler(message: Message, state: FSMContext):
+    """
+    Main scenario flow.
+    """
+
+    if is_admin(message.from_user):
+        # Show admin options
+        response = await ask_user_choice(
+            message.chat.id,
+            "Вы администратор бота. Что вы хотите сделать?",
+            choices={
+                "register": "Зарегистрироваться на встречу",
+                "export": "Экспортировать данные",
+                "view_stats": "Посмотреть статистику",
+            },
+            state=state,
+            timeout=None,
+        )
+
+        if response == "export":
+            await export_handler(message, state)
+            return
+        elif response == "view_stats":
+            await show_stats(message)
+            return
+        # For "register", continue with normal flow
+
+    # Check if user is already registered
+    existing_registration = await app.get_user_registration(message.from_user.id)
+
+    if existing_registration:
+        # User is already registered, show options
+        await handle_registered_user(message, state, existing_registration)
+    else:
+        # New user, start registration
+        await register_user(message, state)
