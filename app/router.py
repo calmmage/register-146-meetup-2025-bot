@@ -1,6 +1,6 @@
 import asyncio
 import os
-from aiogram import Router, html, F
+from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
@@ -13,17 +13,16 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     KeyboardButton,
 )
-from datetime import datetime
 from dotenv import load_dotenv
 from loguru import logger
 from textwrap import dedent
 from typing import Dict, List
 
 from app.app import App, TargetCity, RegisteredUser
+from app.routers.admin import admin_handler
 from botspot import commands_menu
-from botspot.user_interactions import ask_user, ask_user_choice
+from botspot.user_interactions import ask_user, ask_user_choice, ask_user_raw
 from botspot.utils import send_safe, is_admin
-from botspot.utils.admin_filter import AdminFilter
 
 router = Router()
 app = App()
@@ -44,23 +43,6 @@ padezhi = {
     TargetCity.PERM: "Перми",
     TargetCity.MOSCOW: "Москве",
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
-}
-
-# Add payment QR codes and details
-payment_details = {
-    TargetCity.MOSCOW.value: {
-        "card": "1234 5678 9012 3456",
-        "name": "Иванов Иван Иванович",
-        "qr_code": "moscow_payment_qr.png",
-    },
-    TargetCity.PERM.value: {
-        "card": "9876 5432 1098 7654",
-        "name": "Петров Петр Петрович",
-        "qr_code": "perm_payment_qr.png",
-    },
-    TargetCity.SAINT_PETERSBURG.value: {
-        "info": "Оплата не требуется. Все расходы участники несут самостоятельно."
-    },
 }
 
 # Create directory for payment QR codes if it doesn't exist
@@ -117,6 +99,8 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         # User has only one registration
         reg = registration
         city = reg["target_city"]
+        full_name = reg["full_name"]
+
         city_enum = next((c for c in TargetCity if c.value == city), None)
 
         info_text = dedent(
@@ -157,7 +141,10 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
             # Log cancellation
             await app.log_registration_canceled(
-                message.from_user.id, message.from_user.username, city
+                message.from_user.id,
+                message.from_user.username,
+                full_name,
+                city,
             )
 
             await send_safe(
@@ -436,8 +423,8 @@ async def register_user(
         while full_name is None:
             question = dedent(
                 """
-                Как вас зовут?
-                Пожалуйста, введите полное ФИО.
+                Представьтесь, пожалуйста.
+                Можно имя и фамилию, можно полные ФИО
                 """
             )
 
@@ -477,7 +464,7 @@ async def register_user(
                 question = dedent(
                     """
                     Пожалуйста, введите год выпуска и букву класса.
-                    Например, "2025 Б".
+                    Например, "2003 Б".
                     """
                 )
 
@@ -591,61 +578,6 @@ async def delete_log_messages(user_id: int) -> None:
     log_messages[user_id] = []
 
 
-@commands_menu.add_command("export", "Экспорт списка зарегистрированных участников")
-@router.message(Command("export"), AdminFilter())
-async def export_handler(message: Message, state: FSMContext):
-    """Экспорт списка зарегистрированных участников в Google Sheets или CSV"""
-    notif = await send_safe(message.chat.id, "Подготовка экспорта...")
-
-    # Ask user for export format
-    response = await ask_user_choice(
-        message.chat.id,
-        "Выберите формат экспорта:",
-        choices={"sheets": "Google Таблицы", "csv": "CSV Файл"},
-        state=state,
-        timeout=None,
-    )
-
-    if response == "sheets":
-        # Export to Google Sheets
-        await notif.edit_text("Экспорт данных в Google Таблицы...")
-        result = await app.export_registered_users()
-        await send_safe(message.chat.id, result)
-    else:
-        # Export to CSV
-        await notif.edit_text("Экспорт данных в CSV файл...")
-        csv_content, result_message = await app.export_to_csv()
-
-        if csv_content:
-            # Send the CSV content as a file using send_safe
-            await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
-        else:
-            await send_safe(message.chat.id, result_message)
-
-    await notif.delete()
-
-
-async def show_stats(message: Message):
-    """Показать статистику регистраций"""
-    # Count registrations by city
-    cursor = app.collection.aggregate([{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}])
-    stats = await cursor.to_list(length=None)
-
-    # Format stats
-    stats_text = "Статистика регистраций:\n\n"
-    total = 0
-
-    for stat in stats:
-        city = stat["_id"]
-        count = stat["count"]
-        total += count
-        stats_text += f"{city}: {count} человек\n"
-
-    stats_text += f"\nВсего: {total} человек"
-
-    await send_safe(message.chat.id, stats_text)
-
-
 async def process_payment(message: Message, state: FSMContext, city: str, graduation_year: int):
     """Process payment for an event registration"""
     user_id = message.from_user.id
@@ -668,13 +600,14 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         await asyncio.sleep(3)
 
     # Check if it's an early registration (before March 15)
-    early_registration_date = datetime.strptime("2025-03-15", "%Y-%m-%d")
-    today = datetime.now()
-    early_registration = today < early_registration_date
+    # early_registration_date = datetime.strptime("2025-03-15", "%Y-%m-%d")
+    early_registration_date = "2025-03-15"
+    # today = datetime.now()
+    # early_registration = today < early_registration_date
 
     # Calculate payment amount
-    regular_amount, final_amount = app.calculate_payment_amount(
-        city, graduation_year, early_registration
+    regular_amount, discount, discounted_amount = app.calculate_payment_amount(
+        city, graduation_year  # , early_registration
     )
 
     # Prepare payment message - split into parts for better UX
@@ -696,27 +629,17 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     # Delay between messages
     await asyncio.sleep(10)
 
-    # Prepare part 2 with payment calculation
-    if early_registration:
-        discount_amount = regular_amount - final_amount
-        payment_msg_part2 = dedent(
-            f"""
-            Для вас минимальный взнос: {final_amount} руб.
-            
-            🎁 У вас ранняя регистрация (до 15 марта)!
-            Скидка: {discount_amount} руб.
-            
-            А если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+    # discount_amount = regular_amount - final_amount
+    payment_msg_part2 = dedent(
+        f"""
+        Для вас минимальный взнос: {regular_amount} руб.
+        
+        При ранней регистрации (до {early_registration_date}) - скидка. 
+        Минимальная сумма взноса при ранней регистрации - {discounted_amount}
+        
+        Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
         """
-        )
-    else:
-        payment_msg_part2 = dedent(
-            f"""
-            Для вас минимальный взнос: {final_amount} руб.
-            
-            А если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
-        """
-        )
+    )
 
     # Send part 2
     await send_safe(message.chat.id, payment_msg_part2)
@@ -728,9 +651,10 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     payment_msg_part3 = dedent(
         f"""
         Реквизиты для оплаты:
-        Карта: {payment_details[city]["card"]}
-        Получатель: {payment_details[city]["name"]}
-    """
+        В Тинькофф банк по номеру телефона
+        Номер телефона - {app.settings.payment_phone_number}
+        Получатель - {app.settings.payment_name}
+        """
     )
 
     # Send part 3
@@ -739,22 +663,12 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     # Delay between messages
     await asyncio.sleep(10)
 
-    # Send QR code if available
-    qr_path = os.path.join("assets", "payment_qr", payment_details[city]["qr_code"])
-    if os.path.exists(qr_path):
-        try:
-            await send_safe(message.chat.id, "QR-код для оплаты:", file=FSInputFile(qr_path))
-        except Exception as e:
-            logger.warning(f"Could not send QR code: {e}")
-            await send_safe(
-                message.chat.id,
-                "QR-код временно недоступен. Пожалуйста, используйте реквизиты выше.",
-            )
-
     # Ask for payment confirmation
-    await send_safe(
+    response = await ask_user_raw(
         message.chat.id,
         "Пожалуйста, отправьте скриншот подтверждения оплаты или нажмите кнопку ниже, если хотите оплатить позже.",
+        state=state,
+        timeout=300,
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="Оплачу позже")]],
             resize_keyboard=True,
@@ -762,11 +676,32 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         ),
     )
 
+    if response == "Оплачу позже":
+        await send_safe(
+            message.chat.id,
+            "Хорошо! Вы можете оплатить позже, используя команду /pay",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    if response is None:
+        # No response received
+        await send_safe(
+            message.chat.id,
+            "⏰ Не получен ответ в течение 5 минут. Пожалуйста, используйте команду /pay для оплаты.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    if response.photo:
+        # Process payment confirmation
+
+        await app.process_payment_confirmation(
+            message, state, city, graduation_year, response.photo[-1]
+        )
+    # todo: log registration with payment
+
     # For now, just assume the user will pay later
     logger.info(f"User {user_id} will pay later for {city}")
 
     # Save payment info with pending status
-    await app.save_payment_info(user_id, city, final_amount)
+    await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
 
     # Notify user
     await send_safe(
@@ -932,7 +867,7 @@ async def payment_verification_callback(callback_query: CallbackQuery, state: FS
 
         await callback_query.answer("Платеж отмечен как требующий дополнительной проверки")
 
-    # Update the inline keyboard to reflect the action
+    # Update the inline reply_markup to reflect the action
     await callback_query.message.edit_reply_markup(
         InlineKeyboardMarkup(
             inline_keyboard=[
@@ -1008,26 +943,9 @@ async def start_handler(message: Message, state: FSMContext):
     """
 
     if is_admin(message.from_user):
-        # Show admin options
-        response = await ask_user_choice(
-            message.chat.id,
-            "Вы администратор бота. Что вы хотите сделать?",
-            choices={
-                "register": "Зарегистрироваться на встречу",
-                "export": "Экспортировать данные",
-                "view_stats": "Посмотреть статистику",
-            },
-            state=state,
-            timeout=None,
-        )
-
-        if response == "export":
-            await export_handler(message, state)
+        result = await admin_handler(message, state)
+        if result != "register":
             return
-        elif response == "view_stats":
-            await show_stats(message)
-            return
-        # For "register", continue with normal flow
 
     # Check if user is already registered
     existing_registration = await app.get_user_registration(message.from_user.id)

@@ -26,7 +26,7 @@ def main(debug=False) -> None:
 
     # Initialize Bot instance with a default parse mode
     bot = Bot(
-        token=app.config.telegram_bot_token.get_secret_value(),
+        token=app.settings.telegram_bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 

@@ -16,13 +16,15 @@ class TargetCity(Enum):
     SAINT_PETERSBURG = "Санкт-Петербург"
 
 
-class AppConfig(BaseSettings):
+class AppSettings(BaseSettings):
     """Basic app configuration"""
 
     telegram_bot_token: SecretStr
     spreadsheet_id: Optional[str] = None
     logs_chat_id: Optional[int] = None
     events_chat_id: Optional[int] = None
+    payment_phone_number: str
+    payment_name: str
 
     class Config:
         env_file = ".env"
@@ -40,15 +42,15 @@ class RegisteredUser(BaseModel):
 
 
 class App:
-    name = "Mini Botspot Template"
+    name = "146 Meetup Register Bot"
 
     registration_collection_name = "registered_users"
 
     def __init__(self, **kwargs):
         from app.export import SheetExporter
 
-        self.config = AppConfig(**kwargs)
-        self.sheet_exporter = SheetExporter(self.config.spreadsheet_id, app=self)
+        self.settings = AppSettings(**kwargs)
+        self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id, app=self)
 
         self._collection = None
 
@@ -125,11 +127,11 @@ class App:
         # Check if name has at least 2 words
         words = full_name.strip().split()
         if len(words) < 2:
-            return False, "ФИО должно содержать как минимум имя и фамилию."
+            return False, "Пожалуйста, укажите хотя бы имя и фамилию :)"
 
         # Check if name contains only Russian letters, spaces, and hyphens
         if not re.match(r"^[а-яА-ЯёЁ\s\-]+$", full_name):
-            return False, "ФИО должно содержать только русские буквы."
+            return False, "По-русски, пожалуйста :)"
 
         return True, ""
 
@@ -149,7 +151,7 @@ class App:
         if year < 1996:
             return False, f"Год выпуска должен быть не раньше 1996."
 
-        if year > current_year:
+        if year >= current_year:
             if year <= current_year + 4:
                 return (
                     False,
@@ -176,6 +178,8 @@ class App:
         # Check if letter contains only Russian letters
         if not re.match(r"^[а-яА-ЯёЁ]+$", letter):
             return False, "Буква класса должна быть на русском языке."
+
+        # todo:
 
         return True, ""
 
@@ -233,7 +237,7 @@ class App:
             return (
                 None,
                 None,
-                "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2025 Б').",
+                "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2003 Б').",
             )
 
     def export_registered_users(self):
@@ -255,10 +259,10 @@ class App:
             The sent message object or None if chat ID is not configured
         """
         chat_id = None
-        if chat_type == "logs" and self.config.logs_chat_id:
-            chat_id = self.config.logs_chat_id
-        elif chat_type == "events" and self.config.events_chat_id:
-            chat_id = self.config.events_chat_id
+        if chat_type == "logs" and self.settings.logs_chat_id:
+            chat_id = self.settings.logs_chat_id
+        elif chat_type == "events" and self.settings.events_chat_id:
+            chat_id = self.settings.events_chat_id
 
         if not chat_id:
             return None
@@ -297,11 +301,17 @@ class App:
         return await self.log_to_chat(message, "logs")
 
     async def log_registration_completed(
-        self, user_id: int, username: str, full_name: str, graduation_year: int, class_letter: str, city: str
+        self,
+        user_id: int,
+        username: str,
+        full_name: str,
+        graduation_year: int,
+        class_letter: str,
+        city: str,
     ) -> None:
         """
         Log a completed registration to the events chat
-        
+
         Args:
             user_id: User's Telegram ID
             username: User's Telegram username
@@ -315,11 +325,15 @@ class App:
         message += f"📋 ФИО: {full_name}\n"
         message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
         message += f"🏙️ Город: {city}\n"
-        
+
         await self.log_to_chat(message, "events")
 
     async def log_registration_canceled(
-        self, user_id: int, username: str, city: str = None
+        self,
+        user_id: int,
+        username: str,
+        full_name: str,
+        city: str,
     ) -> None:
         """
         Log a canceled registration to the events chat
@@ -331,6 +345,9 @@ class App:
         """
         message = f"❌ ОТМЕНА РЕГИСТРАЦИИ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
+        message += f"📋 ФИО: {full_name}\n"
+        # message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
+        message += f"🏙️ Город: {city}\n"
 
         if city:
             message += f"🏙️ Город: {city}\n"
@@ -340,8 +357,8 @@ class App:
         await self.log_to_chat(message, "events")
 
     def calculate_payment_amount(
-        self, city: str, graduation_year: int, early_registration: bool = False
-    ) -> tuple[int, int]:
+        self, city: str, graduation_year: int  # , early_registration: bool = False
+    ) -> tuple[int, int, int]:
         """
         Calculate the payment amount based on city and graduation year
 
@@ -354,10 +371,10 @@ class App:
             Tuple of (regular_amount, discounted_amount)
         """
         if city == TargetCity.SAINT_PETERSBURG.value:
-            return 0, 0  # Saint Petersburg is free (за свой счет)
+            return 0, 0, 0  # Saint Petersburg is free (за свой счет)
 
         # Regular payment calculation
-        current_year = 2025  # Fixed reference year
+        current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 
         regular_amount = 0
@@ -367,20 +384,25 @@ class App:
             regular_amount = 500 + (100 * years_since_graduation)
 
         # Early registration discount
-        discount_amount = 0
-        if early_registration:
-            if city == TargetCity.MOSCOW.value:
-                discount_amount = 1000
-            elif city == TargetCity.PERM.value:
-                discount_amount = 500
+        discount = 0
+        # if early_registration:
+        if city == TargetCity.MOSCOW.value:
+            discount = 1000
+        elif city == TargetCity.PERM.value:
+            discount = 500
 
         # Final amount after discount
-        final_amount = max(0, regular_amount - discount_amount)
+        discounted_amount = max(0, regular_amount - discount)
 
-        return regular_amount, final_amount
+        return regular_amount, discount, discounted_amount
 
     async def save_payment_info(
-        self, user_id: int, city: str, amount: int, screenshot_message_id: int = None
+        self,
+        user_id: int,
+        city: str,
+        discounted_amount: int,
+        regular_amount: int,
+        screenshot_message_id: int = None,
     ):
         """
         Save payment information for a user
@@ -396,7 +418,8 @@ class App:
             {"user_id": user_id, "target_city": city},
             {
                 "$set": {
-                    "payment_amount": amount,
+                    "discounted_payment_amount": discounted_amount,
+                    "regular_payment_amount": regular_amount,
                     "payment_screenshot_id": screenshot_message_id,
                     "payment_status": "pending",
                     "payment_timestamp": datetime.now().isoformat(),
@@ -492,3 +515,6 @@ class App:
             message += f"💬 Комментарий: {admin_comment}\n"
 
         return await self.log_to_chat(message, "events")
+
+    async def process_payment_confirmation(self, **kwargs):
+        raise NotImplementedError("Payment confirmation processing is not implemented yet")
