@@ -592,7 +592,7 @@ async def delete_log_messages(user_id: int) -> None:
 
 
 @commands_menu.add_command("export", "Экспорт списка зарегистрированных участников")
-@router.message(AdminFilter(), Command("export"))
+@router.message(Command("export"), AdminFilter())
 async def export_handler(message: Message, state: FSMContext):
     """Экспорт списка зарегистрированных участников в Google Sheets или CSV"""
     notif = await send_safe(message.chat.id, "Подготовка экспорта...")
@@ -623,17 +623,6 @@ async def export_handler(message: Message, state: FSMContext):
             await send_safe(message.chat.id, result_message)
 
     await notif.delete()
-
-
-# General message handler for any text
-@router.message(F.text)
-async def general_message_handler(message: Message, state: FSMContext):
-    """Handle any text message by routing to the start command"""
-    await send_safe(
-        message.chat.id, "Для регистрации или управления вашей записью используйте команду /start"
-    )
-    # Option 2: Uncomment to just run the basic flow for any message
-    # await start_handler(message, state)
 
 
 async def show_stats(message: Message):
@@ -958,56 +947,56 @@ async def payment_verification_callback(callback_query: CallbackQuery, state: FS
     )
 
 
-# Handler for payment decline reason
-@router.message(lambda message: message.text and message.chat.type == "private")
-async def payment_decline_reason_handler(message: Message, state: FSMContext):
-    """Handle payment decline reason from admin"""
-    # Check if we're waiting for a decline reason
-    current_state = await state.get_state()
-    if current_state != "waiting_for_payment_decline_reason":
-        return
-
-    # Get stored data
-    data = await state.get_data()
-    user_id = data.get("payment_decline_user_id")
-    city = data.get("payment_decline_city")
-
-    if not user_id or not city:
-        await send_safe(message.chat.id, "Ошибка: данные о платеже не найдены")
-        await state.clear()
-        return
-
-    # Get the registration
-    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
-
-    if not registration:
-        await send_safe(message.chat.id, "Ошибка: регистрация не найдена")
-        await state.clear()
-        return
-
-    # Update payment status with reason
-    reason = message.text
-    await app.update_payment_status(user_id, city, "declined", reason)
-
-    # Log decline
-    await app.log_payment_verification(
-        user_id, registration.get("username", ""), registration, "declined", reason
-    )
-
-    # Notify user
-    await send_safe(
-        user_id,
-        f"❌ Ваш платеж для участия во встрече в городе {city} отклонен.\n\nПричина: {reason}\n\nПожалуйста, используйте команду /pay чтобы повторить попытку оплаты.",
-    )
-
-    # Confirm to admin
-    await send_safe(
-        message.chat.id,
-        f"Платеж отклонен. Пользователь {registration.get('username', user_id)} ({registration['full_name']}) уведомлен.",
-    )
-
-    # Clear state
-    await state.clear()
+# # Handler for payment decline reason
+# @router.message(lambda message: message.text and message.chat.type == "private")
+# async def payment_decline_reason_handler(message: Message, state: FSMContext):
+#     """Handle payment decline reason from admin"""
+#     # Check if we're waiting for a decline reason
+#     current_state = await state.get_state()
+#     if current_state != "waiting_for_payment_decline_reason":
+#         return
+#
+#     # Get stored data
+#     data = await state.get_data()
+#     user_id = data.get("payment_decline_user_id")
+#     city = data.get("payment_decline_city")
+#
+#     if not user_id or not city:
+#         await send_safe(message.chat.id, "Ошибка: данные о платеже не найдены")
+#         await state.clear()
+#         return
+#
+#     # Get the registration
+#     registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+#
+#     if not registration:
+#         await send_safe(message.chat.id, "Ошибка: регистрация не найдена")
+#         await state.clear()
+#         return
+#
+#     # Update payment status with reason
+#     reason = message.text
+#     await app.update_payment_status(user_id, city, "declined", reason)
+#
+#     # Log decline
+#     await app.log_payment_verification(
+#         user_id, registration.get("username", ""), registration, "declined", reason
+#     )
+#
+#     # Notify user
+#     await send_safe(
+#         user_id,
+#         f"❌ Ваш платеж для участия во встрече в городе {city} отклонен.\n\nПричина: {reason}\n\nПожалуйста, используйте команду /pay чтобы повторить попытку оплаты.",
+#     )
+#
+#     # Confirm to admin
+#     await send_safe(
+#         message.chat.id,
+#         f"Платеж отклонен. Пользователь {registration.get('username', user_id)} ({registration['full_name']}) уведомлен.",
+#     )
+#
+#     # Clear state
+#     await state.clear()
 
 
 @commands_menu.add_command("start", "Start the bot")
