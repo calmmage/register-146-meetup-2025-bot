@@ -35,9 +35,9 @@ load_dotenv()
 log_messages: Dict[int, List[Message]] = {}
 
 date_of_event = {
-    TargetCity.PERM: "22 Марта, Сб",
-    TargetCity.MOSCOW: "29 Марта, Сб",
-    TargetCity.SAINT_PETERSBURG: "29 Марта, Сб",
+    TargetCity.PERM: "29 Марта, Сб",
+    TargetCity.MOSCOW: "22 Марта, Сб",
+    TargetCity.SAINT_PETERSBURG: "22 Марта, Сб",
 }
 
 padezhi = {
