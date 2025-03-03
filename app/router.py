@@ -35,8 +35,8 @@ log_messages: Dict[int, List[Message]] = {}
 
 date_of_event = {
     TargetCity.PERM: "29 Марта, Сб",
-    TargetCity.MOSCOW: "22 Марта, Сб",
-    TargetCity.SAINT_PETERSBURG: "22 Марта, Сб",
+    TargetCity.MOSCOW: "5 Апреля, Сб",
+    TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
 }
 
 padezhi = {
