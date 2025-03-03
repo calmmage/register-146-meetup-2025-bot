@@ -6,7 +6,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     ReplyKeyboardRemove,
-    FSInputFile,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     Message,
@@ -668,7 +667,7 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         message.chat.id,
         "Пожалуйста, отправьте скриншот подтверждения оплаты или нажмите кнопку ниже, если хотите оплатить позже.",
         state=state,
-        timeout=300,
+        timeout=1200,
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="Оплачу позже")]],
             resize_keyboard=True,
@@ -682,18 +681,19 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
             "Хорошо! Вы можете оплатить позже, используя команду /pay",
             reply_markup=ReplyKeyboardRemove(),
         )
+
     if response is None:
         # No response received
         await send_safe(
             message.chat.id,
-            "⏰ Не получен ответ в течение 5 минут. Пожалуйста, используйте команду /pay для оплаты.",
+            "⏰ Не получен ответ в течение 20 минут. Пожалуйста, используйте команду /pay для оплаты.",
             reply_markup=ReplyKeyboardRemove(),
         )
+
     if response.photo:
         # Process payment confirmation
-
         await app.process_payment_confirmation(
-            message, state, city, graduation_year, response.photo[-1]
+            # message, state, city, graduation_year, response.photo[-1]
         )
     # todo: log registration with payment
 
