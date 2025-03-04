@@ -610,15 +610,21 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     )
 
     # Prepare payment message - split into parts for better UX
+    payment_formula = ""
+    if city == TargetCity.MOSCOW.value:
+        payment_formula = "1000р + 200 * (2025 - год выпуска)"
+    elif city == TargetCity.PERM.value:
+        payment_formula = "500р + 100 * (2025 - год выпуска)"
+    else:  # Saint Petersburg
+        payment_formula = "за свой счет"
+        
     payment_msg_part1 = dedent(
         f"""
         💰 Оплата мероприятия
         
         Для оплаты мероприятия используется следующая формула:
         
-        Москва → 1000р + 200 * (2025 - год выпуска)
-        Пермь → 500р + 100 * (2025 - год выпуска)
-        Санкт-Петербург - за свой счет
+        {city} → {payment_formula}
     """
     )
 
