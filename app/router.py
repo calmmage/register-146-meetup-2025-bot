@@ -632,6 +632,148 @@ async def delete_log_messages(user_id: int) -> None:
     log_messages[user_id] = []
 
 
+@commands_menu.add_command("cancel_registration", "Отменить регистрацию")
+@router.message(Command("cancel_registration"))
+async def cancel_registration_handler(message: Message, state: FSMContext):
+    """
+    Cancel user registration command handler.
+    """
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
+
+    user_id = message.from_user.id
+    registrations = await app.get_user_registrations(user_id)
+
+    if not registrations:
+        await send_safe(
+            message.chat.id,
+            "У вас нет активных регистраций. Используйте /start для регистрации на встречу.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    if len(registrations) == 1:
+        # User has only one registration, ask for confirmation
+        reg = registrations[0]
+        city = reg["target_city"]
+        full_name = reg["full_name"]
+        city_enum = next((c for c in TargetCity if c.value == city), None)
+
+        confirm_text = dedent(
+            f"""
+            Вы уверены, что хотите отменить регистрацию на встречу в городе {city}?
+            
+            ФИО: {full_name}
+            Год выпуска: {reg["graduation_year"]}
+            Класс: {reg["class_letter"]}
+            Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
+            """
+        )
+
+        response = await ask_user_choice(
+            message.chat.id,
+            confirm_text,
+            choices={"yes": "Да, отменить", "no": "Нет, сохранить"},
+            state=state,
+            timeout=None,
+        )
+
+        if response == "yes":
+            # Cancel registration
+            await app.delete_user_registration(user_id, city)
+            
+            # Log cancellation
+            await app.log_registration_canceled(
+                user_id,
+                message.from_user.username or "",
+                full_name,
+                city,
+            )
+            
+            await send_safe(
+                message.chat.id,
+                "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            await send_safe(
+                message.chat.id,
+                "Отмена регистрации отменена. Ваша регистрация сохранена.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+    else:
+        # User has multiple registrations, ask which one to cancel
+        choices = {}
+        for reg in registrations:
+            city = reg["target_city"]
+            city_enum = next((c for c in TargetCity if c.value == city), None)
+            choices[city] = f"{city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})"
+        
+        choices["all"] = "Отменить все регистрации"
+        choices["cancel"] = "Отмена - ничего не отменять"
+
+        response = await ask_user_choice(
+            message.chat.id,
+            "Выберите, какую регистрацию вы хотите отменить:",
+            choices=choices,
+            state=state,
+            timeout=None,
+        )
+
+        if response == "cancel":
+            await send_safe(
+                message.chat.id,
+                "Отмена операции. Ваши регистрации сохранены.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+
+        if response == "all":
+            # Get user info for logging before deleting
+            user_reg = registrations[0]
+            full_name = user_reg.get("full_name", "Unknown")
+            
+            # Cancel all registrations
+            await app.delete_user_registration(user_id)
+            
+            # Log cancellation
+            await app.log_registration_canceled(
+                user_id,
+                message.from_user.username or "",
+                full_name,
+                None,  # Indicates all cities
+            )
+            
+            await send_safe(
+                message.chat.id,
+                "Все ваши регистрации отменены. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            # Cancel specific city registration
+            city = response
+            reg = next(r for r in registrations if r["target_city"] == city)
+            full_name = reg["full_name"]
+            
+            # Cancel registration
+            await app.delete_user_registration(user_id, city)
+            
+            # Log cancellation
+            await app.log_registration_canceled(
+                user_id,
+                message.from_user.username or "",
+                full_name,
+                city,
+            )
+            
+            await send_safe(
+                message.chat.id,
+                f"Ваша регистрация в городе {city} отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+
+
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
 @router.message(F.text, F.chat.type == "private")  # only handle private messages

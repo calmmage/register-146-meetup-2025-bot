@@ -1,16 +1,16 @@
 
-Todo
+# Todo
 - [ ] auto export to google sheets on each registration
 
-Promo
+# Promo
 - [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
 
-Commands
+# Commands
 - [ ] hide the admin-only commands from menu (use botspot visibility). Print the admin-only commands in start menu for admins
-- [ ] add new command /cancel_registration
+- [x] add new command /cancel_registration
 
-Рассылки (это потом сделаем)
+# Рассылки (это потом сделаем)
 - тем кто не оплатил
 - тем кто оплатил но меньше чем нужно
 - за пару дней до опрос "а ты придешь"
@@ -18,10 +18,10 @@ Commands
 1) сначала делаем спец-команду для админов (с фичой от botspot - visibility = admin only) - для ручного запуска
 2) потом scheduled job для рассылок
 
-Scenario routes
+# Scenario routes
 - [ ] Fix "I will pay later" routo of the start menu -> there's no way to manage registrations now from unpaid state
 - [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
-- [ ]  Новая кнопка "я не выпускник"
+- [ ]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо. 
 thoughts on scenarios
 - Новая кнопка "я не выпускник" должна быть там же где ты вводишь год выпуска из школы. Чтобы если ты не можешь его ввести - у тебя был выход
 - Но непонятно какой дальше сценарий - какая сумма платежа? Можно просто рекомендованную ставить
