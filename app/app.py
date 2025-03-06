@@ -251,7 +251,7 @@ class App:
                 "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2003 Б').",
             )
 
-    def export_registered_users(self):
+    def export_registered_users_to_google_sheets(self):
         return self.sheet_exporter.export_registered_users()
 
     async def export_to_csv(self):
@@ -336,7 +336,7 @@ class App:
         message = f"✅ НОВАЯ РЕГИСТРАЦИЯ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {full_name}\n"
-        
+
         # Format graduation info based on graduate type
         if graduate_type == GraduateType.TEACHER.value:
             message += f"👨‍🏫 Статус: Учитель\n"
@@ -344,9 +344,9 @@ class App:
             message += f"👥 Статус: Не выпускник\n"
         else:
             message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
-            
+
         message += f"🏙️ Город: {city}\n"
-        
+
         # Add payment status for different participant types
         if graduate_type == GraduateType.TEACHER.value:
             message += f"💰 Оплата: Бесплатно (учитель)\n"
@@ -398,7 +398,7 @@ class App:
         # Teachers and Saint Petersburg attendees are free
         if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value:
             return 0, 0, 0
-            
+
         # For non-graduates, use fixed recommended amounts
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
@@ -488,28 +488,32 @@ class App:
         if payment_amount is not None:
             # Get current registration to check for existing payment
             registration = await self.collection.find_one({"user_id": user_id, "target_city": city})
-            
+
             if registration and "payment_amount" in registration:
                 # Add the new payment to the existing amount
                 total_payment = registration["payment_amount"] + payment_amount
                 update_data["payment_amount"] = total_payment
-                
+
                 # Store payment history as an array of individual payments
                 payment_history = registration.get("payment_history", [])
-                payment_history.append({
-                    "amount": payment_amount,
-                    "timestamp": datetime.now().isoformat(),
-                    "total_after": total_payment
-                })
+                payment_history.append(
+                    {
+                        "amount": payment_amount,
+                        "timestamp": datetime.now().isoformat(),
+                        "total_after": total_payment,
+                    }
+                )
                 update_data["payment_history"] = payment_history
             else:
                 # First payment
                 update_data["payment_amount"] = payment_amount
-                update_data["payment_history"] = [{
-                    "amount": payment_amount,
-                    "timestamp": datetime.now().isoformat(),
-                    "total_after": payment_amount
-                }]
+                update_data["payment_history"] = [
+                    {
+                        "amount": payment_amount,
+                        "timestamp": datetime.now().isoformat(),
+                        "total_after": payment_amount,
+                    }
+                ]
 
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}

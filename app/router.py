@@ -685,13 +685,28 @@ async def register_user(
             confirmation_msg,
             reply_markup=ReplyKeyboardRemove(),
         )
+
+        # Auto-export to sheets after registration (silent background operation)
+        await app.export_registered_users_to_google_sheets()
     elif graduate_type == GraduateType.TEACHER:
+        # Mark teachers as paid automatically
+        await app.update_payment_status(
+            user_id=user_id,
+            city=location.value,
+            status="confirmed",
+            admin_comment="Автоматически подтверждено (учитель)",
+            payment_amount=0,
+        )
+
         confirmation_msg += "\nДля учителей участие бесплатное. Спасибо за вашу работу!"
         await send_safe(
             message.chat.id,
             confirmation_msg,
             reply_markup=ReplyKeyboardRemove(),
         )
+
+        # Auto-export to sheets after registration with confirmed payment
+        await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow for everyone else who needs to pay
         confirmation_msg += "Сейчас пришлем информацию об оплате..."

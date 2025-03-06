@@ -58,7 +58,7 @@ async def export_handler(message: Message, state: FSMContext):
 
     if response == "sheets":
         await notif.edit_text("Экспорт данных в Google Таблицы...")
-        result = await app.export_registered_users()
+        result = await app.export_registered_users_to_google_sheets()
         await send_safe(message.chat.id, result)
     else:
         # Export to CSV

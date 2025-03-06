@@ -63,8 +63,12 @@ class SheetExporter:
         credentials = Credentials.from_service_account_info(creds_info, scopes=SCOPES)
         return gspread.authorize(credentials)
 
-    async def export_registered_users(self):
-        """Export all registered users to the Google Sheet"""
+    async def export_registered_users(self, silent=False):
+        """Export all registered users to the Google Sheet
+        
+        Args:
+            silent: If True, suppresses any return messages for background operation
+        """
         try:
             # Get all registered users from MongoDB
             cursor = self.app.collection.find({})
@@ -72,7 +76,9 @@ class SheetExporter:
 
             if not users:
                 logger.info("Нет пользователей для экспорта")
-                return "Нет пользователей для экспорта"
+                if not silent:
+                    return "Нет пользователей для экспорта"
+                return None
 
             # Connect to Google Sheets
             client = self._get_client()
@@ -120,11 +126,15 @@ class SheetExporter:
             message += "Доступно по ссылке: " + sheet.url
             logger.success(message)
 
-            return message
+            if not silent:
+                return message
+            return None
 
         except Exception as e:
             logger.error(f"Ошибка при экспорте данных: {e}")
-            return f"Ошибка при экспорте данных: {e}"
+            if not silent:
+                return f"Ошибка при экспорте данных: {e}"
+            return None
 
     async def export_to_csv(self):
         """Export all registered users to a CSV file"""

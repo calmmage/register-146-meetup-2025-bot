@@ -1,6 +1,6 @@
 
 # Todo
-- [ ] auto export to google sheets on each registration
+- [x] auto export to google sheets on each registration
  
 
 # Promo

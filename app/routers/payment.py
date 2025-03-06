@@ -660,6 +660,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Confirm to admin with a brief notification
     await callback_query.answer("Платеж подтвержден")
 
+    # Auto-export to sheets after payment confirmation
+    await app.export_registered_users_to_google_sheets()
+
 
 @router.callback_query(lambda c: c.data and c.data.startswith("decline_payment_"))
 async def decline_payment_callback(callback_query: CallbackQuery, state: FSMContext):
