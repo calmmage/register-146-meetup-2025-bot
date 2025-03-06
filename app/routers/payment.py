@@ -120,7 +120,7 @@ async def process_payment(
     # Wait for response (either screenshot or callback)
     response = await ask_user_raw(
         message.chat.id,
-        "Пожалуйста, отправьте скриншот подтверждения оплаты или нажмите кнопку ниже, если хотите оплатить позже.",
+        "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или нажмите кнопку ниже, если хотите оплатить позже.",
         state=state,
         reply_markup=pay_later_markup,
         timeout=1200,
@@ -135,7 +135,11 @@ async def process_payment(
         )
         return
 
-    if response and hasattr(response, "photo") and response.photo:
+    # Check if response has photo or document (PDF)
+    has_photo = response and hasattr(response, "photo") and response.photo
+    has_pdf = response and hasattr(response, "document") and response.document and response.document.mime_type == "application/pdf"
+    
+    if has_photo or has_pdf:
         # Save payment info with pending status
         await app.save_payment_info(
             user_id, city, discounted_amount, regular_amount, response.message_id
@@ -165,9 +169,6 @@ async def process_payment(
                 if hasattr(deps, "bot"):
                     bot = deps.bot
 
-                    # Get the photo file_id from the message
-                    photo = response.photo[-1]  # Get the largest photo
-
                     # Create validation buttons
                     validation_markup = InlineKeyboardMarkup(
                         inline_keyboard=[
@@ -184,13 +185,26 @@ async def process_payment(
                         ]
                     )
 
-                    # Send the photo with caption containing user info
-                    forwarded_msg = await bot.send_photo(
-                        chat_id=events_chat_id,
-                        photo=photo.file_id,
-                        caption=user_info,
-                        reply_markup=validation_markup,
-                    )
+                    # Send the photo or document with caption containing user info
+                    if has_photo:
+                        # Get the photo file_id from the message
+                        photo = response.photo[-1]  # Get the largest photo
+                        
+                        # Send the photo with caption
+                        forwarded_msg = await bot.send_photo(
+                            chat_id=events_chat_id,
+                            photo=photo.file_id,
+                            caption=user_info,
+                            reply_markup=validation_markup,
+                        )
+                    else:  # has_pdf
+                        # Send the PDF document with caption
+                        forwarded_msg = await bot.send_document(
+                            chat_id=events_chat_id,
+                            document=response.document.file_id,
+                            caption=user_info,
+                            reply_markup=validation_markup,
+                        )
 
                     # Save the screenshot message ID for reference
                     await app.save_payment_info(
@@ -198,7 +212,7 @@ async def process_payment(
                     )
 
                     logger.info(
-                        f"Payment screenshot from user {user_id} sent to validation chat with caption"
+                        f"Payment proof from user {user_id} sent to validation chat with caption"
                     )
                 else:
                     logger.error(
@@ -207,12 +221,12 @@ async def process_payment(
             else:
                 logger.warning("Events chat ID not set, cannot forward screenshot")
         except Exception as e:
-            logger.error(f"Error forwarding screenshot to validation chat: {e}")
+            logger.error(f"Error forwarding payment proof to validation chat: {e}")
 
         # Notify user
         await send_safe(
             message.chat.id,
-            "Спасибо за скриншот! Ваш платеж находится на проверке. Мы уведомим вас, когда он будет подтвержден.",
+            "Спасибо за подтверждение оплаты! Ваш платеж находится на проверке. Мы уведомим вас, когда он будет подтвержден.",
             reply_markup=ReplyKeyboardRemove(),
         )
     else:
@@ -226,8 +240,8 @@ async def process_payment(
         # Save payment info with pending status
         await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
 
-    # Return True if payment was processed (screenshot received)
-    return response and hasattr(response, "photo") and response.photo
+    # Return True if payment was processed (screenshot or PDF received)
+    return has_photo or has_pdf
 
 
 # Add callback handler for "Pay Later" button
@@ -456,11 +470,20 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Missing city information")
         return
 
+    # Get registration
+    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    if not registration:
+        await callback_query.answer("Registration not found")
+        return
+        
+    # Get the discounted amount to suggest as default
+    discounted_amount = registration.get("discounted_payment_amount", 0)
+    
     chat_id = callback_query.message.chat.id
-    # Ask for payment amount directly using ask_user_raw
+    # Ask for payment amount directly using ask_user_raw, suggesting the discounted amount
     amount_response = await ask_user_raw(
         chat_id,
-        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}",
+        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}\n(Рекомендуемая сумма: {discounted_amount} руб.)",
         state=state,
         timeout=300,
     )
@@ -476,12 +499,6 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await send_safe(
             chat_id, "Некорректная сумма платежа. Пожалуйста, используйте команду снова."
         )
-        return
-
-    # Get registration
-    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
-    if not registration:
-        await callback_query.answer("Registration not found")
         return
 
     # Update payment status
