@@ -20,7 +20,7 @@
 2) потом scheduled job для рассылок
 
 # Scenario routes
-- [ ] Fix "I will pay later" route of the start menu -> cuthere's no way to manage registrations now from unpaid state
+- [x] Fix "I will pay later" route of the start menu -> currently there's no way to manage registrations now from unpaid state
 - [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
 - [ ] bugfix the multi-user payment flow. Currently there is some issues with the state management if multiple cities have multiple payment states and also maybe one of them gets cancelled.. it's a mess
 - [x]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо. 

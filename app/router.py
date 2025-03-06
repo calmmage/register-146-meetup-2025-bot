@@ -50,40 +50,8 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
     # Get all user registrations
     registrations = await app.get_user_registrations(message.from_user.id)
 
-    # Check if any registration needs payment
-    needs_payment = False
-    unpaid_registration = None
-
-    for reg in registrations:
-        city = reg["target_city"]
-        # Only Moscow and Perm require payment
-        if city != TargetCity.SAINT_PETERSBURG.value:
-            # Check if payment is not confirmed
-            if reg.get("payment_status") != "confirmed":
-                needs_payment = True
-                unpaid_registration = reg
-                break
-
-    # If user needs to pay and has only one unpaid registration, offer payment directly
-    if (
-        needs_payment
-        and len([r for r in registrations if r["target_city"] != TargetCity.SAINT_PETERSBURG.value])
-        == 1
-    ):
-        await send_safe(
-            message.chat.id,
-            f"Вы зарегистрированы на встречу выпускников в городе {unpaid_registration['target_city']}, "
-            f"но еще не оплатили участие. Хотите оплатить сейчас?",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="Оплатить сейчас", callback_data="pay_now"),
-                        InlineKeyboardButton(text="Позже", callback_data="pay_later_from_start"),
-                    ]
-                ]
-            ),
-        )
-        return
+    # We always want to show the same consistent menu regardless of payment status
+    # No special case for unpaid registration - everything is handled in the same interface
 
     if len(registrations) > 1:
         # User has multiple registrations
@@ -137,31 +105,73 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         reg = registration
         city = reg["target_city"]
         full_name = reg["full_name"]
+        graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
 
         city_enum = next((c for c in TargetCity if c.value == city), None)
+
+        # Check if payment is needed and not confirmed
+        needs_payment = False
+        if (
+            city != TargetCity.SAINT_PETERSBURG.value
+            and graduate_type != GraduateType.TEACHER.value
+            and reg.get("payment_status") != "confirmed"
+        ):
+            needs_payment = True
+
+        # Payment status display
+        payment_status = ""
+        if (
+            city != TargetCity.SAINT_PETERSBURG.value
+            and graduate_type != GraduateType.TEACHER.value
+        ):
+            status = reg.get("payment_status", "не оплачено")
+            status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+            payment_status = f"Статус оплаты: {status_emoji} {status}\n"
 
         info_text = dedent(
             f"""
             Вы зарегистрированы на встречу выпускников:
             
             ФИО: {reg["full_name"]}
-            Год выпуска: {reg["graduation_year"]}
-            Класс: {reg["class_letter"]}
-            Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
-            
-            Что вы хотите сделать?
             """
         )
+
+        # Show different info based on graduate type
+        if graduate_type == GraduateType.TEACHER.value:
+            info_text += "Статус: Учитель\n"
+        elif graduate_type == GraduateType.NON_GRADUATE.value:
+            info_text += "Статус: Не выпускник\n"
+        else:
+            info_text += f"Год выпуска: {reg['graduation_year']}\n"
+            info_text += f"Класс: {reg['class_letter']}\n"
+
+        info_text += (
+            f"Город: {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
+        )
+        info_text += payment_status
+        info_text += "\nЧто вы хотите сделать?"
+
+        choices = {}
+        if needs_payment:
+            choices["pay"] = "Оплатить участие"
+
+        # Prepare choices for the menu
+        choices.update(
+            {
+                "register_another": "Зарегистрироваться в другом городе",
+                "change": "Изменить данные регистрации",
+                "cancel": "Отменить регистрацию",
+            }
+        )
+
+        # Add payment option if needed
+
+        choices["nothing"] = "Ничего, всё в порядке"
 
         response = await ask_user_choice(
             message.chat.id,
             info_text,
-            choices={
-                "change": "Изменить данные регистрации",
-                "cancel": "Отменить регистрацию",
-                "register_another": "Зарегистрироваться в другом городе",
-                "nothing": "Ничего, всё в порядке",
-            },
+            choices=choices,
             state=state,
             timeout=None,
         )
@@ -188,6 +198,30 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
                 message.chat.id,
                 "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
                 reply_markup=ReplyKeyboardRemove(),
+            )
+
+        elif response == "pay":
+            # Process payment for this registration
+            from app.routers.payment import process_payment
+
+            # Store the original user information in the state
+            await state.update_data(
+                original_user_id=message.from_user.id, original_username=message.from_user.username
+            )
+
+            # Get graduation year and graduate type
+            graduation_year = reg["graduation_year"]
+            graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
+
+            # Process payment
+            skip_instructions = reg.get("payment_status") is not None  # Skip if already seen
+            await process_payment(
+                message,
+                state,
+                city,
+                graduation_year,
+                skip_instructions,
+                graduate_type=graduate_type,
             )
 
         elif response == "register_another":

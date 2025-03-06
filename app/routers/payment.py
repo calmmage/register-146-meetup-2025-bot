@@ -32,8 +32,12 @@ EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
 
 
 async def process_payment(
-    message: Message, state: FSMContext, city: str, graduation_year: int, skip_instructions=False, 
-    graduate_type: str = GraduateType.GRADUATE.value
+    message: Message,
+    state: FSMContext,
+    city: str,
+    graduation_year: int,
+    skip_instructions=False,
+    graduate_type: str = GraduateType.GRADUATE.value,
 ):
     """Process payment for an event registration"""
     # Check if we have original user information in the state
@@ -48,7 +52,7 @@ async def process_payment(
         registration = await app.get_user_registration(user_id)
         if registration and "graduate_type" in registration:
             graduate_type = registration["graduate_type"]
-    
+
     # Calculate payment amount
     regular_amount, discount, discounted_amount = app.calculate_payment_amount(
         city, graduation_year, graduate_type
@@ -89,7 +93,7 @@ async def process_payment(
         # Check if we're before the early registration deadline
         today = datetime.now()
         is_early_registration_period = today < EARLY_REGISTRATION_DATE
-        
+
         # discount_amount = regular_amount - final_amount
         if is_early_registration_period:
             payment_msg_part2 = dedent(
@@ -344,8 +348,9 @@ async def pay_handler(message: Message, state: FSMContext):
     # Filter registrations that require payment
     # Skip St. Petersburg and teachers
     payment_registrations = [
-        reg for reg in registrations 
-        if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value 
+        reg
+        for reg in registrations
+        if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value
         and reg.get("graduate_type", GraduateType.GRADUATE.value) != GraduateType.TEACHER.value
     ]
 
@@ -399,7 +404,7 @@ async def pay_handler(message: Message, state: FSMContext):
 
         # Get graduate_type if available
         graduate_type = selected_reg.get("graduate_type", GraduateType.GRADUATE.value)
-        
+
         # Process payment for the selected registration
         await process_payment(
             message,
@@ -417,10 +422,9 @@ async def pay_handler(message: Message, state: FSMContext):
         )
 
 
-# Add callback handler for "Pay Now" button
 @router.callback_query(lambda c: c.data == "pay_now")
 async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
-    """Handle pay now button click from start handler"""
+    """Handle pay now button click from start handler - now calls the payment process directly"""
     if callback_query.from_user is None:
         logger.error("Callback from_user is None")
         return
@@ -443,6 +447,8 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
 
     # Check if this registration requires payment
     city = registration.get("target_city")
+    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
+
     if city == TargetCity.SAINT_PETERSBURG.value:
         await send_safe(
             user_id,
@@ -451,9 +457,16 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
         )
         return
 
-    # Get graduation year and graduate type
+    if graduate_type == GraduateType.TEACHER.value:
+        await send_safe(
+            user_id,
+            "Для учителей участие бесплатное. Спасибо за вашу работу!",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    # Get graduation year
     graduation_year = registration.get("graduation_year", 2025)
-    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
 
     # Process payment
     # Skip instructions if payment status is already set (user has seen them before)
@@ -464,13 +477,21 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
         original_user_id=user_id, original_username=callback_query.from_user.username
     )
 
-    await process_payment(callback_query.message, state, city, graduation_year, skip_instructions, graduate_type=graduate_type)
+    await process_payment(
+        callback_query.message,
+        state,
+        city,
+        graduation_year,
+        skip_instructions,
+        graduate_type=graduate_type,
+    )
 
 
-# Add callback handler for "Pay Later from Start" button
+# This is no longer needed since we've consolidated the flow, but keeping it for backward
+# compatibility with any existing buttons in user conversations
 @router.callback_query(lambda c: c.data == "pay_later_from_start")
-async def pay_later_from_start_callback(callback_query: CallbackQuery):
-    """Handle pay later button click from start handler"""
+async def pay_later_from_start_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Handle pay later button click from start handler - now redirects to main registration flow"""
     if callback_query.from_user is None:
         logger.error("Callback from_user is None")
         return
@@ -478,14 +499,23 @@ async def pay_later_from_start_callback(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
 
     # Answer callback to remove loading state
-    await callback_query.answer()
+    await callback_query.answer("Перенаправление в управление регистрацией")
 
-    # Notify user
-    await send_safe(
-        user_id,
-        "Хорошо! Вы можете оплатить позже, используя команду /pay",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    # Get user registration
+    registration = await app.get_user_registration(user_id)
+
+    if registration:
+        # Redirect to the main registration management flow
+        from app.router import handle_registered_user
+
+        await handle_registered_user(callback_query.message, state, registration)
+    else:
+        # This shouldn't happen, but just in case
+        await send_safe(
+            user_id,
+            "У вас нет активных регистраций. Используйте /start для регистрации на встречу.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
 
 
 # End of file - remove everything below this line
@@ -560,24 +590,28 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Get updated registration with total payment amount
     updated_registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
     total_payment = updated_registration.get("payment_amount", payment_amount)
-    
+
     # Check if this was an additional payment
     is_additional_payment = total_payment != payment_amount
-    
+
     # Check if the total payment amount is less than the recommended amount
     payment_message = ""
-    
+
     if is_additional_payment:
-        payment_message = f"✅ Ваш дополнительный платеж на сумму {payment_amount} руб. подтвержден!\n"
-        payment_message += f"Общая сумма внесенных платежей: {total_payment} руб. Спасибо за оплату."
+        payment_message = (
+            f"✅ Ваш дополнительный платеж на сумму {payment_amount} руб. подтвержден!\n"
+        )
+        payment_message += (
+            f"Общая сумма внесенных платежей: {total_payment} руб. Спасибо за оплату."
+        )
     else:
         payment_message = f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Сумма: {payment_amount} руб. Спасибо за оплату."
-    
+
     if total_payment < recommended_amount:
         shortfall = recommended_amount - total_payment
         payment_message += f"\n\nОбратите внимание, что ваш общий взнос на {shortfall} руб. меньше рекомендуемой суммы ({recommended_amount} руб.). "
         payment_message += "Если у вас будет возможность, вы можете доплатить эту сумму позже, используя команду /pay."
-    
+
     # Notify user
     await send_safe(
         user_id,
@@ -594,18 +628,20 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             payment_status = f"✅ ДОПОЛНИТЕЛЬНЫЙ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб.\nВсего оплачено: {total_payment} руб."
         else:
             payment_status = f"✅ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб."
-        
+
         # Add note about payment being less than recommended if applicable
         if total_payment < recommended_amount:
-            payment_status += f"\n⚠️ На {recommended_amount - total_payment} руб. меньше рекомендуемой суммы!"
-        
+            payment_status += (
+                f"\n⚠️ На {recommended_amount - total_payment} руб. меньше рекомендуемой суммы!"
+            )
+
         # Add payment history if available
         payment_history = updated_registration.get("payment_history", [])
         if len(payment_history) > 1:
             payment_status += "\n\nИстория платежей:"
             for i, payment in enumerate(payment_history):
                 payment_status += f"\n{i+1}. {payment['amount']} руб. ({payment['timestamp'][:10]})"
-            
+
         if callback_query.message.caption:
             caption = callback_query.message.caption
             new_caption = f"{caption}\n\n{payment_status}"
