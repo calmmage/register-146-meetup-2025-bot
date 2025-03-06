@@ -79,17 +79,30 @@ async def process_payment(
         # Delay between messages
         await asyncio.sleep(5)
 
+        # Check if we're before the early registration deadline
+        today = datetime.now()
+        is_early_registration_period = today < EARLY_REGISTRATION_DATE
+        
         # discount_amount = regular_amount - final_amount
-        payment_msg_part2 = dedent(
-            f"""
-            Для вас минимальный взнос: {regular_amount} руб.
-            
-            При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
-            Минимальная сумма взноса при ранней оплате - {discounted_amount} руб.
-            
-            Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
-            """
-        )
+        if is_early_registration_period:
+            payment_msg_part2 = dedent(
+                f"""
+                Для вас минимальный взнос: {regular_amount} руб.
+                
+                При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
+                Минимальная сумма взноса при ранней оплате - {discounted_amount} руб.
+                
+                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                """
+            )
+        else:
+            payment_msg_part2 = dedent(
+                f"""
+                Для вас минимальный взнос: {regular_amount} руб.
+                
+                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                """
+            )
 
         # Send part 2
         await send_safe(message.chat.id, payment_msg_part2)
@@ -494,12 +507,17 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Get the discounted amount to suggest as default
     discounted_amount = registration.get("discounted_payment_amount", 0)
+    regular_amount = registration.get("regular_payment_amount", 0)
+
+    # Determine the relevant recommendation amount based on the current date
+    today = datetime.now()
+    recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
 
     chat_id = callback_query.message.chat.id
-    # Ask for payment amount directly using ask_user_raw, suggesting the discounted amount
+    # Ask for payment amount directly using ask_user_raw, suggesting the recommended amount
     amount_response = await ask_user_raw(
         chat_id,
-        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}\n(Рекомендуемая сумма: {discounted_amount} руб.)",
+        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}\n(Рекомендуемая сумма: {recommended_amount} руб.)",
         state=state,
         timeout=300,
     )
@@ -536,9 +554,15 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         user_info = f"{registration.get('username', user_id)} ({registration.get('full_name', 'Неизвестно')})"
 
         # Update the message text or caption
+        payment_status = f"✅ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб."
+        
+        # Add note about payment being less than recommended if applicable
+        if payment_amount < recommended_amount:
+            payment_status += f"\n⚠️ На {recommended_amount - payment_amount} руб. меньше рекомендуемой суммы!"
+            
         if callback_query.message.caption:
             caption = callback_query.message.caption
-            new_caption = f"{caption}\n\n✅ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб."
+            new_caption = f"{caption}\n\n{payment_status}"
 
             # Limit caption length
             if len(new_caption) > 1024:
@@ -547,9 +571,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             await callback_query.message.edit_caption(caption=new_caption, reply_markup=None)
         else:
             text = callback_query.message.text or ""
-            new_text = (
-                f"{text}\n\n✅ ПЛАТЕЖ ПОДТВЕРЖДЕН для {user_info}\nСумма: {payment_amount} руб."
-            )
+            new_text = f"{text}\n\n{payment_status} для {user_info}"
 
             await callback_query.message.edit_text(text=new_text, reply_markup=None)
 
