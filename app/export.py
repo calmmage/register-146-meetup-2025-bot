@@ -79,24 +79,42 @@ class SheetExporter:
             sheet = client.open_by_key(self.spreadsheet_id).sheet1
 
             # Prepare headers and data
-            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече", "Telegram Username"]
-            sheet.update("A1:E1", [headers])
+            headers = [
+                "ФИО", 
+                "Год выпуска", 
+                "Класс", 
+                "Город участия во встрече", 
+                "Telegram Username", 
+                "Статус оплаты", 
+                "Сумма оплаты", 
+                "Дата оплаты"
+            ]
+            sheet.update([headers])
 
             # Prepare user data
             rows = []
             for user in users:
+                # Get payment status and amount
+                payment_status = user.get("payment_status", "Не оплачено")
+                payment_amount = user.get("payment_amount", 0)
+                payment_timestamp = user.get("payment_timestamp", "")
+                
                 rows.append(
                     [
                         user["full_name"],
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
-                        user.get("username", "")
+                        user.get("username", ""),
+                        payment_status,
+                        payment_amount,
+                        payment_timestamp
                     ]
                 )
 
             # Update the sheet with user data
-            sheet.update(f"A2:E{len(rows)+1}", rows)
+            if rows:
+                sheet.update("A2", rows)
 
             message = f"Успешно экспортировано {len(rows)} пользователей в Google Таблицы\n"
             message += "Доступно по ссылке: " + sheet.url
@@ -127,18 +145,35 @@ class SheetExporter:
             writer = csv.writer(output)
 
             # Write headers
-            headers = ["ФИО", "Год выпуска", "Класс", "Город участия во встрече", "Telegram Username"]
+            headers = [
+                "ФИО", 
+                "Год выпуска", 
+                "Класс", 
+                "Город участия во встрече", 
+                "Telegram Username", 
+                "Статус оплаты", 
+                "Сумма оплаты", 
+                "Дата оплаты"
+            ]
             writer.writerow(headers)
 
             # Write user data
             for user in users:
+                # Get payment status and amount
+                payment_status = user.get("payment_status", "Не оплачено")
+                payment_amount = user.get("payment_amount", 0)
+                payment_timestamp = user.get("payment_timestamp", "")
+                
                 writer.writerow(
                     [
                         user["full_name"],
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
-                        user.get("username", "")
+                        user.get("username", ""),
+                        payment_status,
+                        payment_amount,
+                        payment_timestamp
                     ]
                 )
 
