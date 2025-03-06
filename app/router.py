@@ -1,16 +1,10 @@
-import asyncio
 import os
 from aiogram import Router, F
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery,
     ReplyKeyboardRemove,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
     Message,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
 )
 from dotenv import load_dotenv
 from loguru import logger
@@ -20,7 +14,7 @@ from typing import Dict, List
 from app.app import App, TargetCity, RegisteredUser
 from app.routers.admin import admin_handler
 from botspot import commands_menu
-from botspot.user_interactions import ask_user, ask_user_choice, ask_user_raw
+from botspot.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 
 router = Router()
@@ -141,7 +135,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             # Log cancellation
             await app.log_registration_canceled(
                 message.from_user.id,
-                message.from_user.username,
+                message.from_user.username or "",
                 full_name,
                 city,
             )
@@ -199,7 +193,14 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             await app.delete_user_registration(message.from_user.id)
 
             # Log cancellation of all registrations
-            await app.log_registration_canceled(message.from_user.id, message.from_user.username)
+            # Get user info for logging
+            user_reg = await app.get_user_registration(message.from_user.id)
+            full_name = user_reg.get("full_name", "Unknown") if user_reg else "Unknown"
+            city = "все города"  # All cities
+
+            await app.log_registration_canceled(
+                message.from_user.id, message.from_user.username or "", full_name, city
+            )
 
             await send_safe(
                 message.chat.id,
@@ -260,7 +261,10 @@ async def manage_registrations(message: Message, state: FSMContext, registration
 
             # Log cancellation
             await app.log_registration_canceled(
-                message.from_user.id, message.from_user.username, city
+                message.from_user.id,
+                message.from_user.username or "",
+                reg.get("full_name", "Unknown"),
+                city,
             )
 
             # Check if user has other registrations
