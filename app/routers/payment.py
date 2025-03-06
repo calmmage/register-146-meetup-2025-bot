@@ -18,7 +18,7 @@ from textwrap import dedent
 
 from app.app import App, TargetCity, GraduateType
 from app.router import is_admin, date_of_event, commands_menu
-from botspot.user_interactions import ask_user_raw, ask_user_choice
+from botspot.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
 # Create router
@@ -137,19 +137,15 @@ async def process_payment(
         # Delay between messages
         await asyncio.sleep(3)
 
-    # Create inline keyboard with "Pay Later" button
-    pay_later_markup = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Оплачу позже", callback_data=f"pay_later_{city}")]
-        ]
-    )
+    # Create choices for the user
+    choices = {"pay_later": "Оплачу позже"}
 
-    # Wait for response (either screenshot or callback)
-    response = await ask_user_raw(
+    # Wait for response using ask_user_choice_raw (either screenshot or choice)
+    response = await ask_user_choice_raw(
         message.chat.id,
-        "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или нажмите кнопку ниже, если хотите оплатить позже.",
+        "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или выберите опцию ниже:",
+        choices=choices,
         state=state,
-        reply_markup=pay_later_markup,
         timeout=1200,
     )
 
@@ -162,11 +158,24 @@ async def process_payment(
         )
         return
 
+    # Check if response is a string (meaning it's a choice selection)
+    if isinstance(response, str) and response == "pay_later":
+        # User clicked "Pay Later"
+        await send_safe(
+            message.chat.id,
+            "Хорошо! Вы можете оплатить позже, используя команду /pay",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+        # Save payment info with pending status
+        await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+        return False
+
+    # Otherwise, it's a message with photo or document
     # Check if response has photo or document (PDF)
-    has_photo = response and hasattr(response, "photo") and response.photo
+    has_photo = hasattr(response, "photo") and response.photo
     has_pdf = (
-        response
-        and hasattr(response, "document")
+        hasattr(response, "document")
         and response.document
         and response.document.mime_type == "application/pdf"
     )
@@ -284,43 +293,7 @@ async def process_payment(
     return has_photo or has_pdf
 
 
-# Add callback handler for "Pay Later" button
-@router.callback_query(lambda c: c.data and c.data.startswith("pay_later_"))
-async def pay_later_callback(callback_query: CallbackQuery):
-    """Handle pay later button click"""
-    if callback_query.from_user is None:
-        logger.error("Callback from_user is None")
-        return
-
-    user_id = callback_query.from_user.id
-
-    # Extract city from callback data
-    city = callback_query.data.split("_")[2] if callback_query.data else ""
-
-    # Answer callback to remove loading state
-    await callback_query.answer()
-
-    # Notify user
-    await send_safe(
-        user_id,
-        "Хорошо! Вы можете оплатить позже, используя команду /pay",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-
-    # Save payment info with pending status if city is valid
-    if city:
-        # Get user registration
-        user_registration = await app.get_user_registration(user_id)
-        if user_registration and user_registration.get("target_city") == city:
-            graduation_year = user_registration.get("graduation_year", 2025)
-
-            # Calculate payment amount
-            regular_amount, discount, discounted_amount = app.calculate_payment_amount(
-                city, graduation_year
-            )
-
-            # Save payment info
-            await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+# Removed the callback handler for "Pay Later" button since we now use ask_user_choice_raw
 
 
 # Add payment command handler
@@ -420,105 +393,6 @@ async def pay_handler(message: Message, state: FSMContext):
             "Произошла ошибка при выборе регистрации. Пожалуйста, попробуйте еще раз.",
             reply_markup=ReplyKeyboardRemove(),
         )
-
-
-@router.callback_query(lambda c: c.data == "pay_now")
-async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
-    """Handle pay now button click from start handler - now calls the payment process directly"""
-    if callback_query.from_user is None:
-        logger.error("Callback from_user is None")
-        return
-
-    user_id = callback_query.from_user.id
-
-    # Answer callback to remove loading state
-    await callback_query.answer()
-
-    # Get user registration
-    registration = await app.get_user_registration(user_id)
-
-    if not registration:
-        await send_safe(
-            user_id,
-            "Вы еще не зарегистрированы на встречу. Используйте /start для регистрации.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-
-    # Check if this registration requires payment
-    city = registration.get("target_city")
-    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
-
-    if city == TargetCity.SAINT_PETERSBURG.value:
-        await send_safe(
-            user_id,
-            "Для встречи в Санкт-Петербурге оплата не требуется.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-
-    if graduate_type == GraduateType.TEACHER.value:
-        await send_safe(
-            user_id,
-            "Для учителей участие бесплатное. Спасибо за вашу работу!",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-
-    # Get graduation year
-    graduation_year = registration.get("graduation_year", 2025)
-
-    # Process payment
-    # Skip instructions if payment status is already set (user has seen them before)
-    skip_instructions = registration.get("payment_status") is not None
-
-    # Store the original user information in the state
-    await state.update_data(
-        original_user_id=user_id, original_username=callback_query.from_user.username
-    )
-
-    await process_payment(
-        callback_query.message,
-        state,
-        city,
-        graduation_year,
-        skip_instructions,
-        graduate_type=graduate_type,
-    )
-
-
-# This is no longer needed since we've consolidated the flow, but keeping it for backward
-# compatibility with any existing buttons in user conversations
-@router.callback_query(lambda c: c.data == "pay_later_from_start")
-async def pay_later_from_start_callback(callback_query: CallbackQuery, state: FSMContext):
-    """Handle pay later button click from start handler - now redirects to main registration flow"""
-    if callback_query.from_user is None:
-        logger.error("Callback from_user is None")
-        return
-
-    user_id = callback_query.from_user.id
-
-    # Answer callback to remove loading state
-    await callback_query.answer("Перенаправление в управление регистрацией")
-
-    # Get user registration
-    registration = await app.get_user_registration(user_id)
-
-    if registration:
-        # Redirect to the main registration management flow
-        from app.router import handle_registered_user
-
-        await handle_registered_user(callback_query.message, state, registration)
-    else:
-        # This shouldn't happen, but just in case
-        await send_safe(
-            user_id,
-            "У вас нет активных регистраций. Используйте /start для регистрации на встречу.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-
-
-# End of file - remove everything below this line
 
 
 # Define payment states
