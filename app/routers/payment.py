@@ -12,6 +12,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
+from datetime import datetime
 from loguru import logger
 from textwrap import dedent
 
@@ -23,6 +24,11 @@ from botspot.utils import send_safe
 # Create router
 router = Router()
 app = App()
+
+
+# Check if it's an early registration (before March 15)
+EARLY_REGISTRATION_DATE = datetime.strptime("2025-03-15", "%Y-%m-%d")
+EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
 
 
 async def process_payment(
@@ -48,9 +54,6 @@ async def process_payment(
         deps = get_dependency_manager()
         await deps.bot.send_chat_action(chat_id=message.chat.id, action="typing")
         await asyncio.sleep(3)  # 3 second delay
-
-        # Check if it's an early registration (before March 15)
-        early_registration_date = "2025-03-15"
 
         # Prepare payment message - split into parts for better UX
         if city == TargetCity.MOSCOW.value:
@@ -81,8 +84,8 @@ async def process_payment(
             f"""
             Для вас минимальный взнос: {regular_amount} руб.
             
-            При ранней регистрации (до {early_registration_date}) - скидка. 
-            Минимальная сумма взноса при ранней регистрации - {discounted_amount}
+            При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
+            Минимальная сумма взноса при ранней оплате - {discounted_amount} руб.
             
             Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
             """
@@ -137,8 +140,13 @@ async def process_payment(
 
     # Check if response has photo or document (PDF)
     has_photo = response and hasattr(response, "photo") and response.photo
-    has_pdf = response and hasattr(response, "document") and response.document and response.document.mime_type == "application/pdf"
-    
+    has_pdf = (
+        response
+        and hasattr(response, "document")
+        and response.document
+        and response.document.mime_type == "application/pdf"
+    )
+
     if has_photo or has_pdf:
         # Save payment info with pending status
         await app.save_payment_info(
@@ -151,10 +159,18 @@ async def process_payment(
             events_chat_id = app.settings.events_chat_id
 
             if events_chat_id:
+                # if today is before early registration -> "discounted_amount (later {regular amount}}" else "regular_amount"
+
+                today = datetime.now()
+                if today < EARLY_REGISTRATION_DATE:
+                    needs_to_pay = f"{discounted_amount} руб (после {EARLY_REGISTRATION_DATE_HUMAN} - {regular_amount} руб)"
+                else:
+                    needs_to_pay = f"{regular_amount} руб"
+
                 # Get user info for the message
                 user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
                 user_info += f"📍 Город: {city}\n"
-                user_info += f"💰 Сумма к оплате: {regular_amount} руб.\n"
+                user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
 
                 # Get user registration for additional info
                 user_registration = await app.get_user_registration(user_id)
@@ -189,7 +205,7 @@ async def process_payment(
                     if has_photo:
                         # Get the photo file_id from the message
                         photo = response.photo[-1]  # Get the largest photo
-                        
+
                         # Send the photo with caption
                         forwarded_msg = await bot.send_photo(
                             chat_id=events_chat_id,
@@ -475,10 +491,10 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     if not registration:
         await callback_query.answer("Registration not found")
         return
-        
+
     # Get the discounted amount to suggest as default
     discounted_amount = registration.get("discounted_payment_amount", 0)
-    
+
     chat_id = callback_query.message.chat.id
     # Ask for payment amount directly using ask_user_raw, suggesting the discounted amount
     amount_response = await ask_user_raw(

@@ -179,7 +179,9 @@ class App:
         if not re.match(r"^[а-яА-ЯёЁ]+$", letter):
             return False, "Буква класса должна быть на русском языке."
 
-        # todo:
+        # Check if letter is only one character
+        if len(letter) > 1:
+            return False, "Буква класса должна быть только одним символом."
 
         return True, ""
 
