@@ -12,12 +12,14 @@ from botspot.core.bot_manager import BotManager
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from .routers.admin import router as admin_router
+from .routers.payment import router as payment_router
 from .router import app, router as main_router
 
 # Initialize bot and dispatcher
 dp = Dispatcher()
 dp.include_router(main_router)
 dp.include_router(admin_router)
+dp.include_router(payment_router)
 
 
 @heartbeat_for_sync(app.name)
