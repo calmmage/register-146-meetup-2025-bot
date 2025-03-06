@@ -35,6 +35,18 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         
     user_id = message.from_user.id
     username = message.from_user.username
+    
+    # Check if we have original user information in the state
+    # This happens when the function is called from a callback handler
+    state_data = await state.get_data()
+    original_user_id = state_data.get("original_user_id")
+    original_username = state_data.get("original_username")
+    
+    # Use original user information if available
+    if original_user_id:
+        user_id = original_user_id
+        username = original_username
+        logger.info(f"Using original user information: ID={user_id}, username={username}")
 
     # Calculate payment amount
     regular_amount, discount, discounted_amount = app.calculate_payment_amount(
@@ -163,7 +175,7 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
             
             if events_chat_id:
                 # Get user info for the message
-                user_info = f"👤 Пользователь: {username or 'Неизвестно'} (ID: {user_id})\n"
+                user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
                 user_info += f"📍 Город: {city}\n"
                 user_info += f"💰 Сумма к оплате: {regular_amount} руб.\n"
                 
@@ -179,26 +191,37 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
                 if hasattr(deps, "bot"):
                     bot = deps.bot
                     
-                    # First send user info
-                    info_msg = await bot.send_message(events_chat_id, user_info)
+                    # Get the photo file_id from the message
+                    photo = response.photo[-1]  # Get the largest photo
                     
-                    # Then forward the screenshot
-                    forwarded_msg = await bot.forward_message(
+                    # Create validation buttons
+                    validation_markup = InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text="✅ Подтвердить", 
+                                    callback_data=f"confirm_payment_{user_id}_{city}"
+                                ),
+                                InlineKeyboardButton(
+                                    text="❌ Отклонить", 
+                                    callback_data=f"decline_payment_{user_id}_{city}"
+                                )
+                            ]
+                        ]
+                    )
+                    
+                    # Send the photo with caption containing user info
+                    forwarded_msg = await bot.send_photo(
                         chat_id=events_chat_id,
-                        from_chat_id=message.chat.id,
-                        message_id=response.message_id
+                        photo=photo.file_id,
+                        caption=user_info,
+                        reply_markup=validation_markup
                     )
                     
-                    # Add validation instructions
-                    await bot.send_message(
-                        events_chat_id,
-                        "Для валидации платежа, ответьте на скриншот командой:\n"
-                        "/validate <сумма> - для подтверждения платежа\n"
-                        "/decline <причина> - для отклонения платежа",
-                        reply_to_message_id=forwarded_msg.message_id
-                    )
+                    # Save the screenshot message ID for reference
+                    await app.save_payment_info(user_id, city, discounted_amount, regular_amount, forwarded_msg.message_id)
                     
-                    logger.info(f"Payment screenshot from user {user_id} forwarded to validation chat")
+                    logger.info(f"Payment screenshot from user {user_id} sent to validation chat with caption")
                 else:
                     logger.error("Bot not available in dependency manager, cannot forward screenshot")
             else:
@@ -401,66 +424,92 @@ async def validate_payment_handler(message: Message):
         return
         
     command_parts = message.text.split()
-    if len(command_parts) < 2:
-        await send_safe(
-            message.chat.id,
-            "Пожалуйста, укажите сумму платежа: /validate <сумма>",
-        )
-        return
     
-    try:
-        payment_amount = int(command_parts[1])
-    except ValueError:
-        await send_safe(
-            message.chat.id,
-            "Некорректная сумма платежа. Пожалуйста, укажите число.",
-        )
-        return
+    # Extract payment amount
+    payment_amount = None
+    if len(command_parts) >= 2:
+        try:
+            payment_amount = int(command_parts[1])
+        except ValueError:
+            await send_safe(
+                message.chat.id,
+                "Некорректная сумма платежа. Пожалуйста, укажите число.",
+            )
+            return
     
-    # Find the original message with user info
-    # We need to find the message that contains the user ID
-    # This is typically sent before the screenshot
+    # Find the user information
     try:
-        # Since get_chat_history is not available, we'll use a different approach
-        # We'll extract user info from the context of the conversation
-        
-        # Look for user ID in the message thread
         user_id = None
         city = None
         
-        # Check if there's a reply chain we can follow
-        if message.reply_to_message and message.reply_to_message.reply_to_message:
+        # Check if the message was forwarded from a user
+        if message.reply_to_message.forward_from:
+            user_id = message.reply_to_message.forward_from.id
+            logger.info(f"Found user_id {user_id} from forward_from")
+            
+            # Try to get city from caption or text
+            if message.reply_to_message.caption is not None:
+                for line in message.reply_to_message.caption.split('\n'):
+                    if "Город:" in line:
+                        try:
+                            city = line.split("Город:")[1].strip()
+                            logger.info(f"Found city {city} from caption")
+                        except IndexError:
+                            pass
+            
+        # If we couldn't find user_id from forward_from, check caption
+        if not user_id and message.reply_to_message.caption is not None:
+            caption = message.reply_to_message.caption
+            # Extract user_id and city from caption
+            for line in caption.split('\n'):
+                if "ID:" in line:
+                    try:
+                        user_id = int(line.split("ID:")[1].strip().split()[0])
+                        logger.info(f"Found user_id {user_id} from caption")
+                    except (ValueError, IndexError):
+                        pass
+                if "Город:" in line:
+                    try:
+                        city = line.split("Город:")[1].strip()
+                        logger.info(f"Found city {city} from caption")
+                    except IndexError:
+                        pass
+        
+        # If we still couldn't find info, check if there's a message before the screenshot
+        if (not user_id or not city) and message.reply_to_message.reply_to_message:
             info_message = message.reply_to_message.reply_to_message
-            if info_message.text and "ID:" in info_message.text and "Город:" in info_message.text:
-                # Extract user ID and city from the message
+            if info_message.text:
                 for line in info_message.text.split('\n'):
                     if "ID:" in line:
                         try:
-                            user_id = int(line.split("ID:")[1].strip().rstrip(')'))
+                            user_id = int(line.split("ID:")[1].strip().split()[0])
+                            logger.info(f"Found user_id {user_id} from reply chain")
                         except (ValueError, IndexError):
                             pass
                     if "Город:" in line:
                         try:
                             city = line.split("Город:")[1].strip()
+                            logger.info(f"Found city {city} from reply chain")
                         except IndexError:
                             pass
         
-        # If we couldn't find the info in the reply chain, ask admin to provide it
+        # If we still couldn't find the info, check command arguments
         if not user_id or not city:
-            await send_safe(
-                message.chat.id,
-                "Не удалось автоматически определить пользователя и город. "
-                "Пожалуйста, используйте формат: /validate <сумма> <user_id> <город>",
-            )
-            
-            # Check if admin provided user_id and city in the command
             if len(command_parts) >= 4:
                 try:
                     user_id = int(command_parts[2])
                     city = command_parts[3]
+                    logger.info(f"Found user_id {user_id} and city {city} from command arguments")
                 except (ValueError, IndexError):
-                    return
-            else:
+                    pass
+            
+            # If we still don't have the info, ask admin to provide it
+            if not user_id or not city:
+                await send_safe(
+                    message.chat.id,
+                    "Не удалось автоматически определить пользователя и город. "
+                    "Пожалуйста, используйте формат: /validate <сумма> <user_id> <город>",
+                )
                 return
         
         # Update payment status
@@ -682,6 +731,12 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
         "Начинаем процесс оплаты...",
     )
     
+    # Store the original user information in the state
+    await state.update_data(
+        original_user_id=user_id,
+        original_username=callback_query.from_user.username
+    )
+    
     # Use the new message for payment processing
     await process_payment(
         intro_message, 
@@ -712,24 +767,264 @@ async def pay_later_from_start_callback(callback_query: CallbackQuery):
         reply_markup=ReplyKeyboardRemove(),
     )
 
+# End of file - remove everything below this line 
 
-# Add this function at the end of the file
-async def check_pending_payments():
-    """Check if there are any pending payments from the registration flow"""
-    from app.app import App
-    
-    # App.payment_pending is a class attribute
-    if App.payment_pending:
-        # Get the pending payment data
-        payment_data = App.payment_pending
+# Add callback handlers for payment confirmation/decline buttons
+@router.callback_query(lambda c: c.data and c.data.startswith("confirm_payment_"))
+async def confirm_payment_callback(callback_query: CallbackQuery):
+    """Handle payment confirmation from admin via button"""
+    if callback_query.from_user is None:
+        logger.error("Callback from_user is None")
+        return
         
-        # Process the payment
-        await process_payment(
-            payment_data["message"],
-            payment_data["state"],
-            payment_data["city"],
-            payment_data["graduation_year"]
+    # Check if user is admin
+    if not is_admin(callback_query.from_user):
+        await callback_query.answer("Только администраторы могут подтверждать платежи", show_alert=True)
+        return
+    
+    # Parse the callback data
+    try:
+        # Make sure callback_query.data is not None before splitting
+        if callback_query.data is None:
+            logger.error("Callback data is None")
+            await callback_query.answer("Ошибка: данные обратного вызова отсутствуют", show_alert=True)
+            return
+            
+        _, _, user_id_str, city = callback_query.data.split("_", 3)
+        user_id = int(user_id_str)
+        
+        # Update payment status
+        await app.update_payment_status(user_id, city, "confirmed")
+        
+        # Get the registration
+        registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+        
+        if not registration:
+            await callback_query.answer(f"Регистрация не найдена для пользователя {user_id} в городе {city}", show_alert=True)
+            return
+        
+        # Log confirmation
+        admin_username = callback_query.from_user.username if callback_query.from_user else None
+        admin_id = callback_query.from_user.id if callback_query.from_user else None
+        
+        await app.log_payment_verification(
+            user_id,
+            registration.get("username", ""),
+            registration,
+            "confirmed",
+            f"Подтверждено администратором {admin_username or admin_id}"
         )
         
-        # Clear the pending payment
-        App.payment_pending = None 
+        # Notify user
+        await send_safe(
+            user_id,
+            f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Спасибо за оплату.",
+        )
+        
+        # Update the message to show it's been confirmed
+        if callback_query.message:
+            try:
+                from botspot.core.dependency_manager import get_dependency_manager
+                deps = get_dependency_manager()
+                if hasattr(deps, "bot"):
+                    bot = deps.bot
+                    
+                    # Update the caption to show it's confirmed
+                    # We don't need to access the current caption, just append the confirmation
+                    new_caption = "✅ ПЛАТЕЖ ПОДТВЕРЖДЕН"
+                    
+                    # Use bot.edit_message_caption instead of message.edit_caption
+                    try:
+                        await bot.edit_message_caption(
+                            chat_id=callback_query.message.chat.id,
+                            message_id=callback_query.message.message_id,
+                            caption=new_caption,
+                            reply_markup=None
+                        )
+                    except Exception as e:
+                        logger.error(f"Error updating message caption: {e}")
+                        
+                        # If editing caption fails, try to edit the reply markup at least
+                        try:
+                            await bot.edit_message_reply_markup(
+                                chat_id=callback_query.message.chat.id,
+                                message_id=callback_query.message.message_id,
+                                reply_markup=None
+                            )
+                        except Exception as e2:
+                            logger.error(f"Error removing reply markup: {e2}")
+            except Exception as e:
+                logger.error(f"Error updating message caption: {e}")
+        
+        # Answer the callback
+        await callback_query.answer("Платеж подтвержден", show_alert=True)
+        
+    except Exception as e:
+        logger.error(f"Error confirming payment via callback: {e}")
+        await callback_query.answer(f"Ошибка: {e}", show_alert=True)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("decline_payment_"))
+async def decline_payment_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Handle payment decline from admin via button"""
+    if callback_query.from_user is None:
+        logger.error("Callback from_user is None")
+        return
+        
+    # Check if user is admin
+    if not is_admin(callback_query.from_user):
+        await callback_query.answer("Только администраторы могут отклонять платежи", show_alert=True)
+        return
+    
+    # Parse the callback data
+    try:
+        # Make sure callback_query.data is not None before splitting
+        if callback_query.data is None:
+            logger.error("Callback data is None")
+            await callback_query.answer("Ошибка: данные обратного вызова отсутствуют", show_alert=True)
+            return
+            
+        _, _, user_id_str, city = callback_query.data.split("_", 3)
+        user_id = int(user_id_str)
+        
+        # Set state to wait for decline reason
+        from aiogram.fsm.state import State, StatesGroup
+        
+        class PaymentStates(StatesGroup):
+            waiting_for_decline_reason = State()
+        
+        await state.set_state(PaymentStates.waiting_for_decline_reason)
+        await state.update_data(decline_user_id=user_id, decline_city=city, message_id=callback_query.message.message_id if callback_query.message else None)
+        
+        # Ask for decline reason
+        if callback_query.message and callback_query.message.chat:
+            await send_safe(
+                callback_query.message.chat.id,
+                f"Пожалуйста, укажите причину отклонения платежа для пользователя ID:{user_id}, город: {city}",
+                reply_to_message_id=callback_query.message.message_id
+            )
+        
+        # Answer the callback
+        await callback_query.answer("Укажите причину отклонения", show_alert=True)
+        
+    except Exception as e:
+        logger.error(f"Error declining payment via callback: {e}")
+        await callback_query.answer(f"Ошибка: {e}", show_alert=True)
+
+
+# Handler for decline reason
+from aiogram.fsm.state import State, StatesGroup
+
+class PaymentStates(StatesGroup):
+    waiting_for_decline_reason = State()
+
+@router.message(PaymentStates.waiting_for_decline_reason)
+async def payment_decline_reason_handler(message: Message, state: FSMContext):
+    """Handle payment decline reason from admin"""
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
+        
+    # Check if user is admin
+    if not is_admin(message.from_user):
+        return
+    
+    # Get the data from state
+    data = await state.get_data()
+    user_id = data.get("decline_user_id")
+    city = data.get("decline_city")
+    message_id = data.get("message_id")
+    
+    if not user_id or not city:
+        await send_safe(
+            message.chat.id,
+            "Ошибка: не найдена информация о платеже для отклонения",
+        )
+        await state.clear()
+        return
+    
+    # Get the decline reason
+    decline_reason = message.text
+    
+    if not decline_reason:
+        await send_safe(
+            message.chat.id,
+            "Пожалуйста, укажите причину отклонения платежа",
+        )
+        return
+    
+    # Update payment status
+    await app.update_payment_status(user_id, city, "declined", decline_reason)
+    
+    # Get the registration
+    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    
+    if not registration:
+        await send_safe(
+            message.chat.id,
+            f"Регистрация не найдена для пользователя {user_id} в городе {city}",
+        )
+        await state.clear()
+        return
+    
+    # Log decline
+    admin_username = message.from_user.username if message.from_user else None
+    admin_id = message.from_user.id if message.from_user else None
+    
+    await app.log_payment_verification(
+        user_id,
+        registration.get("username", ""),
+        registration,
+        "declined",
+        f"Отклонено администратором {admin_username or admin_id}. Причина: {decline_reason}"
+    )
+    
+    # Notify user
+    await send_safe(
+        user_id,
+        f"❌ Ваш платеж для участия во встрече в городе {city} отклонен.\n\nПричина: {decline_reason}\n\nПожалуйста, используйте команду /pay для повторной оплаты.",
+    )
+    
+    # Update the original message if possible
+    if message_id:
+        try:
+            from botspot.core.dependency_manager import get_dependency_manager
+            deps = get_dependency_manager()
+            if hasattr(deps, "bot"):
+                bot = deps.bot
+                
+                # Get the chat ID
+                chat_id = message.chat.id
+                
+                # We can't get the original message content, so just update with a new caption
+                try:
+                    # Try to edit the caption
+                    await bot.edit_message_caption(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        caption=f"❌ ПЛАТЕЖ ОТКЛОНЕН\nПричина: {decline_reason}",
+                        reply_markup=None
+                    )
+                except Exception as e:
+                    logger.error(f"Error editing caption: {e}")
+                    
+                    # If editing caption fails, try to edit the reply markup at least
+                    try:
+                        await bot.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            reply_markup=None
+                        )
+                    except Exception as e2:
+                        logger.error(f"Error removing reply markup: {e2}")
+        except Exception as e:
+            logger.error(f"Error updating message after decline: {e}")
+    
+    # Confirm to admin
+    await send_safe(
+        message.chat.id,
+        f"❌ Платеж отклонен для пользователя {registration.get('username', user_id)} ({registration.get('full_name', 'Неизвестно')}).",
+    )
+    
+    # Clear state
+    await state.clear() 

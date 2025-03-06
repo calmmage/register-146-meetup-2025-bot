@@ -45,7 +45,6 @@ class App:
     name = "146 Meetup Register Bot"
 
     registration_collection_name = "registered_users"
-    payment_pending = None  # Will store pending payment information
 
     def __init__(self, **kwargs):
         from app.export import SheetExporter

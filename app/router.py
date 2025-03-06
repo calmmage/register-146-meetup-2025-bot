@@ -598,15 +598,12 @@ async def register_user(
     if location.value != TargetCity.SAINT_PETERSBURG.value:
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
-        # Flag this registration for payment processing
-        # The payment module will handle this
-        app.payment_pending = {
-            "user_id": user_id,
-            "message": message,
-            "state": state,
-            "city": location.value,
-            "graduation_year": graduation_year
-        }
+        
+        # Import the process_payment function here to avoid circular imports
+        from app.routers.payment import process_payment
+        
+        # Process payment directly
+        await process_payment(message, state, location.value, graduation_year)
     else:
         confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
         await send_safe(
