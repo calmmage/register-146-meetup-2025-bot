@@ -40,15 +40,6 @@ padezhi = {
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
 }
 
-# Add this function near the top of the file, after imports
-async def handle_post_registration_payment(message: Message, state: FSMContext, city: str, graduation_year: int):
-    """
-    Handle payment after registration.
-    This function is called from the payment module to avoid circular imports.
-    """
-    # This function will be imported by the payment module to avoid circular imports
-    # The actual payment processing will happen in the payment module
-    pass
 
 async def handle_registered_user(message: Message, state: FSMContext, registration):
     """Handle interaction with already registered user"""
@@ -58,11 +49,11 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
     # Get all user registrations
     registrations = await app.get_user_registrations(message.from_user.id)
-    
+
     # Check if any registration needs payment
     needs_payment = False
     unpaid_registration = None
-    
+
     for reg in registrations:
         city = reg["target_city"]
         # Only Moscow and Perm require payment
@@ -72,9 +63,13 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
                 needs_payment = True
                 unpaid_registration = reg
                 break
-    
+
     # If user needs to pay and has only one unpaid registration, offer payment directly
-    if needs_payment and len([r for r in registrations if r["target_city"] != TargetCity.SAINT_PETERSBURG.value]) == 1:
+    if (
+        needs_payment
+        and len([r for r in registrations if r["target_city"] != TargetCity.SAINT_PETERSBURG.value])
+        == 1
+    ):
         await send_safe(
             message.chat.id,
             f"Вы зарегистрированы на встречу выпускников в городе {unpaid_registration['target_city']}, "
@@ -86,7 +81,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
                         InlineKeyboardButton(text="Позже", callback_data="pay_later_from_start"),
                     ]
                 ]
-            )
+            ),
         )
         return
 
@@ -97,17 +92,17 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         for reg in registrations:
             city = reg["target_city"]
             city_enum = next((c for c in TargetCity if c.value == city), None)
-            
+
             # Add payment status indicator
             payment_status = ""
             if city != TargetCity.SAINT_PETERSBURG.value:
                 status = reg.get("payment_status", "не оплачено")
-                status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+                status_emoji = (
+                    "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+                )
                 payment_status = f" - {status_emoji} {status}"
 
-            info_text += (
-                f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'}){payment_status}\n"
-            )
+            info_text += f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'}){payment_status}\n"
             info_text += f"  ФИО: {reg['full_name']}\n"
             info_text += (
                 f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
@@ -598,10 +593,13 @@ async def register_user(
     if location.value != TargetCity.SAINT_PETERSBURG.value:
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
-        
+
         # Import the process_payment function here to avoid circular imports
         from app.routers.payment import process_payment
-        
+
+        # Store the original user information in the state
+        await state.update_data(original_user_id=user_id, original_username=username)
+
         # Process payment directly
         await process_payment(message, state, location.value, graduation_year)
     else:

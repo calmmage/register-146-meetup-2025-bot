@@ -14,7 +14,6 @@ from aiogram.types import (
 )
 from loguru import logger
 from textwrap import dedent
-import re
 
 from app.app import App, TargetCity
 from app.router import is_admin, date_of_event, commands_menu
@@ -33,14 +32,9 @@ async def process_payment(
     # Check if we have original user information in the state
     # This happens when the function is called from a callback handler
     state_data = await state.get_data()
-    original_user_id = state_data.get("original_user_id")
-    original_username = state_data.get("original_username")
-
-    # Use original user information if available
-    if original_user_id:
-        user_id = original_user_id
-        username = original_username
-        logger.info(f"Using original user information: ID={user_id}, username={username}")
+    user_id = state_data.get("original_user_id")
+    username = state_data.get("original_username")
+    logger.info(f"Using original user information: ID={user_id}, username={username}")
 
     # Calculate payment amount
     regular_amount, discount, discounted_amount = app.calculate_payment_amount(
@@ -365,6 +359,11 @@ async def pay_handler(message: Message, state: FSMContext):
         # We'll use payment_status to determine this - if it's set, they've seen instructions
         skip_instructions = selected_reg.get("payment_status") is not None
 
+        # Store the original user information in the state
+        await state.update_data(
+            original_user_id=user_id, original_username=message.from_user.username
+        )
+
         # Process payment for the selected registration
         await process_payment(
             message,
@@ -477,6 +476,28 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Missing city information")
         return
 
+    chat_id = callback_query.message.chat.id
+    # Ask for payment amount directly using ask_user_raw
+    amount_response = await ask_user_raw(
+        chat_id,
+        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}",
+        state=state,
+        timeout=300,
+    )
+
+    if amount_response is None or amount_response.text is None:
+        await send_safe(chat_id, "Время ожидания истекло или получен некорректный ответ.")
+        return
+
+    # Try to parse the amount
+    try:
+        payment_amount = int(amount_response.text)
+    except ValueError:
+        await send_safe(
+            chat_id, "Некорректная сумма платежа. Пожалуйста, используйте команду снова."
+        )
+        return
+
     # Get registration
     registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
     if not registration:
@@ -484,33 +505,17 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Update payment status
-    await app.update_payment_status(user_id, city, "confirmed")
+    await app.update_payment_status(user_id, city, "confirmed", payment_amount=payment_amount)
 
     # Log the confirmation
     admin = callback_query.from_user
     admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
-
-    # Get payment amount from message text if possible
-    payment_amount = 0
-    if callback_query.message and callback_query.message.caption:
-        # Try to extract amount from caption
-        match = re.search(r"(\d+)\s*руб", callback_query.message.caption)
-        if match:
-            payment_amount = int(match.group(1))
-
-    # Log verification
-    await app.log_payment_verification(
-        user_id,
-        registration.get("username", ""),
-        registration,
-        "confirmed",
-        f"Подтверждено администратором {admin_info}. Сумма: {payment_amount} руб.",
-    )
-
+    
+    
     # Notify user
     await send_safe(
         user_id,
-        f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Спасибо за оплату.",
+        f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Сумма: {payment_amount} руб. Спасибо за оплату.",
     )
 
     # Update callback message

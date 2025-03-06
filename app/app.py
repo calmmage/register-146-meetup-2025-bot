@@ -426,7 +426,7 @@ class App:
         )
 
     async def update_payment_status(
-        self, user_id: int, city: str, status: str, admin_comment: str = None
+        self, user_id: int, city: str, status: str, admin_comment: str = None, payment_amount: int = None
     ):
         """
         Update the payment status for a user
@@ -436,11 +436,15 @@ class App:
             city: The city of the event
             status: The new payment status (confirmed, declined, pending)
             admin_comment: Optional comment from admin
+            payment_amount: Amount paid by the user (in rubles)
         """
         update_data = {"payment_status": status, "payment_verified_at": datetime.now().isoformat()}
 
         if admin_comment:
             update_data["admin_comment"] = admin_comment
+            
+        if payment_amount is not None:
+            update_data["payment_amount"] = payment_amount
 
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
@@ -488,6 +492,7 @@ class App:
         registration: dict,
         status: str,
         admin_comment: str = None,
+        payment_amount: int = None,
     ):
         """
         Log a payment verification to the events chat
@@ -498,6 +503,7 @@ class App:
             registration: The registration data
             status: The payment status
             admin_comment: Optional comment from admin
+            payment_amount: Amount paid by the user (in rubles)
         """
         city = registration["target_city"]
 
@@ -509,6 +515,9 @@ class App:
         message += f"📋 ФИО: {registration['full_name']}\n"
         message += f"🎓 Выпуск: {registration['graduation_year']} {registration['class_letter']}\n"
         message += f"🏙️ Город: {city}\n"
+        
+        if payment_amount is not None:
+            message += f"💰 Сумма платежа: {payment_amount} руб.\n"
 
         if admin_comment:
             message += f"💬 Комментарий: {admin_comment}\n"
