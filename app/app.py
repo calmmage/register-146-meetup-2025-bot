@@ -426,7 +426,12 @@ class App:
         )
 
     async def update_payment_status(
-        self, user_id: int, city: str, status: str, admin_comment: str = None, payment_amount: int = None
+        self,
+        user_id: int,
+        city: str,
+        status: str,
+        admin_comment: str = None,
+        payment_amount: int = None,
     ):
         """
         Update the payment status for a user
@@ -442,87 +447,10 @@ class App:
 
         if admin_comment:
             update_data["admin_comment"] = admin_comment
-            
+
         if payment_amount is not None:
             update_data["payment_amount"] = payment_amount
 
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
         )
-
-    async def log_payment_submission(
-        self,
-        user_id: int,
-        username: str,
-        registration: dict,
-        amount: int,
-        regular_amount: int = None,
-    ):
-        """
-        Log a payment submission to the events chat
-
-        Args:
-            user_id: User's Telegram ID
-            username: User's Telegram username
-            registration: The registration data
-            amount: The payment amount
-            regular_amount: The regular amount before discount (if applicable)
-        """
-        city = registration["target_city"]
-
-        message = f"💰 НОВЫЙ ПЛАТЕЖ\n\n"
-        message += f"👤 Пользователь: {username or user_id}\n"
-        message += f"📋 ФИО: {registration['full_name']}\n"
-        message += f"🎓 Выпуск: {registration['graduation_year']} {registration['class_letter']}\n"
-        message += f"🏙️ Город: {city}\n"
-
-        if regular_amount and regular_amount > amount:
-            message += f"💵 Стандартная сумма: {regular_amount} руб.\n"
-            message += f"🎁 Скидка: {regular_amount - amount} руб.\n"
-            message += f"💵 Итоговая сумма: {amount} руб.\n"
-        else:
-            message += f"💵 Сумма: {amount} руб.\n"
-
-        return await self.log_to_chat(message, "events")
-
-    async def log_payment_verification(
-        self,
-        user_id: int,
-        username: str,
-        registration: dict,
-        status: str,
-        admin_comment: str = None,
-        payment_amount: int = None,
-    ):
-        """
-        Log a payment verification to the events chat
-
-        Args:
-            user_id: User's Telegram ID
-            username: User's Telegram username
-            registration: The registration data
-            status: The payment status
-            admin_comment: Optional comment from admin
-            payment_amount: Amount paid by the user (in rubles)
-        """
-        city = registration["target_city"]
-
-        status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
-
-        message = f"{status_emoji} {status.upper()}\n\n"
-
-        message += f"👤 Пользователь: {username or user_id}\n"
-        message += f"📋 ФИО: {registration['full_name']}\n"
-        message += f"🎓 Выпуск: {registration['graduation_year']} {registration['class_letter']}\n"
-        message += f"🏙️ Город: {city}\n"
-        
-        if payment_amount is not None:
-            message += f"💰 Сумма платежа: {payment_amount} руб.\n"
-
-        if admin_comment:
-            message += f"💬 Комментарий: {admin_comment}\n"
-
-        return await self.log_to_chat(message, "events")
-
-    async def process_payment_confirmation(self, **kwargs):
-        raise NotImplementedError("Payment confirmation processing is not implemented yet")

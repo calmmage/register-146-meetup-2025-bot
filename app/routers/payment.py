@@ -226,17 +226,6 @@ async def process_payment(
         # Save payment info with pending status
         await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
 
-    # Get user registration for logging
-    # user_registration = await app.get_user_registration(user_id)
-
-    # # Log to events chat
-    # try:
-    #     await app.log_payment_submission(
-    #         user_id, username or "", user_registration or {}, discounted_amount, regular_amount
-    #     )
-    # except Exception as e:
-    #     logger.warning(f"Could not log payment submission: {e}")
-
     # Return True if payment was processed (screenshot received)
     return response and hasattr(response, "photo") and response.photo
 
@@ -278,15 +267,6 @@ async def pay_later_callback(callback_query: CallbackQuery):
 
             # Save payment info
             await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
-
-            # # Log payment postponed
-            # username = callback_query.from_user.username or ""
-            # try:
-            #     await app.log_payment_submission(
-            #         user_id, username, user_registration, discounted_amount, regular_amount
-            #     )
-            # except Exception as e:
-            #     logger.warning(f"Could not log payment postponement: {e}")
 
 
 # Add payment command handler
@@ -510,8 +490,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Log the confirmation
     admin = callback_query.from_user
     admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
-    
-    
+
     # Notify user
     await send_safe(
         user_id,
@@ -619,18 +598,6 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
         await message.reply(f"Регистрация не найдена для пользователя {user_id}")
         await state.clear()
         return
-
-    # Log decline
-    admin = message.from_user
-    admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
-
-    await app.log_payment_verification(
-        user_id,
-        registration.get("username", ""),
-        registration,
-        "declined",
-        f"Отклонено администратором {admin_info}. Причина: {decline_reason}",
-    )
 
     # Notify user
     await send_safe(
