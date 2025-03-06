@@ -1,15 +1,6 @@
-
-# Todo
-- [x] auto export to google sheets on each registration
- 
-
 # Promo
 - [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
-
-# Commands
-- [ ] hide the admin-only commands from menu (use botspot visibility). Print the admin-only commands in start menu for admins
-- [x] add new command /cancel_registration
 
 # Рассылки (это потом сделаем)
 - тем кто не оплатил
@@ -20,14 +11,8 @@
 2) потом scheduled job для рассылок
 
 # Scenario routes
-- [x] Fix "I will pay later" route of the start menu -> currently there's no way to manage registrations now from unpaid state
 - [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
 - [ ] bugfix the multi-user payment flow. Currently there is some issues with the state management if multiple cities have multiple payment states and also maybe one of them gets cancelled.. it's a mess
-- [x]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо. 
-thoughts on scenarios
-- Новая кнопка "я не выпускник" должна быть там же где ты вводишь год выпуска из школы. Чтобы если ты не можешь его ввести - у тебя был выход
-- Но непонятно какой дальше сценарий - какая сумма платежа? Можно просто рекомендованную ставить
-- Пермь - 2500, Москва - 5000
 
 Optional Improvements
 - [ ] move early registration date to app settings
@@ -86,6 +71,10 @@ Petr
 - Or just a new field like 'payment intent confirmed / registration finished'? I like the latter.
 
 # Done
+- [x] Fix "I will pay later" route of the start menu -> currently there's no way to manage registrations now from unpaid state
+- [x] auto export to google sheets on each registration
+- [x] add new command /cancel_registration
+- [x] hide the admin-only commands from menu (use botspot visibility). Print the admin-only commands in start menu for admins
 - [x] Экспортировать инфо о платежах в CSV и sheets
 - [x] Добавить поддержку платежей файлом pdf. Просто так же форвардить
 - [x] указывать в сообщении для валидации правильную сумму к оплате
@@ -97,3 +86,8 @@ Petr
 - [x]  в букву класс не давать длиннее 1 буквы
 - [x] после/при валидации вычислять и писать человеку если его взнос меньше рекомендуемой суммы
 
+- [x]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо.
+  thoughts on scenarios
+- Новая кнопка "я не выпускник" должна быть там же где ты вводишь год выпуска из школы. Чтобы если ты не можешь его ввести - у тебя был выход
+- Но непонятно какой дальше сценарий - какая сумма платежа? Можно просто рекомендованную ставить
+- Пермь - 2500, Москва - 5000
