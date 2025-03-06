@@ -16,6 +16,12 @@ class TargetCity(Enum):
     SAINT_PETERSBURG = "Санкт-Петербург"
 
 
+class GraduateType(Enum):
+    GRADUATE = "graduate"
+    TEACHER = "teacher"
+    NON_GRADUATE = "non_graduate"
+
+
 class AppSettings(BaseSettings):
     """Basic app configuration"""
 
@@ -39,6 +45,7 @@ class RegisteredUser(BaseModel):
     target_city: TargetCity
     user_id: Optional[int] = None
     username: Optional[str] = None
+    graduate_type: GraduateType = GraduateType.GRADUATE
 
 
 class App:
@@ -66,8 +73,10 @@ class App:
         """Save a user registration with optional user_id and username"""
         # Convert the model to a dict and extract the enum value before saving
         data = registered_user.model_dump()
-        # Convert the enum to its string value for MongoDB storage
+        # Convert the enums to their string values for MongoDB storage
         data["target_city"] = data["target_city"].value
+        if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
+            data["graduate_type"] = data["graduate_type"].value
 
         # Add user_id and username if provided
         if user_id is not None:
@@ -310,6 +319,7 @@ class App:
         graduation_year: int,
         class_letter: str,
         city: str,
+        graduate_type: str = GraduateType.GRADUATE.value,
     ) -> None:
         """
         Log a completed registration to the events chat
@@ -321,12 +331,27 @@ class App:
             graduation_year: User's graduation year
             class_letter: User's class letter
             city: The city of the event
+            graduate_type: Type of participant (graduate, teacher, non_graduate)
         """
         message = f"✅ НОВАЯ РЕГИСТРАЦИЯ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {full_name}\n"
-        message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
+        
+        # Format graduation info based on graduate type
+        if graduate_type == GraduateType.TEACHER.value:
+            message += f"👨‍🏫 Статус: Учитель\n"
+        elif graduate_type == GraduateType.NON_GRADUATE.value:
+            message += f"👥 Статус: Не выпускник\n"
+        else:
+            message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
+            
         message += f"🏙️ Город: {city}\n"
+        
+        # Add payment status for different participant types
+        if graduate_type == GraduateType.TEACHER.value:
+            message += f"💰 Оплата: Бесплатно (учитель)\n"
+        elif city == TargetCity.SAINT_PETERSBURG.value:
+            message += f"💰 Оплата: За свой счет (Санкт-Петербург)\n"
 
         await self.log_to_chat(message, "events")
 
@@ -357,23 +382,33 @@ class App:
         await self.log_to_chat(message, "events")
 
     def calculate_payment_amount(
-        self, city: str, graduation_year: int  # , early_registration: bool = False
+        self, city: str, graduation_year: int, graduate_type: str = GraduateType.GRADUATE.value
     ) -> tuple[int, int, int]:
         """
-        Calculate the payment amount based on city and graduation year
+        Calculate the payment amount based on city, graduation year, and graduate type
 
         Args:
             city: The city of the event
             graduation_year: The user's graduation year
-            early_registration: Whether this is an early registration
+            graduate_type: The type of participant (graduate, teacher, non_graduate)
 
         Returns:
-            Tuple of (regular_amount, discounted_amount)
+            Tuple of (regular_amount, discount, discounted_amount)
         """
-        if city == TargetCity.SAINT_PETERSBURG.value:
-            return 0, 0, 0  # Saint Petersburg is free (за свой счет)
+        # Teachers and Saint Petersburg attendees are free
+        if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value:
+            return 0, 0, 0
+            
+        # For non-graduates, use fixed recommended amounts
+        if graduate_type == GraduateType.NON_GRADUATE.value:
+            if city == TargetCity.MOSCOW.value:
+                return 5000, 0, 5000
+            elif city == TargetCity.PERM.value:
+                return 2500, 0, 2500
+            else:
+                return 0, 0, 0
 
-        # Regular payment calculation
+        # Regular payment calculation for graduates
         current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 

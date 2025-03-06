@@ -6,6 +6,7 @@ from aiogram.types import (
 )
 
 from botspot import commands_menu
+from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.user_interactions import ask_user_choice
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
@@ -36,7 +37,9 @@ async def admin_handler(message: Message, state: FSMContext):
     return response
 
 
-@commands_menu.add_command("export", "Экспорт списка зарегистрированных участников")
+@commands_menu.add_command(
+    "export", "Экспорт списка зарегистрированных участников", visibility=Visibility.ADMIN_ONLY
+)
 @router.message(Command("export"), AdminFilter())
 async def export_handler(message: Message, state: FSMContext):
     """Экспорт списка зарегистрированных участников в Google Sheets или CSV"""
@@ -71,7 +74,7 @@ async def export_handler(message: Message, state: FSMContext):
     await notif.delete()
 
 
-@commands_menu.add_command("stats", "Статистика регистраций")
+@commands_menu.add_command("stats", "Статистика регистраций", visibility=Visibility.ADMIN_ONLY)
 @router.message(Command("stats"), AdminFilter())
 async def show_stats(message: Message):
     """Показать статистику регистраций"""

@@ -13,7 +13,7 @@ from loguru import logger
 from textwrap import dedent
 from typing import Dict, List
 
-from app.app import App, TargetCity, RegisteredUser
+from app.app import App, TargetCity, RegisteredUser, GraduateType
 from app.routers.admin import admin_handler
 from botspot import commands_menu
 from botspot.user_interactions import ask_user, ask_user_choice
@@ -512,6 +512,9 @@ async def register_user(
                     """
                     Пожалуйста, введите год выпуска и букву класса.
                     Например, "2003 Б".
+                    
+                    Если вы учитель школы 146 (нынешний или бывший), нажмите: /i_am_a_teacher
+                    Если вы не выпускник, но друг школы 146 - нажмите: /i_am_a_friend
                     """
                 )
 
@@ -522,8 +525,50 @@ async def register_user(
                 timeout=None,
             )
 
+            # Check for special commands
+            if response == "/i_am_a_teacher":
+                # User is a teacher
+                graduation_year = 0  # Special value for teachers
+                class_letter = "Т"  # "Т" for "Учитель"
+                graduate_type = GraduateType.TEACHER
+
+                # Log teacher status
+                log_msg = await app.log_registration_step(
+                    user_id,
+                    username,
+                    "Статус участника",
+                    "Учитель",
+                )
+                if log_msg:
+                    log_messages[user_id].append(log_msg)
+
+                # await send_safe(
+                #     message.chat.id,
+                #     "Вы зарегистрированы как учитель. Участие для учителей бесплатное.",
+                # )
+                break
+
+            elif response == "/i_am_a_friend":
+                # User is not a graduate
+                graduation_year = 2000  # Special value for non-graduates
+                class_letter = "Н"  # "Н" for "Не выпускник"
+                graduate_type = GraduateType.NON_GRADUATE
+
+                # Log non-graduate status
+                log_msg = await app.log_registration_step(
+                    user_id,
+                    username,
+                    "Статус участника",
+                    "Не выпускник",
+                )
+                if log_msg:
+                    log_messages[user_id].append(log_msg)
+
+                await send_safe(message.chat.id, "Вы зарегистрированы как друг школы 146!")
+                break
+
             # If we already have a year and just need the letter
-            if graduation_year is not None and class_letter is None:
+            elif graduation_year is not None and class_letter is None:
                 # Validate just the class letter
                 valid, error = app.validate_class_letter(response)
                 if valid:
@@ -542,6 +587,7 @@ async def register_user(
                 else:
                     graduation_year = year
                     class_letter = letter
+                    graduate_type = GraduateType.GRADUATE
 
         # Log graduation info
         log_msg = await app.log_registration_step(
@@ -560,6 +606,7 @@ async def register_user(
             graduation_year=graduation_year,
             class_letter=class_letter,
             target_city=location,
+            graduate_type=graduate_type,
         ),
         user_id=user_id,
         username=username,
@@ -577,7 +624,13 @@ async def register_user(
 
     # Log to events chat
     await app.log_registration_completed(
-        user_id, username, full_name, graduation_year, class_letter, location.value
+        user_id,
+        username,
+        full_name,
+        graduation_year,
+        class_letter,
+        location.value,
+        graduate_type.value,
     )
 
     # Clear log messages
@@ -590,7 +643,23 @@ async def register_user(
         f"в {padezhi[location]} {date_of_event[location]}. "
     )
 
-    if location.value != TargetCity.SAINT_PETERSBURG.value:
+    # Skip payment flow for St. Petersburg and teachers
+    if location.value == TargetCity.SAINT_PETERSBURG.value:
+        confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
+        await send_safe(
+            message.chat.id,
+            confirmation_msg,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    elif graduate_type == GraduateType.TEACHER:
+        confirmation_msg += "\nДля учителей участие бесплатное. Спасибо за вашу работу!"
+        await send_safe(
+            message.chat.id,
+            confirmation_msg,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    else:
+        # Regular flow for everyone else who needs to pay
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 
@@ -601,13 +670,8 @@ async def register_user(
         await state.update_data(original_user_id=user_id, original_username=username)
 
         # Process payment directly
-        await process_payment(message, state, location.value, graduation_year)
-    else:
-        confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
-        await send_safe(
-            message.chat.id,
-            confirmation_msg,
-            reply_markup=ReplyKeyboardRemove(),
+        await process_payment(
+            message, state, location.value, graduation_year, graduate_type=graduate_type.value
         )
 
 
@@ -682,7 +746,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
         if response == "yes":
             # Cancel registration
             await app.delete_user_registration(user_id, city)
-            
+
             # Log cancellation
             await app.log_registration_canceled(
                 user_id,
@@ -690,7 +754,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
                 full_name,
                 city,
             )
-            
+
             await send_safe(
                 message.chat.id,
                 "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
@@ -708,8 +772,10 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
         for reg in registrations:
             city = reg["target_city"]
             city_enum = next((c for c in TargetCity if c.value == city), None)
-            choices[city] = f"{city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})"
-        
+            choices[city] = (
+                f"{city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})"
+            )
+
         choices["all"] = "Отменить все регистрации"
         choices["cancel"] = "Отмена - ничего не отменять"
 
@@ -733,10 +799,10 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
             # Get user info for logging before deleting
             user_reg = registrations[0]
             full_name = user_reg.get("full_name", "Unknown")
-            
+
             # Cancel all registrations
             await app.delete_user_registration(user_id)
-            
+
             # Log cancellation
             await app.log_registration_canceled(
                 user_id,
@@ -744,7 +810,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
                 full_name,
                 None,  # Indicates all cities
             )
-            
+
             await send_safe(
                 message.chat.id,
                 "Все ваши регистрации отменены. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
@@ -755,10 +821,10 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
             city = response
             reg = next(r for r in registrations if r["target_city"] == city)
             full_name = reg["full_name"]
-            
+
             # Cancel registration
             await app.delete_user_registration(user_id, city)
-            
+
             # Log cancellation
             await app.log_registration_canceled(
                 user_id,
@@ -766,7 +832,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
                 full_name,
                 city,
             )
-            
+
             await send_safe(
                 message.chat.id,
                 f"Ваша регистрация в городе {city} отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",

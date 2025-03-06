@@ -16,7 +16,7 @@ from datetime import datetime
 from loguru import logger
 from textwrap import dedent
 
-from app.app import App, TargetCity
+from app.app import App, TargetCity, GraduateType
 from app.router import is_admin, date_of_event, commands_menu
 from botspot.user_interactions import ask_user_raw, ask_user_choice
 from botspot.utils import send_safe
@@ -32,7 +32,8 @@ EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
 
 
 async def process_payment(
-    message: Message, state: FSMContext, city: str, graduation_year: int, skip_instructions=False
+    message: Message, state: FSMContext, city: str, graduation_year: int, skip_instructions=False, 
+    graduate_type: str = GraduateType.GRADUATE.value
 ):
     """Process payment for an event registration"""
     # Check if we have original user information in the state
@@ -42,9 +43,15 @@ async def process_payment(
     username = state_data.get("original_username")
     logger.info(f"Using original user information: ID={user_id}, username={username}")
 
+    # Get user registration to get graduate_type
+    if user_id:
+        registration = await app.get_user_registration(user_id)
+        if registration and "graduate_type" in registration:
+            graduate_type = registration["graduate_type"]
+    
     # Calculate payment amount
     regular_amount, discount, discounted_amount = app.calculate_payment_amount(
-        city, graduation_year
+        city, graduation_year, graduate_type
     )
 
     # Only show instructions if not skipped
@@ -335,8 +342,11 @@ async def pay_handler(message: Message, state: FSMContext):
         return
 
     # Filter registrations that require payment
+    # Skip St. Petersburg and teachers
     payment_registrations = [
-        reg for reg in registrations if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value
+        reg for reg in registrations 
+        if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value 
+        and reg.get("graduate_type", GraduateType.GRADUATE.value) != GraduateType.TEACHER.value
     ]
 
     if not payment_registrations:
@@ -387,6 +397,9 @@ async def pay_handler(message: Message, state: FSMContext):
             original_user_id=user_id, original_username=message.from_user.username
         )
 
+        # Get graduate_type if available
+        graduate_type = selected_reg.get("graduate_type", GraduateType.GRADUATE.value)
+        
         # Process payment for the selected registration
         await process_payment(
             message,
@@ -394,6 +407,7 @@ async def pay_handler(message: Message, state: FSMContext):
             selected_reg["target_city"],
             selected_reg["graduation_year"],
             skip_instructions,
+            graduate_type=graduate_type,
         )
     else:
         await send_safe(
@@ -437,8 +451,9 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
         )
         return
 
-    # Get graduation year
+    # Get graduation year and graduate type
     graduation_year = registration.get("graduation_year", 2025)
+    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
 
     # Process payment
     # Skip instructions if payment status is already set (user has seen them before)
@@ -449,7 +464,7 @@ async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
         original_user_id=user_id, original_username=callback_query.from_user.username
     )
 
-    await process_payment(callback_query.message, state, city, graduation_year, skip_instructions)
+    await process_payment(callback_query.message, state, city, graduation_year, skip_instructions, graduate_type=graduate_type)
 
 
 # Add callback handler for "Pay Later from Start" button

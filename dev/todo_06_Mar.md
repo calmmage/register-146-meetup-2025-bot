@@ -1,6 +1,7 @@
 
 # Todo
 - [ ] auto export to google sheets on each registration
+ 
 
 # Promo
 - [ ] Add the payment status info to the /stats command
@@ -19,9 +20,10 @@
 2) потом scheduled job для рассылок
 
 # Scenario routes
-- [ ] Fix "I will pay later" routo of the start menu -> there's no way to manage registrations now from unpaid state
+- [ ] Fix "I will pay later" route of the start menu -> cuthere's no way to manage registrations now from unpaid state
 - [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
-- [ ]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо. 
+- [ ] bugfix the multi-user payment flow. Currently there is some issues with the state management if multiple cities have multiple payment states and also maybe one of them gets cancelled.. it's a mess
+- [x]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо. 
 thoughts on scenarios
 - Новая кнопка "я не выпускник" должна быть там же где ты вводишь год выпуска из школы. Чтобы если ты не можешь его ввести - у тебя был выход
 - Но непонятно какой дальше сценарий - какая сумма платежа? Можно просто рекомендованную ставить
