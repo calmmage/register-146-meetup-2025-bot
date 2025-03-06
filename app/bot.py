@@ -17,9 +17,9 @@ from .router import app, router as main_router
 
 # Initialize bot and dispatcher
 dp = Dispatcher()
-dp.include_router(main_router)
 dp.include_router(admin_router)
 dp.include_router(payment_router)
+dp.include_router(main_router)
 
 
 @heartbeat_for_sync(app.name)
@@ -32,13 +32,8 @@ def main(debug=False) -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
 
-    # Initialize BotManager with default components
-    bm = BotManager(
-        bot=bot,
-        error_handler={"enabled": True},
-        ask_user={"enabled": True},
-        bot_commands_menu={"enabled": True},
-    )
+    # Initialize bot manager
+    bm = BotManager(bot=bot)
 
     # Setup dispatcher with our components
     bm.setup_dispatcher(dp)

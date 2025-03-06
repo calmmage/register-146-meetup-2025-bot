@@ -1,10 +1,12 @@
 import os
 from aiogram import Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ReplyKeyboardRemove,
     Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from dotenv import load_dotenv
 from loguru import logger
@@ -38,15 +40,55 @@ padezhi = {
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
 }
 
-# Create directory for payment QR codes if it doesn't exist
-os.makedirs(os.path.join("assets", "payment_qr"), exist_ok=True)
-
+# Add this function near the top of the file, after imports
+async def handle_post_registration_payment(message: Message, state: FSMContext, city: str, graduation_year: int):
+    """
+    Handle payment after registration.
+    This function is called from the payment module to avoid circular imports.
+    """
+    # This function will be imported by the payment module to avoid circular imports
+    # The actual payment processing will happen in the payment module
+    pass
 
 async def handle_registered_user(message: Message, state: FSMContext, registration):
     """Handle interaction with already registered user"""
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
 
     # Get all user registrations
     registrations = await app.get_user_registrations(message.from_user.id)
+    
+    # Check if any registration needs payment
+    needs_payment = False
+    unpaid_registration = None
+    
+    for reg in registrations:
+        city = reg["target_city"]
+        # Only Moscow and Perm require payment
+        if city != TargetCity.SAINT_PETERSBURG.value:
+            # Check if payment is not confirmed
+            if reg.get("payment_status") != "confirmed":
+                needs_payment = True
+                unpaid_registration = reg
+                break
+    
+    # If user needs to pay and has only one unpaid registration, offer payment directly
+    if needs_payment and len([r for r in registrations if r["target_city"] != TargetCity.SAINT_PETERSBURG.value]) == 1:
+        await send_safe(
+            message.chat.id,
+            f"Вы зарегистрированы на встречу выпускников в городе {unpaid_registration['target_city']}, "
+            f"но еще не оплатили участие. Хотите оплатить сейчас?",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="Оплатить сейчас", callback_data="pay_now"),
+                        InlineKeyboardButton(text="Позже", callback_data="pay_later_from_start"),
+                    ]
+                ]
+            )
+        )
+        return
 
     if len(registrations) > 1:
         # User has multiple registrations
@@ -55,9 +97,16 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         for reg in registrations:
             city = reg["target_city"]
             city_enum = next((c for c in TargetCity if c.value == city), None)
+            
+            # Add payment status indicator
+            payment_status = ""
+            if city != TargetCity.SAINT_PETERSBURG.value:
+                status = reg.get("payment_status", "не оплачено")
+                status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+                payment_status = f" - {status_emoji} {status}"
 
             info_text += (
-                f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
+                f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'}){payment_status}\n"
             )
             info_text += f"  ФИО: {reg['full_name']}\n"
             info_text += (
@@ -549,8 +598,15 @@ async def register_user(
     if location.value != TargetCity.SAINT_PETERSBURG.value:
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
-        # Process payment after registration
-        await process_payment(message, state, location.value, graduation_year)
+        # Flag this registration for payment processing
+        # The payment module will handle this
+        app.payment_pending = {
+            "user_id": user_id,
+            "message": message,
+            "state": state,
+            "city": location.value,
+            "graduation_year": graduation_year
+        }
     else:
         confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
         await send_safe(

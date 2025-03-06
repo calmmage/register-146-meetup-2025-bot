@@ -20,14 +20,14 @@ from loguru import logger
 from textwrap import dedent
 
 from app.app import App, TargetCity
-from app.router import is_admin, date_of_event, commands_menu
+from app.router import is_admin, date_of_event, commands_menu, handle_post_registration_payment
 
 # Create router
 router = Router()
 app = App()
 
 
-async def process_payment(message: Message, state: FSMContext, city: str, graduation_year: int):
+async def process_payment(message: Message, state: FSMContext, city: str, graduation_year: int, skip_instructions=False):
     """Process payment for an event registration"""
     if message.from_user is None:
         logger.error("Message from_user is None")
@@ -36,107 +36,112 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
     user_id = message.from_user.id
     username = message.from_user.username
 
-    # Show typing status and delay
-    try:
-        from botspot.core.dependency_manager import get_dependency_manager
-
-        deps = get_dependency_manager()
-        if hasattr(deps, "bot"):
-            bot = deps.bot
-            await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-            await asyncio.sleep(3)  # 3 second delay
-        else:
-            logger.warning("Bot not available in dependency manager, skipping typing indicator")
-            await asyncio.sleep(3)
-    except Exception as e:
-        logger.warning(f"Could not show typing indicator: {e}")
-        await asyncio.sleep(3)
-
-    # Check if it's an early registration (before March 15)
-    # early_registration_date = datetime.strptime("2025-03-15", "%Y-%m-%d")
-    early_registration_date = "2025-03-15"
-    # today = datetime.now()
-    # early_registration = today < early_registration_date
-
     # Calculate payment amount
     regular_amount, discount, discounted_amount = app.calculate_payment_amount(
-        city, graduation_year  # , early_registration
+        city, graduation_year
     )
 
-    # Prepare payment message - split into parts for better UX
-    payment_formula = ""
-    if city == TargetCity.MOSCOW.value:
-        payment_formula = "1000р + 200 * (2025 - год выпуска)"
-    elif city == TargetCity.PERM.value:
-        payment_formula = "500р + 100 * (2025 - год выпуска)"
-    else:  # Saint Petersburg
-        payment_formula = "за свой счет"
-        
-    payment_msg_part1 = dedent(
-        f"""
-        💰 Оплата мероприятия
-        
-        Для оплаты мероприятия используется следующая формула:
-        
-        {city} → {payment_formula}
-    """
-    )
+    # Only show instructions if not skipped
+    if not skip_instructions:
+        # Show typing status and delay
+        try:
+            from botspot.core.dependency_manager import get_dependency_manager
 
-    # Send part 1
-    await send_safe(message.chat.id, payment_msg_part1)
+            deps = get_dependency_manager()
+            if hasattr(deps, "bot"):
+                bot = deps.bot
+                await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+                await asyncio.sleep(3)  # 3 second delay
+            else:
+                logger.warning("Bot not available in dependency manager, skipping typing indicator")
+                await asyncio.sleep(3)
+        except Exception as e:
+            logger.warning(f"Could not show typing indicator: {e}")
+            await asyncio.sleep(3)
 
-    # Delay between messages
-    await asyncio.sleep(10)
+        # Check if it's an early registration (before March 15)
+        early_registration_date = "2025-03-15"
 
-    # discount_amount = regular_amount - final_amount
-    payment_msg_part2 = dedent(
-        f"""
-        Для вас минимальный взнос: {regular_amount} руб.
-        
-        При ранней регистрации (до {early_registration_date}) - скидка. 
-        Минимальная сумма взноса при ранней регистрации - {discounted_amount}
-        
-        Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+        # Prepare payment message - split into parts for better UX
+        payment_formula = ""
+        if city == TargetCity.MOSCOW.value:
+            payment_formula = "1000р + 200 * (2025 - год выпуска)"
+        elif city == TargetCity.PERM.value:
+            payment_formula = "500р + 100 * (2025 - год выпуска)"
+        else:  # Saint Petersburg
+            payment_formula = "за свой счет"
+            
+        payment_msg_part1 = dedent(
+            f"""
+            💰 Оплата мероприятия
+            
+            Для оплаты мероприятия используется следующая формула:
+            
+            {city} → {payment_formula}
         """
+        )
+
+        # Send part 1
+        await send_safe(message.chat.id, payment_msg_part1)
+
+        # Delay between messages
+        await asyncio.sleep(5)
+
+        # discount_amount = regular_amount - final_amount
+        payment_msg_part2 = dedent(
+            f"""
+            Для вас минимальный взнос: {regular_amount} руб.
+            
+            При ранней регистрации (до {early_registration_date}) - скидка. 
+            Минимальная сумма взноса при ранней регистрации - {discounted_amount}
+            
+            Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+            """
+        )
+
+        # Send part 2
+        await send_safe(message.chat.id, payment_msg_part2)
+
+        # Delay between messages
+        await asyncio.sleep(3)
+
+        # Prepare part 3 with payment details
+        payment_msg_part3 = dedent(
+            f"""
+            Реквизиты для оплаты:
+            В Тинькофф банк по номеру телефона
+            Номер телефона - {app.settings.payment_phone_number}
+            Получатель - {app.settings.payment_name}
+            """
+        )
+
+        # Send part 3
+        await send_safe(message.chat.id, payment_msg_part3)
+
+        # Delay between messages
+        await asyncio.sleep(3)
+
+    # Create inline keyboard with "Pay Later" button
+    pay_later_markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оплачу позже", callback_data=f"pay_later_{city}")]
+        ]
     )
 
-    # Send part 2
-    await send_safe(message.chat.id, payment_msg_part2)
-
-    # Delay between messages
-    await asyncio.sleep(5)
-
-    # Prepare part 3 with payment details
-    payment_msg_part3 = dedent(
-        f"""
-        Реквизиты для оплаты:
-        В Тинькофф банк по номеру телефона
-        Номер телефона - {app.settings.payment_phone_number}
-        Получатель - {app.settings.payment_name}
-        """
-    )
-
-    # Send part 3
-    await send_safe(message.chat.id, payment_msg_part3)
-
-    # Delay between messages
-    await asyncio.sleep(10)
-
-    # Ask for payment confirmation
-    response = await ask_user_raw(
+    # Request screenshot separately to get the message object
+    screenshot_request_msg = await send_safe(
         message.chat.id,
         "Пожалуйста, отправьте скриншот подтверждения оплаты или нажмите кнопку ниже, если хотите оплатить позже.",
+        reply_markup=pay_later_markup
+    )
+
+    # Wait for response (either screenshot or callback)
+    response = await ask_user_raw(
+        message.chat.id,
+        "Ожидаю скриншот оплаты...",  # Use a non-empty message
         state=state,
         timeout=1200,
     )
-
-    if response == "Оплачу позже":
-        await send_safe(
-            message.chat.id,
-            "Хорошо! Вы можете оплатить позже, используя команду /pay",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
 
     if response is None:
         # No response received
@@ -217,7 +222,7 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         
         # Save payment info with pending status
         await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
-        
+
     # Get user registration for logging
     user_registration = await app.get_user_registration(user_id)
     
@@ -228,6 +233,57 @@ async def process_payment(message: Message, state: FSMContext, city: str, gradua
         )
     except Exception as e:
         logger.warning(f"Could not log payment submission: {e}")
+        
+    # Return True if payment was processed (screenshot received)
+    return response and hasattr(response, 'photo') and response.photo
+
+
+# Add callback handler for "Pay Later" button
+@router.callback_query(lambda c: c.data and c.data.startswith("pay_later_"))
+async def pay_later_callback(callback_query: CallbackQuery):
+    """Handle pay later button click"""
+    if callback_query.from_user is None:
+        logger.error("Callback from_user is None")
+        return
+        
+    user_id = callback_query.from_user.id
+    
+    # Extract city from callback data
+    city = callback_query.data.split("_")[2] if callback_query.data else ""
+    
+    # Answer callback to remove loading state
+    await callback_query.answer()
+    
+    # Notify user
+    await send_safe(
+        user_id,
+        "Хорошо! Вы можете оплатить позже, используя команду /pay",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    
+    # Save payment info with pending status if city is valid
+    if city:
+        # Get user registration
+        user_registration = await app.get_user_registration(user_id)
+        if user_registration and user_registration.get("target_city") == city:
+            graduation_year = user_registration.get("graduation_year", 2025)
+            
+            # Calculate payment amount
+            regular_amount, discount, discounted_amount = app.calculate_payment_amount(
+                city, graduation_year
+            )
+            
+            # Save payment info
+            await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+            
+            # Log payment postponed
+            username = callback_query.from_user.username or ""
+            try:
+                await app.log_payment_submission(
+                    user_id, username, user_registration, discounted_amount, regular_amount
+                )
+            except Exception as e:
+                logger.warning(f"Could not log payment postponement: {e}")
 
 
 # Add payment command handler
@@ -296,9 +352,17 @@ async def pay_handler(message: Message, state: FSMContext):
         selected_reg = payment_registrations[0]
 
     if selected_reg:
+        # Check if user has already seen payment instructions
+        # We'll use payment_status to determine this - if it's set, they've seen instructions
+        skip_instructions = selected_reg.get("payment_status") is not None
+        
         # Process payment for the selected registration
         await process_payment(
-            message, state, selected_reg["target_city"], selected_reg["graduation_year"]
+            message, 
+            state, 
+            selected_reg["target_city"], 
+            selected_reg["graduation_year"],
+            skip_instructions
         )
     else:
         await send_safe(
@@ -567,4 +631,105 @@ async def decline_payment_handler(message: Message):
         await send_safe(
             message.chat.id,
             f"Произошла ошибка при отклонении платежа: {e}",
-        ) 
+        )
+
+
+# Add callback handler for "Pay Now" button
+@router.callback_query(lambda c: c.data == "pay_now")
+async def pay_now_callback(callback_query: CallbackQuery, state: FSMContext):
+    """Handle pay now button click from start handler"""
+    if callback_query.from_user is None:
+        logger.error("Callback from_user is None")
+        return
+        
+    user_id = callback_query.from_user.id
+    
+    # Answer callback to remove loading state
+    await callback_query.answer()
+    
+    # Get user registration
+    registration = await app.get_user_registration(user_id)
+    
+    if not registration:
+        await send_safe(
+            user_id,
+            "Вы еще не зарегистрированы на встречу. Используйте /start для регистрации.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    
+    # Check if this registration requires payment
+    city = registration.get("target_city")
+    if city == TargetCity.SAINT_PETERSBURG.value:
+        await send_safe(
+            user_id,
+            "Для встречи в Санкт-Петербурге оплата не требуется.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    
+    # Get graduation year
+    graduation_year = registration.get("graduation_year", 2025)
+    
+    # Process payment
+    # Skip instructions if payment status is already set (user has seen them before)
+    skip_instructions = registration.get("payment_status") is not None
+    
+    # Create a new message to use for the payment process
+    # This avoids the issue with InaccessibleMessage
+    intro_message = await send_safe(
+        user_id,
+        "Начинаем процесс оплаты...",
+    )
+    
+    # Use the new message for payment processing
+    await process_payment(
+        intro_message, 
+        state, 
+        city, 
+        graduation_year,
+        skip_instructions
+    )
+
+
+# Add callback handler for "Pay Later from Start" button
+@router.callback_query(lambda c: c.data == "pay_later_from_start")
+async def pay_later_from_start_callback(callback_query: CallbackQuery):
+    """Handle pay later button click from start handler"""
+    if callback_query.from_user is None:
+        logger.error("Callback from_user is None")
+        return
+        
+    user_id = callback_query.from_user.id
+    
+    # Answer callback to remove loading state
+    await callback_query.answer()
+    
+    # Notify user
+    await send_safe(
+        user_id,
+        "Хорошо! Вы можете оплатить позже, используя команду /pay",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
+# Add this function at the end of the file
+async def check_pending_payments():
+    """Check if there are any pending payments from the registration flow"""
+    from app.app import App
+    
+    # App.payment_pending is a class attribute
+    if App.payment_pending:
+        # Get the pending payment data
+        payment_data = App.payment_pending
+        
+        # Process the payment
+        await process_payment(
+            payment_data["message"],
+            payment_data["state"],
+            payment_data["city"],
+            payment_data["graduation_year"]
+        )
+        
+        # Clear the pending payment
+        App.payment_pending = None 

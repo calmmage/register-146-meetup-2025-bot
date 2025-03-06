@@ -1,32 +1,14 @@
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
-import asyncio
-import os
-from aiogram import Router, F
-from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    CallbackQuery,
-    ReplyKeyboardRemove,
-    FSInputFile,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
     Message,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
 )
-from dotenv import load_dotenv
-from loguru import logger
-from textwrap import dedent
-from typing import Dict, List
 
-from app.app import App, TargetCity, RegisteredUser
 from botspot import commands_menu
-from botspot.user_interactions import ask_user, ask_user_choice, ask_user_raw
-from botspot.utils import send_safe, is_admin
+from botspot.user_interactions import ask_user_choice
+from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
-from botspot.commands_menu import add_command
 
 router = Router()
 
@@ -36,8 +18,9 @@ async def admin_handler(message: Message, state: FSMContext):
     response = await ask_user_choice(
         message.chat.id,
         "Вы администратор бота. Что вы хотите сделать?",
+        # todo: rework this?
         choices={
-            "register": "Зарегистрироваться на встречу",
+            "register": "Протестировать бота (обычный сценарий)",
             "export": "Экспортировать данные",
             "view_stats": "Посмотреть статистику",
         },
