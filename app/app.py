@@ -451,7 +451,30 @@ class App:
             update_data["admin_comment"] = admin_comment
 
         if payment_amount is not None:
-            update_data["payment_amount"] = payment_amount
+            # Get current registration to check for existing payment
+            registration = await self.collection.find_one({"user_id": user_id, "target_city": city})
+            
+            if registration and "payment_amount" in registration:
+                # Add the new payment to the existing amount
+                total_payment = registration["payment_amount"] + payment_amount
+                update_data["payment_amount"] = total_payment
+                
+                # Store payment history as an array of individual payments
+                payment_history = registration.get("payment_history", [])
+                payment_history.append({
+                    "amount": payment_amount,
+                    "timestamp": datetime.now().isoformat(),
+                    "total_after": total_payment
+                })
+                update_data["payment_history"] = payment_history
+            else:
+                # First payment
+                update_data["payment_amount"] = payment_amount
+                update_data["payment_history"] = [{
+                    "amount": payment_amount,
+                    "timestamp": datetime.now().isoformat(),
+                    "total_after": payment_amount
+                }]
 
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}

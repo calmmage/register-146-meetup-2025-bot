@@ -542,10 +542,31 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     admin = callback_query.from_user
     admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
 
+    # Get updated registration with total payment amount
+    updated_registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    total_payment = updated_registration.get("payment_amount", payment_amount)
+    
+    # Check if this was an additional payment
+    is_additional_payment = total_payment != payment_amount
+    
+    # Check if the total payment amount is less than the recommended amount
+    payment_message = ""
+    
+    if is_additional_payment:
+        payment_message = f"✅ Ваш дополнительный платеж на сумму {payment_amount} руб. подтвержден!\n"
+        payment_message += f"Общая сумма внесенных платежей: {total_payment} руб. Спасибо за оплату."
+    else:
+        payment_message = f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Сумма: {payment_amount} руб. Спасибо за оплату."
+    
+    if total_payment < recommended_amount:
+        shortfall = recommended_amount - total_payment
+        payment_message += f"\n\nОбратите внимание, что ваш общий взнос на {shortfall} руб. меньше рекомендуемой суммы ({recommended_amount} руб.). "
+        payment_message += "Если у вас будет возможность, вы можете доплатить эту сумму позже, используя команду /pay."
+    
     # Notify user
     await send_safe(
         user_id,
-        f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден! Сумма: {payment_amount} руб. Спасибо за оплату.",
+        payment_message,
     )
 
     # Update callback message
@@ -554,11 +575,21 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         user_info = f"{registration.get('username', user_id)} ({registration.get('full_name', 'Неизвестно')})"
 
         # Update the message text or caption
-        payment_status = f"✅ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб."
+        if is_additional_payment:
+            payment_status = f"✅ ДОПОЛНИТЕЛЬНЫЙ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб.\nВсего оплачено: {total_payment} руб."
+        else:
+            payment_status = f"✅ ПЛАТЕЖ ПОДТВЕРЖДЕН\nСумма: {payment_amount} руб."
         
         # Add note about payment being less than recommended if applicable
-        if payment_amount < recommended_amount:
-            payment_status += f"\n⚠️ На {recommended_amount - payment_amount} руб. меньше рекомендуемой суммы!"
+        if total_payment < recommended_amount:
+            payment_status += f"\n⚠️ На {recommended_amount - total_payment} руб. меньше рекомендуемой суммы!"
+        
+        # Add payment history if available
+        payment_history = updated_registration.get("payment_history", [])
+        if len(payment_history) > 1:
+            payment_status += "\n\nИстория платежей:"
+            for i, payment in enumerate(payment_history):
+                payment_status += f"\n{i+1}. {payment['amount']} руб. ({payment['timestamp'][:10]})"
             
         if callback_query.message.caption:
             caption = callback_query.message.caption
