@@ -503,7 +503,8 @@ class App:
 
         status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
 
-        message = f"{status_emoji} ПЛАТЕЖ {status.upper()}\n\n"
+        message = f"{status_emoji} {status.upper()}\n\n"
+
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {registration['full_name']}\n"
         message += f"🎓 Выпуск: {registration['graduation_year']} {registration['class_letter']}\n"
