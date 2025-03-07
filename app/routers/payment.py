@@ -54,7 +54,7 @@ async def process_payment(
             graduate_type = registration["graduate_type"]
 
     # Calculate payment amount
-    regular_amount, discount, discounted_amount = app.calculate_payment_amount(
+    regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
         city, graduation_year, graduate_type
     )
 
@@ -74,34 +74,39 @@ async def process_payment(
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
 
-        payment_msg_part1 = dedent(
-            f"""
-            💰 Оплата мероприятия
-            
-            Для оплаты мероприятия используется следующая формула:
-            
-            {city} → {payment_formula}
-        """
-        )
+        # only display formula if not a friend of school
+        if graduate_type != GraduateType.NON_GRADUATE.value:
+            payment_msg_part1 = dedent(
+                f"""
+                💰 Оплата мероприятия
+                
+                Для оплаты мероприятия используется следующая формула:
+                
+                {city} → {payment_formula}
+            """
+            )
 
-        # Send part 1
-        await send_safe(message.chat.id, payment_msg_part1)
+            # Send part 1
+            await send_safe(message.chat.id, payment_msg_part1)
 
-        # Delay between messages
-        await asyncio.sleep(5)
+            # Delay between messages
+            await asyncio.sleep(5)
 
         # Check if we're before the early registration deadline
         today = datetime.now()
         is_early_registration_period = today < EARLY_REGISTRATION_DATE
 
-        # discount_amount = regular_amount - final_amount
+        formula_message = ""
+        if formula_amount > regular_amount:
+            formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
+
         if is_early_registration_period:
             payment_msg_part2 = dedent(
                 f"""
-                Для вас минимальный взнос: {regular_amount} руб.
+                Для вас минимальный взнос: {regular_amount} руб. {formula_message}
                 
                 При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
-                Минимальная сумма взноса при ранней оплате - {discounted_amount} руб.
+                Минимальный взнос при ранней оплате - {discounted_amount} руб.
                 
                 Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
                 """
@@ -110,6 +115,7 @@ async def process_payment(
             payment_msg_part2 = dedent(
                 f"""
                 Для вас минимальный взнос: {regular_amount} руб.
+                {formula_message}
                 
                 Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
                 """
@@ -167,8 +173,14 @@ async def process_payment(
             reply_markup=ReplyKeyboardRemove(),
         )
 
+        await app.log_registration_step(
+            user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
+        )
+
         # Save payment info with pending status
-        await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+        await app.save_payment_info(
+            user_id, city, discounted_amount, regular_amount, formula_amount=formula_amount
+        )
         return False
 
     # Otherwise, it's a message with photo or document
@@ -183,7 +195,12 @@ async def process_payment(
     if has_photo or has_pdf:
         # Save payment info with pending status
         await app.save_payment_info(
-            user_id, city, discounted_amount, regular_amount, response.message_id
+            user_id,
+            city,
+            discounted_amount,
+            regular_amount,
+            response.message_id,
+            formula_amount=formula_amount,
         )
 
         # Forward screenshot to events chat (which is used as validation chat)
@@ -209,7 +226,17 @@ async def process_payment(
                 user_registration = await app.get_user_registration(user_id)
                 if user_registration:
                     user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
-                    user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
+
+                    # Add graduate type info
+                    graduate_type = user_registration.get(
+                        "graduate_type", GraduateType.GRADUATE.value
+                    )
+                    if graduate_type == GraduateType.TEACHER.value:
+                        user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
+                    elif graduate_type == GraduateType.NON_GRADUATE.value:
+                        user_info += f"👥 Статус: Друг школы (не выпускник)\n"
+                    else:
+                        user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
 
                 # Get bot instance
                 from botspot.core.dependency_manager import get_dependency_manager
@@ -257,7 +284,12 @@ async def process_payment(
 
                     # Save the screenshot message ID for reference
                     await app.save_payment_info(
-                        user_id, city, discounted_amount, regular_amount, forwarded_msg.message_id
+                        user_id,
+                        city,
+                        discounted_amount,
+                        regular_amount,
+                        forwarded_msg.message_id,
+                        formula_amount=formula_amount,
                     )
 
                     logger.info(
@@ -424,6 +456,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Registration not found")
         return
 
+    username = registration.get("username", user_id)
+    full_name = registration.get("full_name", "Неизвестно")
+
     # Get the discounted amount to suggest as default
     discounted_amount = registration.get("discounted_payment_amount", 0)
     regular_amount = registration.get("regular_payment_amount", 0)
@@ -432,11 +467,26 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     today = datetime.now()
     recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
 
+    # Get graduate type for information
+    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
+    graduate_type_info = ""
+    if graduate_type == GraduateType.TEACHER.value:
+        graduate_type_info = "👨‍🏫 Учитель (бесплатно)"
+    elif graduate_type == GraduateType.NON_GRADUATE.value:
+        graduate_type_info = "👥 Друг школы (не выпускник)"
+    else:
+        graduation_year = registration.get("graduation_year", "Неизвестно")
+        class_letter = registration.get("class_letter", "")
+        graduate_type_info = f"🎓 Выпускник {graduation_year} {class_letter}"
+
     chat_id = callback_query.message.chat.id
     # Ask for payment amount directly using ask_user_raw, suggesting the recommended amount
     amount_response = await ask_user_raw(
         chat_id,
-        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}\n(Рекомендуемая сумма: {recommended_amount} руб.)",
+        f"Укажите сумму платежа для пользователя {username} ({full_name})\n"
+        f"Город: {city}\n"
+        f"Статус: {graduate_type_info}\n"
+        f"Рекомендуемая сумма: {recommended_amount} руб.",
         state=state,
         timeout=300,
     )
@@ -456,10 +506,6 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Update payment status
     await app.update_payment_status(user_id, city, "confirmed", payment_amount=payment_amount)
-
-    # Log the confirmation
-    admin = callback_query.from_user
-    admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
 
     # Get updated registration with total payment amount
     updated_registration = await app.collection.find_one({"user_id": user_id, "target_city": city})

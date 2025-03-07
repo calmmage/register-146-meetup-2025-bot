@@ -1,11 +1,12 @@
 import re
 from aiogram.types import Message
+from datetime import datetime
 from enum import Enum
 from loguru import logger
 from pydantic import SecretStr, BaseModel
 from pydantic_settings import BaseSettings
 from typing import Optional, Tuple
-from datetime import datetime
+
 from botspot import get_database
 from botspot.utils import send_safe
 
@@ -383,7 +384,7 @@ class App:
 
     def calculate_payment_amount(
         self, city: str, graduation_year: int, graduate_type: str = GraduateType.GRADUATE.value
-    ) -> tuple[int, int, int]:
+    ) -> tuple[int, int, int, int]:
         """
         Calculate the payment amount based on city, graduation year, and graduate type
 
@@ -397,26 +398,35 @@ class App:
         """
         # Teachers and Saint Petersburg attendees are free
         if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value:
-            return 0, 0, 0
+            return 0, 0, 0, 0
 
         # For non-graduates, use fixed recommended amounts
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
-                return 5000, 0, 5000
+                return 4000, 1000, 3000, 4000
             elif city == TargetCity.PERM.value:
-                return 2500, 0, 2500
+                return 2000, 500, 1500, 2000
             else:
-                return 0, 0, 0
+                return 0, 0, 0, 0
 
         # Regular payment calculation for graduates
         current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 
-        regular_amount = 0
+        formula_amount = 0
         if city == TargetCity.MOSCOW.value:
-            regular_amount = 1000 + (200 * years_since_graduation)
+            formula_amount = 1000 + (200 * years_since_graduation)
         elif city == TargetCity.PERM.value:
-            regular_amount = 500 + (100 * years_since_graduation)
+            formula_amount = 500 + (100 * years_since_graduation)
+
+        regular_amount = 0
+        if years_since_graduation <= 15:
+            regular_amount = formula_amount
+        else:
+            if city == TargetCity.MOSCOW.value:
+                regular_amount = 4000
+            elif city == TargetCity.PERM.value:
+                regular_amount = 2000
 
         # Early registration discount
         discount = 0
@@ -429,7 +439,7 @@ class App:
         # Final amount after discount
         discounted_amount = max(0, regular_amount - discount)
 
-        return regular_amount, discount, discounted_amount
+        return regular_amount, discount, discounted_amount, formula_amount
 
     async def save_payment_info(
         self,
@@ -438,6 +448,7 @@ class App:
         discounted_amount: int,
         regular_amount: int,
         screenshot_message_id: int = None,
+        formula_amount: int = None,
     ):
         """
         Save payment information for a user
@@ -445,21 +456,27 @@ class App:
         Args:
             user_id: The user's Telegram ID
             city: The city of the event
-            amount: The payment amount
+            discounted_amount: The payment amount with early discount
+            regular_amount: The regular payment amount without discount
             screenshot_message_id: ID of the message containing the payment screenshot
+            formula_amount: The payment amount calculated by formula
         """
         # Update the user's registration with payment info
+        update_data = {
+            "discounted_payment_amount": discounted_amount,
+            "regular_payment_amount": regular_amount,
+            "payment_screenshot_id": screenshot_message_id,
+            "payment_status": "pending",
+            "payment_timestamp": datetime.now().isoformat(),
+        }
+        
+        # Add formula amount if provided
+        if formula_amount is not None:
+            update_data["formula_payment_amount"] = formula_amount
+            
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city},
-            {
-                "$set": {
-                    "discounted_payment_amount": discounted_amount,
-                    "regular_payment_amount": regular_amount,
-                    "payment_screenshot_id": screenshot_message_id,
-                    "payment_status": "pending",
-                    "payment_timestamp": datetime.now().isoformat(),
-                }
-            },
+            {"$set": update_data},
         )
 
     async def update_payment_status(

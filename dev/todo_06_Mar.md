@@ -1,6 +1,23 @@
+- [ ] make sure to save reg,min and formula amounts to database
+- [ ] export payment amounts to google sheet
+
 # Promo
 - [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
+
+New feature idea:
+- parse transaction amount from doc / screenshot and then add a new button "confirm (x) rub"
+- bonus: test litellm
+
+# New Tasks (March 7)
+- [x] Улучшить сообщение о подтверждении оплаты, чтобы там не id было
+- [x] Поменять чтобы для старых выпусков (у кого большие суммы получаются) было 3000 обязательно и по формуле рекомендовано
+- [x] Пофиксить сценарий что "друзьям школы" 0
+- [ ] Сделать предупреждение до оплаты о подтверждении регистрации
+
+- [x] add a test stand
+  - dev branch? 
+  - new bot token - done
 
 # Рассылки (это потом сделаем)
 - тем кто не оплатил
@@ -17,6 +34,7 @@
 Optional Improvements
 - [ ] move early registration date to app settings
 - [ ] for payment validation check - check screenshot message date, not current data, to determine if discount applies
+- [ ] rework the database operations to return structured objects (to prevent future issues with missing fields)
 
 # About 'delay registraction until payment intent is confirmed'
 ...4) не заканчивать регистрацию пока человек не подтвердил намерение оплатить

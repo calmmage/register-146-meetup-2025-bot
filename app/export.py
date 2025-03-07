@@ -92,7 +92,10 @@ class SheetExporter:
                 "Город участия во встрече", 
                 "Telegram Username", 
                 "Статус оплаты", 
-                "Сумма оплаты", 
+                "Сумма оплаты (факт)", 
+                "Мин. сумма со скидкой",
+                "Регулярная сумма",
+                "Формула",
                 "Дата оплаты"
             ]
             sheet.update([headers])
@@ -100,9 +103,12 @@ class SheetExporter:
             # Prepare user data
             rows = []
             for user in users:
-                # Get payment status and amount
+                # Get payment status and all payment amounts
                 payment_status = user.get("payment_status", "Не оплачено")
-                payment_amount = user.get("payment_amount", 0)
+                payment_amount = user.get("payment_amount", 0)  # Actual payment amount
+                discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
+                regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
+                formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
                 
                 rows.append(
@@ -114,6 +120,9 @@ class SheetExporter:
                         user.get("username", ""),
                         payment_status,
                         payment_amount,
+                        discounted_amount,
+                        regular_amount,
+                        formula_amount,
                         payment_timestamp
                     ]
                 )
@@ -162,16 +171,22 @@ class SheetExporter:
                 "Город участия во встрече", 
                 "Telegram Username", 
                 "Статус оплаты", 
-                "Сумма оплаты", 
+                "Сумма оплаты (факт)", 
+                "Мин. сумма со скидкой",
+                "Регулярная сумма",
+                "Формула",
                 "Дата оплаты"
             ]
             writer.writerow(headers)
 
             # Write user data
             for user in users:
-                # Get payment status and amount
+                # Get payment status and all payment amounts
                 payment_status = user.get("payment_status", "Не оплачено")
-                payment_amount = user.get("payment_amount", 0)
+                payment_amount = user.get("payment_amount", 0)  # Actual payment amount
+                discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
+                regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
+                formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
                 
                 writer.writerow(
@@ -183,6 +198,9 @@ class SheetExporter:
                         user.get("username", ""),
                         payment_status,
                         payment_amount,
+                        discounted_amount,
+                        regular_amount,
+                        formula_amount,
                         payment_timestamp
                     ]
                 )
