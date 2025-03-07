@@ -74,21 +74,23 @@ async def process_payment(
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
 
-        payment_msg_part1 = dedent(
-            f"""
-            💰 Оплата мероприятия
-            
-            Для оплаты мероприятия используется следующая формула:
-            
-            {city} → {payment_formula}
-        """
-        )
+        # only display formula if not a friend of school
+        if graduate_type != GraduateType.NON_GRADUATE.value:
+            payment_msg_part1 = dedent(
+                f"""
+                💰 Оплата мероприятия
+                
+                Для оплаты мероприятия используется следующая формула:
+                
+                {city} → {payment_formula}
+            """
+            )
 
-        # Send part 1
-        await send_safe(message.chat.id, payment_msg_part1)
+            # Send part 1
+            await send_safe(message.chat.id, payment_msg_part1)
 
-        # Delay between messages
-        await asyncio.sleep(5)
+            # Delay between messages
+            await asyncio.sleep(5)
 
         # Check if we're before the early registration deadline
         today = datetime.now()
