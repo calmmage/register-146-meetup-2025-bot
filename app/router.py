@@ -463,6 +463,8 @@ async def register_user(
         full_name = reuse_info["full_name"]
         graduation_year = reuse_info["graduation_year"]
         class_letter = reuse_info["class_letter"]
+        # Get graduate_type from existing info or default to GRADUATE
+        graduate_type = GraduateType(reuse_info.get("graduate_type", GraduateType.GRADUATE.value))
 
         # Confirm reusing the information
         confirm_text = dedent(

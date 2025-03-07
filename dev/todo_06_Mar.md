@@ -12,6 +12,10 @@ New feature idea:
 - [x] Пофиксить сценарий что "друзьям школы" 0
 - [ ] Сделать предупреждение до оплаты о подтверждении регистрации
 
+- [x] add a test stand
+  - dev branch? 
+  - new bot token - done
+
 # Рассылки (это потом сделаем)
 - тем кто не оплатил
 - тем кто оплатил но меньше чем нужно
@@ -27,6 +31,7 @@ New feature idea:
 Optional Improvements
 - [ ] move early registration date to app settings
 - [ ] for payment validation check - check screenshot message date, not current data, to determine if discount applies
+- [ ] rework the database operations to return structured objects (to prevent future issues with missing fields)
 
 # About 'delay registraction until payment intent is confirmed'
 ...4) не заканчивать регистрацию пока человек не подтвердил намерение оплатить
