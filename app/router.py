@@ -1,12 +1,9 @@
-import os
 from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ReplyKeyboardRemove,
     Message,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
 )
 from dotenv import load_dotenv
 from loguru import logger
@@ -377,6 +374,13 @@ async def register_user(
     if user_id not in log_messages:
         log_messages[user_id] = []
 
+    # Initialize all variables that could be unbound
+    full_name = None
+    graduation_year = None
+    class_letter = None
+    location = None
+    graduate_type = GraduateType.GRADUATE  # Default type - will be overridden in specific cases
+
     # Log registration start
     log_msg = await app.log_registration_step(
         user_id,
@@ -392,8 +396,6 @@ async def register_user(
     existing_cities = [reg["target_city"] for reg in existing_registrations]
 
     # step 1 - greet user, ask location
-    location = None
-
     if preselected_city:
         # Use preselected city if provided
         location = next((c for c in TargetCity if c.value == preselected_city), None)
@@ -463,7 +465,6 @@ async def register_user(
         full_name = reuse_info["full_name"]
         graduation_year = reuse_info["graduation_year"]
         class_letter = reuse_info["class_letter"]
-        # Get graduate_type from existing info or default to GRADUATE
         graduate_type = GraduateType(reuse_info.get("graduate_type", GraduateType.GRADUATE.value))
 
         # Confirm reusing the information
@@ -551,7 +552,6 @@ async def register_user(
                     
                     <tg-spoiler>Если вы учитель школы 146 (нынешний или бывший), нажмите: /i_am_a_teacher
                     Если вы не выпускник, но друг школы 146 - нажмите: /i_am_a_friend</tg-spoiler>
-                    
                     """
                 )
 
@@ -607,6 +607,7 @@ async def register_user(
             # If we already have a year and just need the letter
             elif graduation_year is not None and class_letter is None:
                 # Validate just the class letter
+                class_letter = response.strip().split()[-1]
                 valid, error = app.validate_class_letter(response)
                 if valid:
                     class_letter = response.upper()
@@ -635,6 +636,18 @@ async def register_user(
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
+
+    # Internal validation - log error but don't expose to user
+    if not all([full_name, graduation_year is not None, class_letter, location, graduate_type]):
+        logger.error(
+            f"Registration validation failed - missing required fields: "
+            f"full_name={full_name}, "
+            f"graduation_year={graduation_year}, "
+            f"class_letter={class_letter}, "
+            f"location={location}, "
+            f"graduate_type={graduate_type}"
+        )
+        return
 
     # Save the registration
     await app.save_registered_user(

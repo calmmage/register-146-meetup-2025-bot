@@ -98,7 +98,7 @@ async def process_payment(
 
         formula_message = 0
         if formula_amount > regular_amount:
-            formula_message = f"\nРекомендованный взнос по формуле: {formula_amount} руб."
+            formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
 
         if is_early_registration_period:
             payment_msg_part2 = dedent(
@@ -179,7 +179,7 @@ async def process_payment(
         )
 
         # Save payment info with pending status
-        await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+        await app.save_payment_info(user_id, city, discounted_amount, regular_amount, formula_amount=formula_amount)
         return False
 
     # Otherwise, it's a message with photo or document
@@ -194,7 +194,7 @@ async def process_payment(
     if has_photo or has_pdf:
         # Save payment info with pending status
         await app.save_payment_info(
-            user_id, city, discounted_amount, regular_amount, response.message_id
+            user_id, city, discounted_amount, regular_amount, response.message_id, formula_amount=formula_amount
         )
 
         # Forward screenshot to events chat (which is used as validation chat)
@@ -278,7 +278,7 @@ async def process_payment(
 
                     # Save the screenshot message ID for reference
                     await app.save_payment_info(
-                        user_id, city, discounted_amount, regular_amount, forwarded_msg.message_id
+                        user_id, city, discounted_amount, regular_amount, forwarded_msg.message_id, formula_amount=formula_amount
                     )
 
                     logger.info(
