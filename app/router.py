@@ -647,7 +647,6 @@ async def register_user(
             f"location={location}, "
             f"graduate_type={graduate_type}"
         )
-        return
 
     # Save the registration
     await app.save_registered_user(
