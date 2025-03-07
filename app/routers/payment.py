@@ -428,6 +428,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Registration not found")
         return
 
+    username = registration.get("username", user_id)
+    full_name = registration.get("full_name", "Неизвестно")
+
     # Get the discounted amount to suggest as default
     discounted_amount = registration.get("discounted_payment_amount", 0)
     regular_amount = registration.get("regular_payment_amount", 0)
@@ -440,7 +443,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Ask for payment amount directly using ask_user_raw, suggesting the recommended amount
     amount_response = await ask_user_raw(
         chat_id,
-        f"Укажите сумму платежа для пользователя ID:{user_id}, город: {city}\n(Рекомендуемая сумма: {recommended_amount} руб.)",
+        f"Укажите сумму платежа для пользователя {username} ({full_name}) в городе {city} (рекомендуемая сумма: {recommended_amount} руб.):",
         state=state,
         timeout=300,
     )
