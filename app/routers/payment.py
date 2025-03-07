@@ -215,7 +215,15 @@ async def process_payment(
                 user_registration = await app.get_user_registration(user_id)
                 if user_registration:
                     user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
-                    user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
+                    
+                    # Add graduate type info
+                    graduate_type = user_registration.get('graduate_type', GraduateType.GRADUATE.value)
+                    if graduate_type == GraduateType.TEACHER.value:
+                        user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
+                    elif graduate_type == GraduateType.NON_GRADUATE.value:
+                        user_info += f"👥 Статус: Друг школы (не выпускник)\n"
+                    else:
+                        user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
 
                 # Get bot instance
                 from botspot.core.dependency_manager import get_dependency_manager
@@ -441,11 +449,26 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     today = datetime.now()
     recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
 
+    # Get graduate type for information
+    graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
+    graduate_type_info = ""
+    if graduate_type == GraduateType.TEACHER.value:
+        graduate_type_info = "👨‍🏫 Учитель (бесплатно)"
+    elif graduate_type == GraduateType.NON_GRADUATE.value:
+        graduate_type_info = "👥 Друг школы (не выпускник)"
+    else:
+        graduation_year = registration.get("graduation_year", "Неизвестно")
+        class_letter = registration.get("class_letter", "")
+        graduate_type_info = f"🎓 Выпускник {graduation_year} {class_letter}"
+
     chat_id = callback_query.message.chat.id
     # Ask for payment amount directly using ask_user_raw, suggesting the recommended amount
     amount_response = await ask_user_raw(
         chat_id,
-        f"Укажите сумму платежа для пользователя {username} ({full_name}) в городе {city} (рекомендуемая сумма: {recommended_amount} руб.):",
+        f"Укажите сумму платежа для пользователя {username} ({full_name})\n"
+        f"Город: {city}\n"
+        f"Статус: {graduate_type_info}\n"
+        f"Рекомендуемая сумма: {recommended_amount} руб.",
         state=state,
         timeout=300,
     )

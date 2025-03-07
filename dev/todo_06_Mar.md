@@ -2,10 +2,14 @@
 - [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
 
+New feature idea:
+- parse transaction amount from doc / screenshot and then add a new button "confirm (x) rub"
+- bonus: test litellm
+
 # New Tasks (March 7)
 - [x] Улучшить сообщение о подтверждении оплаты, чтобы там не id было
 - [ ] Поменять чтобы для старых выпусков (у кого большие суммы получаются) было 3000 обязательно и по формуле рекомендовано
-- [ ] Пофиксить сценарий что "друзьям школы" 0
+- [x] Пофиксить сценарий что "друзьям школы" 0
 - [ ] Сделать предупреждение до оплаты о подтверждении регистрации
 
 # Рассылки (это потом сделаем)
