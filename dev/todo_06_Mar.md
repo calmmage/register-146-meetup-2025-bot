@@ -1,3 +1,6 @@
+- [ ] make sure to save reg,min and formula amounts to database
+- [ ] export payment amounts to google sheet
+
 # Promo
 - [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
@@ -8,7 +11,7 @@ New feature idea:
 
 # New Tasks (March 7)
 - [x] Улучшить сообщение о подтверждении оплаты, чтобы там не id было
-- [ ] Поменять чтобы для старых выпусков (у кого большие суммы получаются) было 3000 обязательно и по формуле рекомендовано
+- [x] Поменять чтобы для старых выпусков (у кого большие суммы получаются) было 3000 обязательно и по формуле рекомендовано
 - [x] Пофиксить сценарий что "друзьям школы" 0
 - [ ] Сделать предупреждение до оплаты о подтверждении регистрации
 

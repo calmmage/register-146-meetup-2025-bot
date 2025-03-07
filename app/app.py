@@ -383,7 +383,7 @@ class App:
 
     def calculate_payment_amount(
         self, city: str, graduation_year: int, graduate_type: str = GraduateType.GRADUATE.value
-    ) -> tuple[int, int, int]:
+    ) -> tuple[int, int, int, int]:
         """
         Calculate the payment amount based on city, graduation year, and graduate type
 
@@ -397,26 +397,35 @@ class App:
         """
         # Teachers and Saint Petersburg attendees are free
         if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value:
-            return 0, 0, 0
+            return 0, 0, 0, 0
 
         # For non-graduates, use fixed recommended amounts
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
-                return 4000, 1000, 3000
+                return 4000, 1000, 3000, 4000
             elif city == TargetCity.PERM.value:
-                return 2000, 500, 1500
+                return 2000, 500, 1500, 2000
             else:
-                return 0, 0, 0
+                return 0, 0, 0, 0
 
         # Regular payment calculation for graduates
         current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 
-        regular_amount = 0
+        formula_amount = 0
         if city == TargetCity.MOSCOW.value:
-            regular_amount = 1000 + (200 * years_since_graduation)
+            formula_amount = 1000 + (200 * years_since_graduation)
         elif city == TargetCity.PERM.value:
-            regular_amount = 500 + (100 * years_since_graduation)
+            formula_amount = 500 + (100 * years_since_graduation)
+
+        regular_amount = 0
+        if years_since_graduation <= 15:
+            regular_amount = formula_amount
+        else:
+            if city == TargetCity.MOSCOW.value:
+                regular_amount = 4000
+            elif city == TargetCity.PERM.value:
+                regular_amount = 2000
 
         # Early registration discount
         discount = 0
@@ -429,7 +438,7 @@ class App:
         # Final amount after discount
         discounted_amount = max(0, regular_amount - discount)
 
-        return regular_amount, discount, discounted_amount
+        return regular_amount, discount, discounted_amount, formula_amount
 
     async def save_payment_info(
         self,

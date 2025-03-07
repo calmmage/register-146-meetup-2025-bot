@@ -54,7 +54,7 @@ async def process_payment(
             graduate_type = registration["graduate_type"]
 
     # Calculate payment amount
-    regular_amount, discount, discounted_amount = app.calculate_payment_amount(
+    regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
         city, graduation_year, graduate_type
     )
 
@@ -96,11 +96,15 @@ async def process_payment(
         today = datetime.now()
         is_early_registration_period = today < EARLY_REGISTRATION_DATE
 
-        # discount_amount = regular_amount - final_amount
+        formula_message = 0
+        if formula_amount > regular_amount:
+            formula_message = f"\nРекомендованный взнос по формуле: {formula_amount} руб."
+
         if is_early_registration_period:
             payment_msg_part2 = dedent(
                 f"""
                 Для вас минимальный взнос: {regular_amount} руб.
+                {formula_message}
                 
                 При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
                 Минимальная сумма взноса при ранней оплате - {discounted_amount} руб.
@@ -112,6 +116,7 @@ async def process_payment(
             payment_msg_part2 = dedent(
                 f"""
                 Для вас минимальный взнос: {regular_amount} руб.
+                {formula_message}
                 
                 Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
                 """
@@ -215,9 +220,11 @@ async def process_payment(
                 user_registration = await app.get_user_registration(user_id)
                 if user_registration:
                     user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
-                    
+
                     # Add graduate type info
-                    graduate_type = user_registration.get('graduate_type', GraduateType.GRADUATE.value)
+                    graduate_type = user_registration.get(
+                        "graduate_type", GraduateType.GRADUATE.value
+                    )
                     if graduate_type == GraduateType.TEACHER.value:
                         user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
                     elif graduate_type == GraduateType.NON_GRADUATE.value:
@@ -488,10 +495,6 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Update payment status
     await app.update_payment_status(user_id, city, "confirmed", payment_amount=payment_amount)
-
-    # Log the confirmation
-    admin = callback_query.from_user
-    admin_info = f"{admin.username or admin.id}" if admin else "Unknown"
 
     # Get updated registration with total payment amount
     updated_registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
