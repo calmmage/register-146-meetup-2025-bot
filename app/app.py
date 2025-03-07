@@ -402,9 +402,9 @@ class App:
         # For non-graduates, use fixed recommended amounts
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
-                return 5000, 0, 5000
+                return 4000, 1000, 3000
             elif city == TargetCity.PERM.value:
-                return 2500, 0, 2500
+                return 2000, 500, 1500
             else:
                 return 0, 0, 0
 
