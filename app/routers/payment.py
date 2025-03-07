@@ -167,6 +167,10 @@ async def process_payment(
             reply_markup=ReplyKeyboardRemove(),
         )
 
+        await app.log_registration_step(
+            user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
+        )
+
         # Save payment info with pending status
         await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
         return False
