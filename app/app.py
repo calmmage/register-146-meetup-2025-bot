@@ -27,7 +27,12 @@ class GraduateType(str, Enum):
 GRADUATE_TYPE_MAP = {
     GraduateType.GRADUATE.value: "Выпускник",
     GraduateType.TEACHER.value: "Учитель",
-    GraduateType.NON_GRADUATE.value: "Не выпускник",
+    GraduateType.NON_GRADUATE.value: "Друг",
+}
+GRADUATE_TYPE_MAP_PLURAL = {
+    GraduateType.GRADUATE.value: "Выпускники",
+    GraduateType.TEACHER.value: "Учителя",
+    GraduateType.NON_GRADUATE.value: "Друзья",
 }
 
 # Mapping for payment statuses
