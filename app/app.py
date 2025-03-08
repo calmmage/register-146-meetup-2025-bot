@@ -27,13 +27,13 @@ class GraduateType(str, Enum):
 GRADUATE_TYPE_MAP = {
     GraduateType.GRADUATE.value: "Выпускник",
     GraduateType.TEACHER.value: "Учитель",
-    GraduateType.NON_GRADUATE.value: "Не выпускник"
+    GraduateType.NON_GRADUATE.value: "Не выпускник",
 }
 
 # Mapping for payment statuses
 PAYMENT_STATUS_MAP = {
     "confirmed": "Оплачено",
-    "pending": "В обработке",
+    "pending": "Оплачу позже",
     "declined": "Отклонено",
     None: "Не оплачено",
     "Не оплачено": "Не оплачено",  # For backward compatibility with existing data
@@ -486,11 +486,11 @@ class App:
             "payment_status": "pending",
             "payment_timestamp": datetime.now().isoformat(),
         }
-        
+
         # Add formula amount if provided
         if formula_amount is not None:
             update_data["formula_payment_amount"] = formula_amount
-            
+
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city},
             {"$set": update_data},

@@ -23,7 +23,8 @@ async def admin_handler(message: Message, state: FSMContext):
         choices={
             "register": "Протестировать бота (обычный сценарий)",
             "export": "Экспортировать данные",
-            "view_stats": "Посмотреть статистику",
+            "view_stats": "Посмотреть статистику (подробно)",
+            "view_simple_stats": "Посмотреть статистику (кратко)",
         },
         state=state,
         timeout=None,
@@ -33,6 +34,8 @@ async def admin_handler(message: Message, state: FSMContext):
         await export_handler(message, state)
     elif response == "view_stats":
         await show_stats(message)
+    elif response == "view_simple_stats":
+        await show_simple_stats(message)
     # For "register", continue with normal flow
     return response
 
@@ -85,9 +88,9 @@ async def show_stats(message: Message):
     stats_text = "<b>📊 Статистика регистраций</b>\n\n"
 
     # 1. Count registrations by city
-    city_cursor = app.collection.aggregate([
-        {"$group": {"_id": "$target_city", "count": {"$sum": 1}}}
-    ])
+    city_cursor = app.collection.aggregate(
+        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+    )
     city_stats = await city_cursor.to_list(length=None)
 
     stats_text += "<b>🌆 По городам:</b>\n"
@@ -100,9 +103,9 @@ async def show_stats(message: Message):
     stats_text += f"\nВсего: <b>{total}</b> человек\n\n"
 
     # 2. Distribution by graduate type
-    grad_cursor = app.collection.aggregate([
-        {"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}
-    ])
+    grad_cursor = app.collection.aggregate(
+        [{"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}]
+    )
     grad_stats = await grad_cursor.to_list(length=None)
 
     stats_text += "<b>👥 По статусу:</b>\n"
@@ -116,29 +119,53 @@ async def show_stats(message: Message):
     stats_text += "\n"
 
     # 3. Payment statistics by city
-    payment_cursor = app.collection.aggregate([
-        {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
-        {"$group": {
-            "_id": "$target_city",
-            "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
-            "confirmed_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}},
-            "pending_count": {"$sum": {"$cond": [
-                {"$or": [
-                    {"$eq": ["$payment_status", "pending"]},
-                ]}, 1, 0
-            ]}},
-            "declined_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}},
-            "unpaid_count": {"$sum": {"$cond": [
-                {"$or": [
-                    {"$eq": ["$payment_status", None]},
-                    {"$eq": ["$payment_status", "Не оплачено"]}
-                ]}, 1, 0
-            ]}},
-            "total_formula": {"$sum": {"$ifNull": ["$formula_payment_amount", 0]}},
-            "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}},
-            "total_discounted": {"$sum": {"$ifNull": ["$discounted_payment_amount", 0]}}
-        }}
-    ])
+    payment_cursor = app.collection.aggregate(
+        [
+            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+            {
+                "$group": {
+                    "_id": "$target_city",
+                    "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
+                    "confirmed_count": {
+                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                    },
+                    "pending_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$eq": ["$payment_status", "pending"]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "declined_count": {
+                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                    },
+                    "unpaid_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$eq": ["$payment_status", None]},
+                                        {"$eq": ["$payment_status", "Не оплачено"]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "total_formula": {"$sum": {"$ifNull": ["$formula_payment_amount", 0]}},
+                    "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}},
+                    "total_discounted": {"$sum": {"$ifNull": ["$discounted_payment_amount", 0]}},
+                }
+            },
+        ]
+    )
     payment_stats = await payment_cursor.to_list(length=None)
 
     stats_text += "<b>💰 Статистика оплат:</b>\n"
@@ -153,7 +180,7 @@ async def show_stats(message: Message):
         formula = stat["total_formula"]
         regular = stat["total_regular"]
         discounted = stat["total_discounted"]
-        
+
         total_paid += paid
         total_formula += formula
         total_regular += regular
@@ -169,13 +196,12 @@ async def show_stats(message: Message):
         stats_text += f"📊 % от формулы: <i>{pct_of_formula:.1f}%</i>\n"
         stats_text += f"📊 % от регулярной: <i>{pct_of_regular:.1f}%</i>\n"
         stats_text += f"📊 % от мин. со скидкой: <i>{pct_of_discounted:.1f}%</i>\n\n"
-        
+
         # Payment status distribution
         stats_text += "<u>Статусы платежей:</u>\n"
         stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{stat['confirmed_count']}</b>\n"
         stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{stat['pending_count']}</b>\n"
-        stats_text += f"❌ {PAYMENT_STATUS_MAP['declined']}: <b>{stat['declined_count']}</b>\n"
-        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{stat['unpaid_count']}</b>\n"
+        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{stat['declined_count'] + stat['unpaid_count']}</b>\n"
 
     # Add totals
     if total_paid > 0:
@@ -186,5 +212,127 @@ async def show_stats(message: Message):
         stats_text += f"📊 % от общей формулы: <i>{total_pct_formula:.1f}%</i>\n"
         stats_text += f"📊 % от общей регулярной: <i>{total_pct_regular:.1f}%</i>\n"
         stats_text += f"📊 % от общей мин. со скидкой: <i>{total_pct_discounted:.1f}%</i>\n"
+
+    await send_safe(message.chat.id, stats_text)
+
+
+@commands_menu.add_command(
+    "simple_stats", "Краткая статистика регистраций", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("simple_stats"), AdminFilter())
+async def show_simple_stats(message: Message):
+    """Показать краткую статистику регистраций"""
+    from app.router import app
+    from app.app import GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+
+    stats_text = "<b>📊 Краткая статистика регистраций</b>\n\n"
+
+    # 1. Count registrations by city
+    city_cursor = app.collection.aggregate(
+        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+    )
+    city_stats = await city_cursor.to_list(length=None)
+
+    stats_text += "<b>🌆 По городам:</b>\n"
+    total = 0
+    for stat in city_stats:
+        city = stat["_id"]
+        count = stat["count"]
+        total += count
+        stats_text += f"• {city}: <b>{count}</b> человек\n"
+    stats_text += f"\nВсего: <b>{total}</b> человек\n\n"
+
+    # 2. Distribution by graduate type
+    grad_cursor = app.collection.aggregate(
+        [{"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}]
+    )
+    grad_stats = await grad_cursor.to_list(length=None)
+
+    stats_text += "<b>👥 По статусу:</b>\n"
+    for stat in grad_stats:
+        grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
+        count = stat["count"]
+        # Get singular form from map and make it plural by adding 'и' or 'я'
+        singular = GRADUATE_TYPE_MAP.get(grad_type, grad_type)
+        plural = singular + ("и" if singular.endswith("к") else "я")  # Add proper plural ending
+        stats_text += f"• {plural}: <b>{count}</b>\n"
+    stats_text += "\n"
+
+    # 3. Basic payment status distribution (without amounts)
+    payment_cursor = app.collection.aggregate(
+        [
+            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+            {
+                "$group": {
+                    "_id": "$target_city",
+                    "confirmed_count": {
+                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                    },
+                    "pending_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$eq": ["$payment_status", "pending"]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "declined_count": {
+                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                    },
+                    "unpaid_count": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$or": [
+                                        {"$eq": ["$payment_status", None]},
+                                        {"$eq": ["$payment_status", "Не оплачено"]},
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                }
+            },
+        ]
+    )
+    payment_stats = await payment_cursor.to_list(length=None)
+
+    stats_text += "<b>💰 Статусы оплат:</b>\n"
+    total_confirmed = 0
+    total_pending = 0
+    total_declined = 0
+    total_unpaid = 0
+
+    for stat in payment_stats:
+        city = stat["_id"]
+        confirmed = stat["confirmed_count"]
+        pending = stat["pending_count"]
+        declined = stat["declined_count"]
+        unpaid = stat["unpaid_count"]
+
+        total_confirmed += confirmed
+        total_pending += pending
+        total_declined += declined
+        total_unpaid += unpaid
+
+        stats_text += f"\n<b>{city}:</b>\n"
+        stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{confirmed}</b>\n"
+        stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{pending}</b>\n"
+        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{declined + unpaid}</b>\n"
+
+    # Add totals
+    total_with_payment = total_confirmed + total_pending + total_declined + total_unpaid
+    if total_with_payment > 0:
+        stats_text += f"\n<b>Всего по статусам:</b>\n"
+        stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{total_confirmed}</b>\n"
+        stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{total_pending}</b>\n"
+        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{total_declined + total_unpaid}</b>\n"
 
     await send_safe(message.chat.id, stats_text)
