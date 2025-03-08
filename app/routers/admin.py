@@ -112,13 +112,31 @@ async def show_stats(message: Message):
 
     # 2. Distribution by graduate type
     grad_cursor = app.collection.aggregate(
-        [{"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}]
+        [
+            {
+                "$addFields": {
+                    "normalized_type": {
+                        "$toUpper": {
+                            "$cond": [
+                                {"$or": [
+                                    {"$eq": ["$graduate_type", None]},
+                                    {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                ]},
+                                "GRADUATE",
+                                "$graduate_type"
+                            ]
+                        }
+                    }
+                }
+            },
+            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}}
+        ]
     )
     grad_stats = await grad_cursor.to_list(length=None)
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = stat["_id"].upper() or "GRADUATE"  # Default to GRADUATE if None
+        grad_type = (stat["_id"] or "GRADUATE").upper()  # Default to GRADUATE if None and ensure uppercase
         count = stat["count"]
         text = _format_graduate_type(grad_type, plural=count != 1)
         stats_text += f"• {text}: <b>{count}</b>\n"
@@ -131,6 +149,14 @@ async def show_stats(message: Message):
             {
                 "$group": {
                     "_id": "$target_city",
+                    "payments": {
+                        "$push": {
+                            "payment": {"$ifNull": ["$payment_amount", 0]},
+                            "formula": {"$ifNull": ["$formula_payment_amount", 0]},
+                            "regular": {"$ifNull": ["$regular_payment_amount", 0]},
+                            "discounted": {"$ifNull": ["$discounted_payment_amount", 0]},
+                        }
+                    },
                     "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
                     "confirmed_count": {
                         "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
@@ -158,6 +184,7 @@ async def show_stats(message: Message):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
+                                        {"$not": "$payment_status"},  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -165,9 +192,6 @@ async def show_stats(message: Message):
                             ]
                         }
                     },
-                    "total_formula": {"$sum": {"$ifNull": ["$formula_payment_amount", 0]}},
-                    "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}},
-                    "total_discounted": {"$sum": {"$ifNull": ["$discounted_payment_amount", 0]}},
                 }
             },
         ]
@@ -183,25 +207,35 @@ async def show_stats(message: Message):
     for stat in payment_stats:
         city = stat["_id"]
         paid = stat["total_paid"]
-        formula = stat["total_formula"]
-        regular = stat["total_regular"]
-        discounted = stat["total_discounted"]
+        payments = stat["payments"]
+
+        # Calculate median percentages for paid registrations
+        paid_ratios = []
+        for p in payments:
+            if p["payment"] > 0:  # Only include those who paid
+                if p["formula"] > 0:
+                    paid_ratios.append((p["payment"] / p["formula"]) * 100)
+                
+        # Sort ratios and get median
+        if paid_ratios:
+            paid_ratios.sort()
+            median_pct = paid_ratios[len(paid_ratios) // 2]
+        else:
+            median_pct = 0
+
+        # Calculate totals
+        formula_total = sum(p["formula"] for p in payments)
+        regular_total = sum(p["regular"] for p in payments)
+        discounted_total = sum(p["discounted"] for p in payments)
 
         total_paid += paid
-        total_formula += formula
-        total_regular += regular
-        total_discounted += discounted
-
-        # Calculate percentage of various amounts collected
-        pct_of_formula = (paid / formula * 100) if formula > 0 else 0
-        pct_of_regular = (paid / regular * 100) if regular > 0 else 0
-        pct_of_discounted = (paid / discounted * 100) if discounted > 0 else 0
+        total_formula += formula_total
+        total_regular += regular_total
+        total_discounted += discounted_total
 
         stats_text += f"\n<b>{city}:</b>\n"
         stats_text += f"💵 Собрано: <b>{paid:,}</b> руб.\n"
-        stats_text += f"📊 % от формулы: <i>{pct_of_formula:.1f}%</i>\n"
-        stats_text += f"📊 % от регулярной: <i>{pct_of_regular:.1f}%</i>\n"
-        stats_text += f"📊 % от мин. со скидкой: <i>{pct_of_discounted:.1f}%</i>\n\n"
+        stats_text += f"📊 Медиана % от формулы: <i>{median_pct:.1f}%</i>\n"
 
         # Payment status distribution
         stats_text += "<u>Статусы платежей:</u>\n"
@@ -212,12 +246,6 @@ async def show_stats(message: Message):
     # Add totals
     if total_paid > 0:
         stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>\n"
-        total_pct_formula = (total_paid / total_formula * 100) if total_formula > 0 else 0
-        total_pct_regular = (total_paid / total_regular * 100) if total_regular > 0 else 0
-        total_pct_discounted = (total_paid / total_discounted * 100) if total_discounted > 0 else 0
-        stats_text += f"📊 % от общей формулы: <i>{total_pct_formula:.1f}%</i>\n"
-        stats_text += f"📊 % от общей регулярной: <i>{total_pct_regular:.1f}%</i>\n"
-        stats_text += f"📊 % от общей мин. со скидкой: <i>{total_pct_discounted:.1f}%</i>\n"
 
     await send_safe(message.chat.id, stats_text)
 
@@ -250,13 +278,31 @@ async def show_simple_stats(message: Message):
 
     # 2. Distribution by graduate type
     grad_cursor = app.collection.aggregate(
-        [{"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}]
+        [
+            {
+                "$addFields": {
+                    "normalized_type": {
+                        "$toUpper": {
+                            "$cond": [
+                                {"$or": [
+                                    {"$eq": ["$graduate_type", None]},
+                                    {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                ]},
+                                "GRADUATE",
+                                "$graduate_type"
+                            ]
+                        }
+                    }
+                }
+            },
+            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}}
+        ]
     )
     grad_stats = await grad_cursor.to_list(length=None)
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
+        grad_type = (stat["_id"] or "GRADUATE").upper()  # Default to GRADUATE if None and ensure uppercase
         count = stat["count"]
         text = _format_graduate_type(grad_type, plural=count != 1)
         stats_text += f"• {text}: <b>{count}</b>\n"
@@ -340,3 +386,21 @@ async def show_simple_stats(message: Message):
         stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{total_declined + total_unpaid}</b>\n"
 
     await send_safe(message.chat.id, stats_text)
+
+
+@commands_menu.add_command(
+    "normalize_db", "Нормализовать типы выпускников в БД", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("normalize_db"), AdminFilter())
+async def normalize_db(message: Message):
+    """Normalize graduate types in the database"""
+    from app.router import app
+    
+    # Send initial message
+    status_msg = await send_safe(message.chat.id, "Нормализация типов выпускников в базе данных...")
+    
+    # Run normalization
+    modified = await app.normalize_graduate_types()
+    
+    # Update message with results
+    await status_msg.edit_text(f"✅ Нормализация завершена. Обновлено записей: {modified}")
