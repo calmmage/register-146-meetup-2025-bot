@@ -63,7 +63,7 @@ class TestAppValidation:
 
         test_cases = [
             # Too early
-            (1995, False, "Год выпуска должен быть не раньше 1996."),
+            (1994, False, "Год выпуска должен быть не раньше 1995."),
             # Current year
             (2025, False, "Извините, регистрация только для выпускников. Приходите после выпуска!"),
             # Future year within acceptable range
