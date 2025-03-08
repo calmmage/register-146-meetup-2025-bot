@@ -1,6 +1,5 @@
-- [x] add a new 'simple stats' command
-- [x] and include it as a button to admin flow
-- [ ] add unit tests
+- [ ] add 3 new buttons to payment validation: confirm minimal, confirm regular (value), if different - confirm formula (value), confirm custom - ask. 
+- database is missing proper formula values (because i updated the code mid-way) - detect and re-add them. (add a custom func _check_database_payment_value -> generate proper formula, compare and if missing add to db. )
 
 # Promo
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
