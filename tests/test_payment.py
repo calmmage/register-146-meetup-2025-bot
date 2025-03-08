@@ -1,19 +1,14 @@
 import pytest
-from pytest_mock import MockerFixture
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
-
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, User, CallbackQuery
+from aiogram.types import Message, User
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.routers.payment import (
-    process_payment,
-    pay_handler,
-    confirm_payment_callback,
-    decline_payment_callback,
-    PaymentStates,
-)
-from app.app import TargetCity, GraduateType
+
+@pytest.fixture(autouse=True)
+def mock_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 @pytest.fixture
@@ -30,10 +25,7 @@ def mock_message():
 @pytest.fixture
 def mock_state():
     state = AsyncMock(spec=FSMContext)
-    state.get_data.return_value = {
-        "original_user_id": 12345,
-        "original_username": "test_user"
-    }
+    state.get_data.return_value = {"original_user_id": 12345, "original_username": "test_user"}
     return state
 
 
@@ -58,16 +50,18 @@ def mock_app():
         # Configure app mocks with AsyncMock for async methods
         mock_app.get_user_registrations = AsyncMock(return_value=[])
         mock_app.get_user_registration = AsyncMock(return_value=None)
-        mock_app.calculate_payment_amount = MagicMock(return_value=(2000, 200, 1800, 3000))  # regular, discount, discounted, formula
+        mock_app.calculate_payment_amount = MagicMock(
+            return_value=(2000, 200, 1800, 3000)
+        )  # regular, discount, discounted, formula
         mock_app.save_payment_info = AsyncMock()
         mock_app.update_payment_status = AsyncMock()
         mock_app.log_registration_step = AsyncMock()
         mock_app.export_registered_users_to_google_sheets = AsyncMock()
-        
+
         # Configure collection for async operations
         mock_app.collection.find_one = AsyncMock()
         mock_app.collection.aggregate = AsyncMock()
-        
+
         # Configure settings
         mock_app.settings = MagicMock()
         mock_app.settings.payment_phone_number = "+1234567890"
@@ -117,27 +111,31 @@ def mock_admin_check():
 
 @pytest.mark.asyncio
 async def test_process_payment_pay_later(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_ask_user_choice_raw, mock_botspot_dependencies
+    mock_message,
+    mock_state,
+    mock_app,
+    mock_send_safe,
+    mock_ask_user_choice_raw,
+    mock_botspot_dependencies,
 ):
     # Configure the mocks for "pay later" option
     mock_ask_user_choice_raw.return_value = "pay_later"
-    
+    from app.app import TargetCity, GraduateType
+    from app.routers.payment import (
+        process_payment,
+    )
+
     # Call the function
     result = await process_payment(
-        mock_message, 
-        mock_state, 
-        TargetCity.MOSCOW.value,
-        2010,
-        False,
-        GraduateType.GRADUATE.value
+        mock_message, mock_state, TargetCity.MOSCOW.value, 2010, False, GraduateType.GRADUATE.value
     )
-    
+
     # Verify save_payment_info was called
     mock_app.save_payment_info.assert_called_once()
-    
+
     # Verify result is False (indicating no screenshot was submitted)
     assert result is False
-    
+
     # Verify user was notified about paying later
     mock_send_safe.assert_called()
     call_args = mock_send_safe.call_args_list[-1][0]
@@ -145,15 +143,16 @@ async def test_process_payment_pay_later(
 
 
 @pytest.mark.asyncio
-async def test_pay_handler_no_registrations(
-    mock_message, mock_state, mock_app, mock_send_safe
-):
+async def test_pay_handler_no_registrations(mock_message, mock_state, mock_app, mock_send_safe):
     # Configure the mock for a user with no registrations
     mock_app.get_user_registrations.return_value = []
-    
+    from app.routers.payment import (
+        pay_handler,
+    )
+
     # Call the handler
     await pay_handler(mock_message, mock_state)
-    
+
     # Verify proper message was sent
     mock_send_safe.assert_called_once()
     call_args = mock_send_safe.call_args[0]
@@ -164,6 +163,11 @@ async def test_pay_handler_no_registrations(
 async def test_pay_handler_with_registration(
     mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
 ):
+    from app.app import TargetCity, GraduateType
+    from app.routers.payment import (
+        pay_handler,
+    )
+
     # Configure the mock for a user with a payment registration
     mock_registration = {
         "full_name": "Test User",
@@ -173,14 +177,14 @@ async def test_pay_handler_with_registration(
         "graduate_type": GraduateType.GRADUATE.value,
     }
     mock_app.get_user_registrations.return_value = [mock_registration]
-    
+
     # Mock the process_payment function
     with patch("app.routers.payment.process_payment") as mock_process:
         mock_process.return_value = AsyncMock()
-        
+
         # Call the handler
         await pay_handler(mock_message, mock_state)
-        
+
         # Verify process_payment was called with correct args
         mock_process.assert_called_once()
         args = mock_process.call_args[0]

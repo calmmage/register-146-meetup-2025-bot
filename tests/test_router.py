@@ -1,17 +1,14 @@
 import pytest
-from pytest_mock import MockerFixture
+from aiogram.fsm.context import FSMContext
+from aiogram.types import User
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, User
 
-from app.router import (
-    start_handler,
-    cancel_registration_handler,
-    register_user,
-    handle_registered_user,
-)
-from app.app import RegisteredUser, TargetCity, GraduateType
+@pytest.fixture(autouse=True)
+def mock_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 @pytest.fixture
@@ -79,24 +76,33 @@ def mock_botspot_dependencies():
 async def test_start_handler_new_user(
     mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
 ):
+    from app.router import (
+        start_handler,
+    )
+
     # Configure the mocks for a new user
     mock_app.get_user_registration.return_value = None
-    
+
     # Mock the register_user function
     with patch("app.router.register_user") as mock_register:
         mock_register.return_value = AsyncMock()
-        
+
         # Call the handler
         await start_handler(mock_message, mock_state)
-        
+
         # Verify register_user was called
         mock_register.assert_called_once_with(mock_message, mock_state)
-        
+
 
 @pytest.mark.asyncio
 async def test_start_handler_existing_user(
     mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
 ):
+    from app.app import TargetCity
+    from app.router import (
+        start_handler,
+    )
+
     # Configure the mocks for an existing user
     mock_user = {
         "full_name": "Test User",
@@ -105,14 +111,14 @@ async def test_start_handler_existing_user(
         "target_city": TargetCity.MOSCOW.value,
     }
     mock_app.get_user_registration = AsyncMock(return_value=mock_user)
-    
+
     # Mock the handle_registered_user function
     with patch("app.router.handle_registered_user") as mock_handler:
         mock_handler.return_value = AsyncMock()
-        
+
         # Call the handler
         await start_handler(mock_message, mock_state)
-        
+
         # Verify handle_registered_user was called with correct args
         mock_handler.assert_called_once_with(mock_message, mock_state, mock_user)
 
@@ -122,10 +128,10 @@ async def test_start_handler_existing_user(
 # @patch("app.router.process_payment")
 # async def test_register_user_flow(
 #     mock_process_payment,
-#     mock_message, 
-#     mock_state, 
-#     mock_app, 
-#     mock_send_safe, 
+#     mock_message,
+#     mock_state,
+#     mock_app,
+#     mock_send_safe,
 #     mock_ask_user_choice,
 #     mock_ask_user,
 #     mock_botspot_dependencies
@@ -139,12 +145,16 @@ async def test_start_handler_existing_user(
 async def test_cancel_registration_handler_no_registrations(
     mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
 ):
+    from app.router import (
+        cancel_registration_handler,
+    )
+
     # Configure the mocks for a user with no registrations
     mock_app.get_user_registrations.return_value = []
-    
+
     # Call the handler
     await cancel_registration_handler(mock_message, mock_state)
-    
+
     # Verify send_safe was called with the correct message
     mock_send_safe.assert_called_once()
     args = mock_send_safe.call_args[0]

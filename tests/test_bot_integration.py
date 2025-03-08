@@ -1,23 +1,22 @@
 import pytest
-from pytest_mock import MockerFixture
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import asyncio
 from aiogram import Router
-from aiogram.dispatcher.event.bases import SkipHandler
-from aiogram.methods import SendMessage
-from aiogram.types import Message, Chat, User, Update
+from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.filters import CommandStart
+from aiogram.types import Message, Chat, User
 
-from app.router import start_handler
+
+@pytest.fixture(autouse=True)
+def mock_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 @pytest.fixture
 def event_from_message():
     """Create a function to generate events from messages"""
-    
+
     def _event(text, user_id=12345, chat_id=12345, username="test_user"):
         user = User(id=user_id, is_bot=False, first_name="Test", username=username)
         chat = Chat(id=chat_id, type="private")
@@ -29,7 +28,7 @@ def event_from_message():
             text=text,
         )
         return message
-    
+
     return _event
 
 
@@ -37,11 +36,12 @@ def event_from_message():
 def mock_router():
     """Create a basic router for testing"""
     router = Router()
-    
+    from app.router import start_handler
+
     @router.message(CommandStart())
     async def test_start_handler(message: Message, state: FSMContext):
         return await start_handler(message, state)
-    
+
     return router
 
 

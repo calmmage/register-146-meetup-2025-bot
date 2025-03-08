@@ -1,8 +1,14 @@
 import pytest
-from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from app.app import App, TargetCity, GraduateType
+from app.app import App
+
+
+@pytest.fixture(autouse=True)
+def mock_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 class TestAppValidation:
@@ -15,17 +21,13 @@ class TestAppValidation:
             self.app = App(
                 telegram_bot_token="mock_token",
                 payment_phone_number="1234567890",
-                payment_name="Test User"
+                payment_name="Test User",
             )
 
     def test_validate_full_name_valid(self):
         """Test validate_full_name with valid input"""
-        valid_names = [
-            "Иванов Иван",
-            "Петрова Мария Ивановна",
-            "Сергеев-Иванов Петр"
-        ]
-        
+        valid_names = ["Иванов Иван", "Петрова Мария Ивановна", "Сергеев-Иванов Петр"]
+
         for name in valid_names:
             is_valid, error = self.app.validate_full_name(name)
             assert is_valid is True
@@ -43,7 +45,7 @@ class TestAppValidation:
             # Numbers
             ("Иванов 123", False, "По-русски, пожалуйста :)"),
         ]
-        
+
         for name, expected_valid, expected_error in test_cases:
             is_valid, error = self.app.validate_full_name(name)
             assert is_valid is expected_valid
@@ -52,7 +54,7 @@ class TestAppValidation:
     def test_validate_graduation_year_valid(self):
         """Test validate_graduation_year with valid input"""
         valid_years = [1996, 2000, 2010, 2020]
-        
+
         for year in valid_years:
             is_valid, error = self.app.validate_graduation_year(year)
             assert is_valid is True
@@ -65,7 +67,7 @@ class TestAppValidation:
         mock_now = MagicMock()
         mock_now.year = 2025
         mock_datetime.now.return_value = mock_now
-        
+
         test_cases = [
             # Too early
             (1995, False, "Год выпуска должен быть не раньше 1996."),
@@ -76,7 +78,7 @@ class TestAppValidation:
             # Future year beyond acceptable range
             (2030, False, "Год выпуска не может быть позже 2029."),
         ]
-        
+
         for year, expected_valid, expected_error in test_cases:
             is_valid, error = self.app.validate_graduation_year(year)
             assert is_valid is expected_valid
@@ -85,7 +87,7 @@ class TestAppValidation:
     def test_validate_class_letter_valid(self):
         """Test validate_class_letter with valid input"""
         valid_letters = ["А", "Б", "В", "а", "б", "в"]
-        
+
         for letter in valid_letters:
             is_valid, error = self.app.validate_class_letter(letter)
             assert is_valid is True
@@ -103,7 +105,7 @@ class TestAppValidation:
             # Numbers
             ("1", False, "Буква класса должна быть на русском языке."),
         ]
-        
+
         for letter, expected_valid, expected_error in test_cases:
             is_valid, error = self.app.validate_class_letter(letter)
             assert is_valid is expected_valid
@@ -116,7 +118,7 @@ class TestAppValidation:
         mock_now = MagicMock()
         mock_now.year = 2025
         mock_datetime.now.return_value = mock_now
-        
+
         test_cases = [
             # Case 0: Only year
             ("2010", 2010, "", "Пожалуйста, укажите также букву класса."),
@@ -129,9 +131,14 @@ class TestAppValidation:
             # Invalid letter
             ("2010 A", None, None, "Буква класса должна быть на русском языке."),
             # Invalid format
-            ("abc", None, None, "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2003 Б')."),
+            (
+                "abc",
+                None,
+                None,
+                "Неверный формат. Пожалуйста, введите год выпуска и букву класса (например, '2003 Б').",
+            ),
         ]
-        
+
         for input_str, expected_year, expected_letter, expected_error in test_cases:
             year, letter, error = self.app.parse_graduation_year_and_class_letter(input_str)
             assert year == expected_year

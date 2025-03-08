@@ -1,21 +1,12 @@
 import pytest
-from pytest_mock import MockerFixture
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
-from app.bot import main
-
-
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_env(monkeypatch):
-    """Mock environment variables needed for bot initialization"""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
-    monkeypatch.setenv("MONGODB_URI", "mongodb://test")
-    monkeypatch.setenv("DATABASE_NAME", "test_db")
-    monkeypatch.setenv("COLLECTION_NAME", "test_collection")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 @pytest.fixture
@@ -53,7 +44,6 @@ def mock_logger():
 
 
 # TODO: Fix Bot initialization mocking
-# @pytest.mark.usefixtures("mock_env")
 # def test_main_function(mock_bot, mock_dispatcher, mock_bot_manager, mock_logger):
 #     """Test the main function of the bot module"""
 #     # Need to fix the Bot initialization mocking to set up client_kwargs correctly
@@ -62,7 +52,6 @@ def mock_logger():
 
 
 # TODO: Fix Bot initialization mocking (same issue as test_main_function)
-# @pytest.mark.usefixtures("mock_env")
 # def test_main_function_production_mode(mock_bot, mock_dispatcher, mock_bot_manager, mock_logger):
 #     """Test the main function in production mode (non-debug)"""
 #     # Need to fix the Bot initialization mocking

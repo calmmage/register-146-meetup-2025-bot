@@ -1,41 +1,46 @@
-import pytest
-import os
-import json
 import base64
-from unittest.mock import patch, MagicMock, AsyncMock, mock_open
-from io import StringIO
+import json
+import pytest
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from app.app import App
 from app.export import SheetExporter
 
 
+@pytest.fixture(autouse=True)
+def mock_env(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+    monkeypatch.setenv("PAYMENT_NAME", "test_name")
+
+
 class TestSheetExporter:
     """Tests for the SheetExporter class"""
-    
+
     def setup_method(self):
         """Set up test environment before each test"""
         # Create a mock collection
         self.mock_collection = AsyncMock()
-        
+
         # Mock the get_database().get_collection() chain
         mock_db = MagicMock()
         mock_db.get_collection.return_value = self.mock_collection
-        
+
         # Create a patcher for get_database
         self.db_patcher = patch("app.app.get_database", return_value=mock_db)
         self.db_patcher.start()
-        
-        # Create app instance 
+
+        # Create app instance
         self.app = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_spreadsheet_id",
             payment_phone_number="1234567890",
-            payment_name="Test User"
+            payment_name="Test User",
         )
-        
+
         # Create exporter with the mocked app
         self.exporter = SheetExporter("mock_spreadsheet_id", app=self.app)
-        
+
         # Sample user data
         self.sample_users = [
             {
@@ -51,7 +56,7 @@ class TestSheetExporter:
                 "discounted_payment_amount": 3000,
                 "regular_payment_amount": 4000,
                 "formula_payment_amount": 4000,
-                "payment_timestamp": "2025-02-01T12:00:00"
+                "payment_timestamp": "2025-02-01T12:00:00",
             },
             {
                 "full_name": "Петров Петр",
@@ -66,10 +71,10 @@ class TestSheetExporter:
                 "discounted_payment_amount": 1500,
                 "regular_payment_amount": 2000,
                 "formula_payment_amount": 2500,
-                "payment_timestamp": "2025-02-02T12:00:00"
-            }
+                "payment_timestamp": "2025-02-02T12:00:00",
+            },
         ]
-    
+
     def teardown_method(self):
         """Clean up after each test"""
         # Stop all patchers
@@ -83,19 +88,25 @@ class TestSheetExporter:
         # Mock base64 credentials
         mock_creds_dict = {"type": "service_account", "project_id": "mock-project"}
         mock_creds_json = json.dumps(mock_creds_dict)
-        mock_creds_base64 = base64.b64encode(mock_creds_json.encode('utf-8')).decode('utf-8')
-        
+        mock_creds_base64 = base64.b64encode(mock_creds_json.encode("utf-8")).decode("utf-8")
+
         # Setup mocks
         mock_getenv.return_value = mock_creds_base64
         mock_credentials.return_value = "mock_credentials"
         mock_authorize.return_value = "mock_authorized_client"
-        
+
         # Call the method
         client = self.exporter._get_client()
-        
+
         # Verify the results
         mock_getenv.assert_called_with("GOOGLE_CREDENTIALS_BASE64")
-        mock_credentials.assert_called_with(mock_creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+        mock_credentials.assert_called_with(
+            mock_creds_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
@@ -107,20 +118,26 @@ class TestSheetExporter:
         # Mock JSON credentials
         mock_creds_dict = {"type": "service_account", "project_id": "mock-project"}
         mock_creds_json = json.dumps(mock_creds_dict)
-        
+
         # Setup mocks
         mock_getenv.side_effect = [None, mock_creds_json]  # No BASE64, but JSON is available
         mock_credentials.return_value = "mock_credentials"
         mock_authorize.return_value = "mock_authorized_client"
-        
+
         # Call the method
         client = self.exporter._get_client()
-        
+
         # Verify the results
         assert mock_getenv.call_count == 2
         mock_getenv.assert_any_call("GOOGLE_CREDENTIALS_BASE64")
         mock_getenv.assert_any_call("GOOGLE_CREDENTIALS_JSON")
-        mock_credentials.assert_called_with(mock_creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+        mock_credentials.assert_called_with(
+            mock_creds_dict,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
@@ -128,24 +145,34 @@ class TestSheetExporter:
     @patch("app.export.Credentials.from_service_account_file")
     @patch("app.export.os.path.exists")
     @patch("app.export.os.getenv")
-    def test_get_client_credentials_file(self, mock_getenv, mock_path_exists, mock_credentials, mock_authorize):
+    def test_get_client_credentials_file(
+        self, mock_getenv, mock_path_exists, mock_credentials, mock_authorize
+    ):
         """Test _get_client with credentials file"""
         # Setup mocks
         mock_getenv.side_effect = [None, None, "credentials.json"]  # No BASE64 or JSON
         mock_path_exists.return_value = True
         mock_credentials.return_value = "mock_credentials"
         mock_authorize.return_value = "mock_authorized_client"
-        
+
         # Call the method
         client = self.exporter._get_client()
-        
+
         # Verify the results
         assert mock_getenv.call_count == 3
         mock_getenv.assert_any_call("GOOGLE_CREDENTIALS_BASE64")
         mock_getenv.assert_any_call("GOOGLE_CREDENTIALS_JSON")
-        mock_getenv.assert_any_call("GOOGLE_CREDENTIALS_FILE", "google-service-user-credentials.json")
+        mock_getenv.assert_any_call(
+            "GOOGLE_CREDENTIALS_FILE", "google-service-user-credentials.json"
+        )
         mock_path_exists.assert_called_with("credentials.json")
-        mock_credentials.assert_called_with("credentials.json", scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+        mock_credentials.assert_called_with(
+            "credentials.json",
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
@@ -156,11 +183,11 @@ class TestSheetExporter:
         # Setup mocks
         mock_getenv.side_effect = [None, None, "credentials.json"]  # No BASE64 or JSON
         mock_path_exists.return_value = False  # No credentials file
-        
+
         # Call the method and expect an error
         with pytest.raises(ValueError) as exc_info:
             self.exporter._get_client()
-        
+
         # Verify the error message
         assert "No Google credentials found" in str(exc_info.value)
 

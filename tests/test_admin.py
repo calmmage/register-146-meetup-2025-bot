@@ -1,15 +1,18 @@
 import pytest
-from pytest_mock import MockerFixture
-from unittest.mock import AsyncMock, MagicMock, patch
-
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, User
+from aiogram.types import User
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.routers.admin import (
     admin_handler,
-    export_handler,
-    show_stats,
 )
+
+
+# @pytest.fixture(autouse=True)
+# def mock_env(monkeypatch):
+#     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
+#     monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
+#     monkeypatch.setenv("PAYMENT_NAME", "test_name")
 
 
 @pytest.fixture
@@ -39,11 +42,13 @@ def mock_app():
             {"_id": "SAINT_PETERSBURG", "count": 5},
         ]
         mock_app.collection.aggregate = AsyncMock(return_value=aggregation_cursor)
-        
+
         # Add async methods
-        mock_app.export_registered_users_to_google_sheets = AsyncMock(return_value="Export completed successfully!")
+        mock_app.export_registered_users_to_google_sheets = AsyncMock(
+            return_value="Export completed successfully!"
+        )
         mock_app.export_to_csv = AsyncMock(return_value=("CSV content", "Export message"))
-        
+
         yield mock_app
 
 
@@ -62,57 +67,51 @@ def mock_ask_user_choice():
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_export(
-    mock_message, mock_state, mock_ask_user_choice, mock_send_safe
-):
+async def test_admin_handler_export(mock_message, mock_state, mock_ask_user_choice, mock_send_safe):
     # Configure mock for "export" choice
     mock_ask_user_choice.return_value = "export"
-    
+
     # Mock the export_handler function
     with patch("app.routers.admin.export_handler") as mock_export:
         mock_export.return_value = AsyncMock()
-        
+
         # Call the handler
         result = await admin_handler(mock_message, mock_state)
-        
+
         # Verify export_handler was called
         mock_export.assert_called_once_with(mock_message, mock_state)
-        
+
         # Verify result is the chosen option
         assert result == "export"
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_register(
-    mock_message, mock_state, mock_ask_user_choice
-):
+async def test_admin_handler_register(mock_message, mock_state, mock_ask_user_choice):
     # Configure mock for "register" choice
     mock_ask_user_choice.return_value = "register"
-    
+
     # Call the handler
     result = await admin_handler(mock_message, mock_state)
-    
+
     # Verify result is "register" to continue with normal flow
     assert result == "register"
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_view_stats(
-    mock_message, mock_state, mock_ask_user_choice
-):
+async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_choice):
     # Configure mock for "view_stats" choice
     mock_ask_user_choice.return_value = "view_stats"
-    
+
     # Mock the show_stats function
     with patch("app.routers.admin.show_stats") as mock_stats:
         mock_stats.return_value = AsyncMock()
-        
+
         # Call the handler
         result = await admin_handler(mock_message, mock_state)
-        
+
         # Verify show_stats was called
         mock_stats.assert_called_once_with(mock_message)
-        
+
         # Verify result is the chosen option
         assert result == "view_stats"
 
