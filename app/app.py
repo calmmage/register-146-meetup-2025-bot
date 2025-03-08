@@ -180,7 +180,7 @@ class App:
         current_year = datetime.now().year
 
         # Check if year is in valid range
-        if year < 1996:
+        if year < 1995:
             return False, f"Год выпуска должен быть не раньше 1996."
 
         if year >= current_year:
@@ -562,6 +562,6 @@ class App:
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
             {"graduate_type": {"$exists": True}},
-            [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}]
+            [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}],
         )
         return result.modified_count
