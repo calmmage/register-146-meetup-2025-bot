@@ -3,13 +3,6 @@ import pytest
 from app.app import AppSettings
 
 
-@pytest.fixture(autouse=True)
-def mock_env(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
-    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
-    monkeypatch.setenv("PAYMENT_NAME", "test_name")
-
-
 class TestSimplifiedSettings:
     """Simplified tests for AppSettings class"""
 

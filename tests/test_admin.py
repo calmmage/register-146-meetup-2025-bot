@@ -8,13 +8,6 @@ from app.routers.admin import (
 )
 
 
-# @pytest.fixture(autouse=True)
-# def mock_env(monkeypatch):
-#     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
-#     monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
-#     monkeypatch.setenv("PAYMENT_NAME", "test_name")
-
-
 @pytest.fixture
 def mock_message():
     message = AsyncMock()

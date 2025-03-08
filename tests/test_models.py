@@ -4,13 +4,6 @@ from pydantic import ValidationError
 from app.app import RegisteredUser, TargetCity, GraduateType
 
 
-@pytest.fixture(autouse=True)
-def mock_env(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
-    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
-    monkeypatch.setenv("PAYMENT_NAME", "test_name")
-
-
 class TestRegisteredUser:
     """Tests for the RegisteredUser model"""
 

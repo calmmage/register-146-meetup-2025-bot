@@ -6,13 +6,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, Chat, User
 
 
-@pytest.fixture(autouse=True)
-def mock_env(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test_token")
-    monkeypatch.setenv("PAYMENT_PHONE_NUMBER", "test_number")
-    monkeypatch.setenv("PAYMENT_NAME", "test_name")
-
-
 @pytest.fixture
 def event_from_message():
     """Create a function to generate events from messages"""
