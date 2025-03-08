@@ -31,6 +31,7 @@ langchain = "*"
 langchain-openai = "*"
 langchain-community = "*"
 langchain-anthropic = "*"
+pytest-asyncio = "^0.25.3"
 
 [tool.poetry.group.extras.dependencies]
 # dependencies for extra features
