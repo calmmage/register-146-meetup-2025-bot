@@ -210,18 +210,29 @@ async def show_stats(message: Message):
         payments = stat["payments"]
 
         # Calculate median percentages for paid registrations
-        paid_ratios = []
+        paid_ratios_formula = []
+        paid_ratios_regular = []
+        paid_ratios_discounted = []
+        
         for p in payments:
             if p["payment"] > 0:  # Only include those who paid
                 if p["formula"] > 0:
-                    paid_ratios.append((p["payment"] / p["formula"]) * 100)
+                    paid_ratios_formula.append((p["payment"] / p["formula"]) * 100)
+                if p["regular"] > 0:
+                    paid_ratios_regular.append((p["payment"] / p["regular"]) * 100)
+                if p["discounted"] > 0:
+                    paid_ratios_discounted.append((p["payment"] / p["discounted"]) * 100)
                 
-        # Sort ratios and get median
-        if paid_ratios:
-            paid_ratios.sort()
-            median_pct = paid_ratios[len(paid_ratios) // 2]
-        else:
-            median_pct = 0
+        # Calculate medians
+        def get_median(ratios):
+            if not ratios:
+                return 0
+            ratios.sort()
+            return ratios[len(ratios) // 2]
+            
+        median_formula = get_median(paid_ratios_formula)
+        median_regular = get_median(paid_ratios_regular)
+        median_discounted = get_median(paid_ratios_discounted)
 
         # Calculate totals
         formula_total = sum(p["formula"] for p in payments)
@@ -235,7 +246,9 @@ async def show_stats(message: Message):
 
         stats_text += f"\n<b>{city}:</b>\n"
         stats_text += f"💵 Собрано: <b>{paid:,}</b> руб.\n"
-        stats_text += f"📊 Медиана % от формулы: <i>{median_pct:.1f}%</i>\n"
+        stats_text += f"📊 Медиана % от формулы: <i>{median_formula:.1f}%</i>\n"
+        stats_text += f"📊 Медиана % от регулярной: <i>{median_regular:.1f}%</i>\n"
+        stats_text += f"📊 Медиана % от мин. со скидкой: <i>{median_discounted:.1f}%</i>\n\n"
 
         # Payment status distribution
         stats_text += "<u>Статусы платежей:</u>\n"
@@ -246,6 +259,29 @@ async def show_stats(message: Message):
     # Add totals
     if total_paid > 0:
         stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>\n"
+        
+        # Calculate overall medians
+        all_ratios_formula = []
+        all_ratios_regular = []
+        all_ratios_discounted = []
+        
+        for stat in payment_stats:
+            for p in stat["payments"]:
+                if p["payment"] > 0:
+                    if p["formula"] > 0:
+                        all_ratios_formula.append((p["payment"] / p["formula"]) * 100)
+                    if p["regular"] > 0:
+                        all_ratios_regular.append((p["payment"] / p["regular"]) * 100)
+                    if p["discounted"] > 0:
+                        all_ratios_discounted.append((p["payment"] / p["discounted"]) * 100)
+        
+        total_median_formula = get_median(all_ratios_formula)
+        total_median_regular = get_median(all_ratios_regular)
+        total_median_discounted = get_median(all_ratios_discounted)
+        
+        stats_text += f"📊 Общая медиана % от формулы: <i>{total_median_formula:.1f}%</i>\n"
+        stats_text += f"📊 Общая медиана % от регулярной: <i>{total_median_regular:.1f}%</i>\n"
+        stats_text += f"📊 Общая медиана % от мин. со скидкой: <i>{total_median_discounted:.1f}%</i>\n"
 
     await send_safe(message.chat.id, stats_text)
 

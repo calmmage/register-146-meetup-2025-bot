@@ -1,11 +1,11 @@
-- [ ] add 3 new buttons to payment validation: confirm minimal, confirm regular (value), if different - confirm formula (value), confirm custom - ask. 
-- database is missing proper formula values (because i updated the code mid-way) - detect and re-add them. (add a custom func _check_database_payment_value -> generate proper formula, compare and if missing add to db. )
+- [x] add 3 new buttons to payment validation: confirm minimal, confirm regular (value), if different - confirm formula (value), confirm custom - ask. 
+- [ ] database is missing proper formula values (because i updated the code mid-way) - detect and re-add them. (add a custom func _check_database_payment_value -> generate proper formula, compare and if missing add to db. )
 
 # Promo
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
 
 New feature idea:
-- parse transaction amount from doc / screenshot and then add a new button "confirm (x) rub"
+- [ ] parse transaction amount from doc / screenshot and then add a new button "confirm (x) rub"
 - bonus: test litellm
 
 # New Tasks (March 7)
