@@ -79,7 +79,7 @@ async def export_handler(message: Message, state: FSMContext):
 async def show_stats(message: Message):
     """Показать статистику регистраций"""
     from app.router import app
-    from app.app import GRADUATE_TYPE_MAP
+    from app.app import GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 
     # Initialize stats text
     stats_text = "<b>📊 Статистика регистраций</b>\n\n"
@@ -122,11 +122,21 @@ async def show_stats(message: Message):
             "_id": "$target_city",
             "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
             "confirmed_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}},
-            "pending_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "pending"]}, 1, 0]}},
+            "pending_count": {"$sum": {"$cond": [
+                {"$or": [
+                    {"$eq": ["$payment_status", "pending"]},
+                ]}, 1, 0
+            ]}},
             "declined_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}},
-            "unpaid_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", None]}, 1, 0]}},
+            "unpaid_count": {"$sum": {"$cond": [
+                {"$or": [
+                    {"$eq": ["$payment_status", None]},
+                    {"$eq": ["$payment_status", "Не оплачено"]}
+                ]}, 1, 0
+            ]}},
             "total_formula": {"$sum": {"$ifNull": ["$formula_payment_amount", 0]}},
-            "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}}
+            "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}},
+            "total_discounted": {"$sum": {"$ifNull": ["$discounted_payment_amount", 0]}}
         }}
     ])
     payment_stats = await payment_cursor.to_list(length=None)
@@ -135,39 +145,46 @@ async def show_stats(message: Message):
     total_paid = 0
     total_formula = 0
     total_regular = 0
+    total_discounted = 0
 
     for stat in payment_stats:
         city = stat["_id"]
         paid = stat["total_paid"]
         formula = stat["total_formula"]
         regular = stat["total_regular"]
+        discounted = stat["total_discounted"]
         
         total_paid += paid
         total_formula += formula
         total_regular += regular
+        total_discounted += discounted
 
-        # Calculate percentage of formula amount collected
+        # Calculate percentage of various amounts collected
         pct_of_formula = (paid / formula * 100) if formula > 0 else 0
         pct_of_regular = (paid / regular * 100) if regular > 0 else 0
+        pct_of_discounted = (paid / discounted * 100) if discounted > 0 else 0
 
         stats_text += f"\n<b>{city}:</b>\n"
         stats_text += f"💵 Собрано: <b>{paid:,}</b> руб.\n"
         stats_text += f"📊 % от формулы: <i>{pct_of_formula:.1f}%</i>\n"
-        stats_text += f"📊 % от регулярной: <i>{pct_of_regular:.1f}%</i>\n\n"
+        stats_text += f"📊 % от регулярной: <i>{pct_of_regular:.1f}%</i>\n"
+        stats_text += f"📊 % от мин. со скидкой: <i>{pct_of_discounted:.1f}%</i>\n\n"
         
         # Payment status distribution
         stats_text += "<u>Статусы платежей:</u>\n"
-        stats_text += f"✅ Оплатили: <b>{stat['confirmed_count']}</b>\n"
-        stats_text += f"⏳ В обработке: <b>{stat['pending_count']}</b>\n"
-        stats_text += f"❌ Отклонено: <b>{stat['declined_count']}</b>\n"
-        stats_text += f"⚪️ Не оплачено: <b>{stat['unpaid_count']}</b>\n"
+        stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{stat['confirmed_count']}</b>\n"
+        stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{stat['pending_count']}</b>\n"
+        stats_text += f"❌ {PAYMENT_STATUS_MAP['declined']}: <b>{stat['declined_count']}</b>\n"
+        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{stat['unpaid_count']}</b>\n"
 
     # Add totals
     if total_paid > 0:
         stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>\n"
         total_pct_formula = (total_paid / total_formula * 100) if total_formula > 0 else 0
         total_pct_regular = (total_paid / total_regular * 100) if total_regular > 0 else 0
+        total_pct_discounted = (total_paid / total_discounted * 100) if total_discounted > 0 else 0
         stats_text += f"📊 % от общей формулы: <i>{total_pct_formula:.1f}%</i>\n"
         stats_text += f"📊 % от общей регулярной: <i>{total_pct_regular:.1f}%</i>\n"
+        stats_text += f"📊 % от общей мин. со скидкой: <i>{total_pct_discounted:.1f}%</i>\n"
 
     await send_safe(message.chat.id, stats_text)

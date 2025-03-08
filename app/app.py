@@ -30,6 +30,15 @@ GRADUATE_TYPE_MAP = {
     GraduateType.NON_GRADUATE.value: "Не выпускник"
 }
 
+# Mapping for payment statuses
+PAYMENT_STATUS_MAP = {
+    "confirmed": "Оплачено",
+    "pending": "В обработке",
+    "declined": "Отклонено",
+    None: "Не оплачено",
+    "Не оплачено": "Не оплачено",  # For backward compatibility with existing data
+}
+
 
 class AppSettings(BaseSettings):
     """Basic app configuration"""

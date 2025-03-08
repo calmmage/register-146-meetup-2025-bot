@@ -1,8 +1,8 @@
-- [x] make sure to save reg,min and formula amounts to database
-- [x] export payment amounts to google sheet
+- [ ] add a new 'simple stats' command
+- [ ] and include it as a button to admin flow
+- [ ] add unit tests
 
 # Promo
-- [ ] Add the payment status info to the /stats command
 - [ ] Add a new command / scheduled job to send /stats command / promo message to 146 chat
 
 New feature idea:
@@ -10,14 +10,7 @@ New feature idea:
 - bonus: test litellm
 
 # New Tasks (March 7)
-- [x] Улучшить сообщение о подтверждении оплаты, чтобы там не id было
-- [x] Поменять чтобы для старых выпусков (у кого большие суммы получаются) было 3000 обязательно и по формуле рекомендовано
-- [x] Пофиксить сценарий что "друзьям школы" 0
 - [ ] Сделать предупреждение до оплаты о подтверждении регистрации
-
-- [x] add a test stand
-  - dev branch? 
-  - new bot token - done
 
 # Рассылки (это потом сделаем)
 - тем кто не оплатил
@@ -27,85 +20,13 @@ New feature idea:
 1) сначала делаем спец-команду для админов (с фичой от botspot - visibility = admin only) - для ручного запуска
 2) потом scheduled job для рассылок
 
-# Scenario routes
-- [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
-- [ ] bugfix the multi-user payment flow. Currently there is some issues with the state management if multiple cities have multiple payment states and also maybe one of them gets cancelled.. it's a mess
-
 Optional Improvements
 - [ ] move early registration date to app settings
 - [ ] for payment validation check - check screenshot message date, not current data, to determine if discount applies
 - [ ] rework the database operations to return structured objects (to prevent future issues with missing fields)
 
-# About 'delay registraction until payment intent is confirmed'
-...4) не заканчивать регистрацию пока человек не подтвердил намерение оплатить
-4, 5 сложные сценарии, там не понятно как именно переделывать так чтобы не сломать то что сейчас есть
+# Scenario routes
+- [ ] bugfix the multi-user payment flow. Currently there is some issues with the state management if multiple cities have multiple payment states and also maybe one of them gets cancelled.. it's a mess
+- [ ]  не заканчивать регистрацию пока человек не подтвердил намерение оплатить
+  - details: [payment_intent_validation.md](payment_intent_validation.md)
 
-Марина Тарасова, 146, [6 Mar 2025 at 21:41:31]:
-4 - это вообще не сохранять никаких записей, если пользователь не подтвердил намерение оплатить? Предлагаю все таки оставить, но ему в итоге отправим напоминалку про оплату на общих условиях
-
-Petr
-Нет, это как сейчас - все незавершенные регистрации логгируются в отдельный чат
-Просто не считать регистрацию завершенной пока человек явно не клацнул что-то что показывает что он не испугался обозначенной суммы и не передумал
-Надо сумму куда-то пораньше подвинуть, но до выбора города и года выпуска мы ее физичечски показать не можем. А до ФИО странно.
-И по сути получается в том же месте сценария :)
-
-Марина Тарасова, 146, [6 Mar 2025 at 21:43:33]:
-А что нам это даёт? Если мы собираемся отправить напоминалку тем, кто клацнул и не оплатил, чем они отличаются от тех, кто не клацнул?
-
-Petr
-Это нам дает что не окажется что у нас записано зарегистрированными 100 человек а придет 50
-Отличие от прошлых лет в том что мы говорим о "минимальном взносе"
-И те самые кто его раньше не вносили - могут первые кнопки регистрации протыкать - а потом испариться
-
-Марина Тарасова, 146, [6 Mar 2025 at 21:44:37]:
-Я бы всех в регистрацию собрала. Статистически 10-15% из зарегистрированных не приходят. Правда, из тех, ко пришел, оплачивают не более 30%
-Обычно это был рекомендованный взнос 3000 руб
-
-Petr
-Ну вот а при нашей новой схеме у тебя могут остаться только эти 30%
-Но узнаешь ты об этом только в день события потому что в базе они зарегистрировались
-Потому что информация о платеже в текущем коде идет ПОСЛЕ завершения регистрации и добавления в базу
-
-Ivan Istomin, 146, [6 Mar 2025 at 21:45:44]:
-И помещение с едой мы под них уже заказали. Как на юбилее.
-
-Марина Тарасова, 146, [6 Mar 2025 at 21:45:48]:
-Или они как обычно все таки придут. Если только мы действительно место встречи покажем только после платежа
-Petr
-Так тоже может быть
-Я это к тому что по сравнению с прошлыми годами - вероятность неприятного сценария (кажется) выше. Из за той схемы которую мы решили выбрать.
-
-Ivan Istomin, 146, [6 Mar 2025 at 21:47:08]:
-Хочется да чтобы человек хотя бы раз согласился с финансовыми условиями явно
-
-Марина Тарасова, 146, [6 Mar 2025 at 21:51:02]:
-У нас одна из функций перед встречей была сбор данных. А эти ребята, кто не завершил регистрацию, в итоге не теряются? Мы можем с ними коммуницировать? Типа написать, что регистрация не завершена
-Petr
-Не потеряются, не волнуйся))
-
-## Conclusions
-- Make sure the data is saved even if registration is not finished.
-- A new mongo table? 
-- Or just a new field like 'payment intent confirmed / registration finished'? I like the latter.
-
-# Done
-- [x] Fix "I will pay later" route of the start menu -> currently there's no way to manage registrations now from unpaid state
-- [x] auto export to google sheets on each registration
-- [x] add new command /cancel_registration
-- [x] hide the admin-only commands from menu (use botspot visibility). Print the admin-only commands in start menu for admins
-- [x] Экспортировать инфо о платежах в CSV и sheets
-- [x] Добавить поддержку платежей файлом pdf. Просто так же форвардить
-- [x] указывать в сообщении для валидации правильную сумму к оплате
-- [x] После 15 марта не показывать минимальную сумму со скидкой
-- [x] Переписать сообщение о скидке:
-- "при ранней регистрации" -> "при ранней оплате"
-- "15.03.25" -> 15 марта
-- 2800 -> 2800 руб
-- [x]  в букву класс не давать длиннее 1 буквы
-- [x] после/при валидации вычислять и писать человеку если его взнос меньше рекомендуемой суммы
-
-- [x]  Новая кнопка "я не выпускник". И кнопка "я учитель". Если учитель - то бесплатно. Как для Питера. Ну и сохранить это надо.
-  thoughts on scenarios
-- Новая кнопка "я не выпускник" должна быть там же где ты вводишь год выпуска из школы. Чтобы если ты не можешь его ввести - у тебя был выход
-- Но непонятно какой дальше сценарий - какая сумма платежа? Можно просто рекомендованную ставить
-- Пермь - 2500, Москва - 5000
