@@ -181,7 +181,7 @@ class App:
 
         # Check if year is in valid range
         if year < 1995:
-            return False, f"Год выпуска должен быть не раньше 1996."
+            return False, f"Год выпуска должен быть не раньше 1995."
 
         if year >= current_year:
             if year <= current_year + 4:
