@@ -437,6 +437,13 @@ class PaymentStates(StatesGroup):
 @router.callback_query(lambda c: c.data and c.data.startswith("confirm_payment_"))
 async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMContext):
     """Confirm a payment"""
+    # Check if any state is set (meaning some operation is in progress)
+    current_state = await state.get_state()
+    if current_state is not None:
+        # If any operation is in progress, ignore this callback
+        await callback_query.answer("Дождитесь завершения текущей операции...")
+        return
+
     # Extract user_id and city from callback data
     parts = callback_query.data.split("_")
     if len(parts) < 3:
@@ -587,6 +594,13 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 @router.callback_query(lambda c: c.data and c.data.startswith("decline_payment_"))
 async def decline_payment_callback(callback_query: CallbackQuery, state: FSMContext):
     """Ask for decline reason"""
+    # Check if any state is set (meaning some operation is in progress)
+    current_state = await state.get_state()
+    if current_state is not None:
+        # If any operation is in progress, ignore this callback
+        await callback_query.answer("Дождитесь завершения текущей операции...")
+        return
+
     # Extract user_id and city from callback data
     parts = callback_query.data.split("_")
     if len(parts) < 3:
