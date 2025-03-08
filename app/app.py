@@ -99,7 +99,7 @@ class App:
         # Convert the enums to their string values for MongoDB storage
         data["target_city"] = data["target_city"].value
         if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
-            data["graduate_type"] = data["graduate_type"].value
+            data["graduate_type"] = data["graduate_type"].value.upper()  # Ensure uppercase
 
         # Add user_id and username if provided
         if user_id is not None:
@@ -557,3 +557,11 @@ class App:
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
         )
+
+    async def normalize_graduate_types(self):
+        """One-time fix to normalize all graduate_type values to uppercase in the database."""
+        result = await self.collection.update_many(
+            {"graduate_type": {"$exists": True}},
+            [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}]
+        )
+        return result.modified_count
