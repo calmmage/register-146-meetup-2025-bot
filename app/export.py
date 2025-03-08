@@ -89,7 +89,8 @@ class SheetExporter:
                 "ФИО", 
                 "Год выпуска", 
                 "Класс", 
-                "Город участия во встрече", 
+                "Город участия во встрече",
+                "Статус участника",  # graduate_type
                 "Telegram Username", 
                 "Статус оплаты", 
                 "Сумма оплаты (факт)", 
@@ -111,12 +112,21 @@ class SheetExporter:
                 formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
                 
+                # Get graduate type and convert to human-readable format
+                graduate_type = user.get("graduate_type", "GRADUATE")
+                graduate_type_display = {
+                    "GRADUATE": "Выпускник",
+                    "TEACHER": "Учитель",
+                    "NON_GRADUATE": "Не выпускник"
+                }.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
+                
                 rows.append(
                     [
                         user["full_name"],
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
+                        graduate_type_display,  # Add graduate type
                         user.get("username", ""),
                         payment_status,
                         payment_amount,
@@ -168,7 +178,8 @@ class SheetExporter:
                 "ФИО", 
                 "Год выпуска", 
                 "Класс", 
-                "Город участия во встрече", 
+                "Город участия во встрече",
+                "Статус участника",  # graduate_type
                 "Telegram Username", 
                 "Статус оплаты", 
                 "Сумма оплаты (факт)", 
@@ -189,12 +200,21 @@ class SheetExporter:
                 formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
                 
+                # Get graduate type and convert to human-readable format
+                graduate_type = user.get("graduate_type", "GRADUATE").upper()
+                graduate_type_display = {
+                    "GRADUATE": "Выпускник",
+                    "TEACHER": "Учитель",
+                    "NON_GRADUATE": "Не выпускник"
+                }.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
+                
                 writer.writerow(
                     [
                         user["full_name"],
                         user["graduation_year"],
                         user["class_letter"],
                         user["target_city"],
+                        graduate_type_display,  # Add graduate type
                         user.get("username", ""),
                         payment_status,
                         payment_amount,

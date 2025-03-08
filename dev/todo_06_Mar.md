@@ -1,5 +1,5 @@
-- [ ] make sure to save reg,min and formula amounts to database
-- [ ] export payment amounts to google sheet
+- [x] make sure to save reg,min and formula amounts to database
+- [x] export payment amounts to google sheet
 
 # Promo
 - [ ] Add the payment status info to the /stats command
