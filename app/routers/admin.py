@@ -77,6 +77,14 @@ async def export_handler(message: Message, state: FSMContext):
     await notif.delete()
 
 
+def _format_graduate_type(grad_type: str, plural=False):
+    from app.app import GRADUATE_TYPE_MAP, GRADUATE_TYPE_MAP_PLURAL
+
+    if plural:
+        return GRADUATE_TYPE_MAP_PLURAL[grad_type.upper()]
+    return GRADUATE_TYPE_MAP[grad_type.upper()]
+
+
 @commands_menu.add_command("stats", "Статистика регистраций", visibility=Visibility.ADMIN_ONLY)
 @router.message(Command("stats"), AdminFilter())
 async def show_stats(message: Message):
@@ -110,12 +118,10 @@ async def show_stats(message: Message):
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
+        grad_type = stat["_id"].upper() or "GRADUATE"  # Default to GRADUATE if None
         count = stat["count"]
-        # Get singular form from map and make it plural by adding 'и' or 'я'
-        singular = GRADUATE_TYPE_MAP.get(grad_type, grad_type)
-        plural = singular + ("и" if singular.endswith("к") else "я")  # Add proper plural ending
-        stats_text += f"• {plural}: <b>{count}</b>\n"
+        text = _format_graduate_type(grad_type, plural=count != 1)
+        stats_text += f"• {text}: <b>{count}</b>\n"
     stats_text += "\n"
 
     # 3. Payment statistics by city
@@ -252,10 +258,8 @@ async def show_simple_stats(message: Message):
     for stat in grad_stats:
         grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
         count = stat["count"]
-        # Get singular form from map and make it plural by adding 'и' or 'я'
-        singular = GRADUATE_TYPE_MAP.get(grad_type, grad_type)
-        plural = singular + ("и" if singular.endswith("к") else "я")  # Add proper plural ending
-        stats_text += f"• {plural}: <b>{count}</b>\n"
+        text = _format_graduate_type(grad_type, plural=count != 1)
+        stats_text += f"• {text}: <b>{count}</b>\n"
     stats_text += "\n"
 
     # 3. Basic payment status distribution (without amounts)

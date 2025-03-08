@@ -1,5 +1,5 @@
-- [ ] add a new 'simple stats' command
-- [ ] and include it as a button to admin flow
+- [x] add a new 'simple stats' command
+- [x] and include it as a button to admin flow
 - [ ] add unit tests
 
 # Promo

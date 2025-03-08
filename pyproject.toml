@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "register-146-meetup-2025-bot"
-version = "0.1.14"
+version = "0.1.15"
 description = ""
 authors = ["Petr Lavrov <calmmage@gmail.com>"]
 readme = "README.md"
@@ -31,7 +31,6 @@ langchain = "*"
 langchain-openai = "*"
 langchain-community = "*"
 langchain-anthropic = "*"
-pytest-asyncio = "^0.25.3"
 
 [tool.poetry.group.extras.dependencies]
 # dependencies for extra features
@@ -92,6 +91,8 @@ pytest-asyncio = "^0.25.3"
 
 [tool.poetry.group.test.dependencies]
 pytest = ">=6"
+pytest-asyncio = "^0.25.3"
+pytest-mock = "^3.14.0"
 #pytest-mongodb = "*"
 black = {extras = ["jupyter"], version = "^25.1.0"}
 flake8 = "^7.1.1"
