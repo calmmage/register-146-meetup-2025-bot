@@ -5,11 +5,10 @@ import os
 from google.oauth2.service_account import Credentials
 from loguru import logger
 
-from app.app import App
+from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 
 # Define the scopes for Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
 
 class SheetExporter:
     def __init__(self, spreadsheet_id: str, app: App):
@@ -105,7 +104,8 @@ class SheetExporter:
             rows = []
             for user in users:
                 # Get payment status and all payment amounts
-                payment_status = user.get("payment_status", "Не оплачено")
+                raw_status = user.get("payment_status", None)
+                payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
                 payment_amount = user.get("payment_amount", 0)  # Actual payment amount
                 discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
                 regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
@@ -114,11 +114,7 @@ class SheetExporter:
                 
                 # Get graduate type and convert to human-readable format
                 graduate_type = user.get("graduate_type", "GRADUATE")
-                graduate_type_display = {
-                    "GRADUATE": "Выпускник",
-                    "TEACHER": "Учитель",
-                    "NON_GRADUATE": "Не выпускник"
-                }.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
+                graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
                 
                 rows.append(
                     [
@@ -193,7 +189,8 @@ class SheetExporter:
             # Write user data
             for user in users:
                 # Get payment status and all payment amounts
-                payment_status = user.get("payment_status", "Не оплачено")
+                raw_status = user.get("payment_status", None)
+                payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
                 payment_amount = user.get("payment_amount", 0)  # Actual payment amount
                 discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
                 regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
@@ -201,12 +198,8 @@ class SheetExporter:
                 payment_timestamp = user.get("payment_timestamp", "")
                 
                 # Get graduate type and convert to human-readable format
-                graduate_type = user.get("graduate_type", "GRADUATE").upper()
-                graduate_type_display = {
-                    "GRADUATE": "Выпускник",
-                    "TEACHER": "Учитель",
-                    "NON_GRADUATE": "Не выпускник"
-                }.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
+                graduate_type = user.get("graduate_type", "GRADUATE")
+                graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
                 
                 writer.writerow(
                     [

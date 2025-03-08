@@ -694,6 +694,15 @@ async def register_user(
 
     # Skip payment flow for St. Petersburg and teachers
     if location.value == TargetCity.SAINT_PETERSBURG.value:
+        # Mark Saint Petersburg registrations as paid automatically
+        await app.update_payment_status(
+            user_id=user_id,
+            city=location.value,
+            status="confirmed",
+            admin_comment="Автоматически подтверждено (Санкт-Петербург)",
+            payment_amount=0,
+        )
+
         confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
         await send_safe(
             message.chat.id,
@@ -701,7 +710,7 @@ async def register_user(
             reply_markup=ReplyKeyboardRemove(),
         )
 
-        # Auto-export to sheets after registration (silent background operation)
+        # Auto-export to sheets after registration with confirmed payment
         await app.export_registered_users_to_google_sheets()
     elif graduate_type == GraduateType.TEACHER:
         # Mark teachers as paid automatically
