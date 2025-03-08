@@ -17,10 +17,18 @@ class TargetCity(Enum):
     SAINT_PETERSBURG = "Санкт-Петербург"
 
 
-class GraduateType(Enum):
-    GRADUATE = "graduate"
-    TEACHER = "teacher"
-    NON_GRADUATE = "non_graduate"
+class GraduateType(str, Enum):
+    GRADUATE = "GRADUATE"
+    TEACHER = "TEACHER"
+    NON_GRADUATE = "NON_GRADUATE"
+
+
+# Mapping for human-readable graduate types
+GRADUATE_TYPE_MAP = {
+    GraduateType.GRADUATE.value: "Выпускник",
+    GraduateType.TEACHER.value: "Учитель",
+    GraduateType.NON_GRADUATE.value: "Не выпускник"
+}
 
 
 class AppSettings(BaseSettings):

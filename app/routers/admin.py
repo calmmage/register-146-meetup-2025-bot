@@ -78,22 +78,96 @@ async def export_handler(message: Message, state: FSMContext):
 @router.message(Command("stats"), AdminFilter())
 async def show_stats(message: Message):
     """Показать статистику регистраций"""
-    # Count registrations by city
     from app.router import app
+    from app.app import GRADUATE_TYPE_MAP
 
-    cursor = app.collection.aggregate([{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}])
-    stats = await cursor.to_list(length=None)
+    # Initialize stats text
+    stats_text = "<b>📊 Статистика регистраций</b>\n\n"
 
-    # Format stats
-    stats_text = "Статистика регистраций:\n\n"
+    # 1. Count registrations by city
+    city_cursor = app.collection.aggregate([
+        {"$group": {"_id": "$target_city", "count": {"$sum": 1}}}
+    ])
+    city_stats = await city_cursor.to_list(length=None)
+
+    stats_text += "<b>🌆 По городам:</b>\n"
     total = 0
-
-    for stat in stats:
+    for stat in city_stats:
         city = stat["_id"]
         count = stat["count"]
         total += count
-        stats_text += f"{city}: {count} человек\n"
+        stats_text += f"• {city}: <b>{count}</b> человек\n"
+    stats_text += f"\nВсего: <b>{total}</b> человек\n\n"
 
-    stats_text += f"\nВсего: {total} человек"
+    # 2. Distribution by graduate type
+    grad_cursor = app.collection.aggregate([
+        {"$group": {"_id": "$graduate_type", "count": {"$sum": 1}}}
+    ])
+    grad_stats = await grad_cursor.to_list(length=None)
+
+    stats_text += "<b>👥 По статусу:</b>\n"
+    for stat in grad_stats:
+        grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
+        count = stat["count"]
+        # Get singular form from map and make it plural by adding 'и' or 'я'
+        singular = GRADUATE_TYPE_MAP.get(grad_type, grad_type)
+        plural = singular + ("и" if singular.endswith("к") else "я")  # Add proper plural ending
+        stats_text += f"• {plural}: <b>{count}</b>\n"
+    stats_text += "\n"
+
+    # 3. Payment statistics by city
+    payment_cursor = app.collection.aggregate([
+        {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+        {"$group": {
+            "_id": "$target_city",
+            "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
+            "confirmed_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}},
+            "pending_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "pending"]}, 1, 0]}},
+            "declined_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}},
+            "unpaid_count": {"$sum": {"$cond": [{"$eq": ["$payment_status", None]}, 1, 0]}},
+            "total_formula": {"$sum": {"$ifNull": ["$formula_payment_amount", 0]}},
+            "total_regular": {"$sum": {"$ifNull": ["$regular_payment_amount", 0]}}
+        }}
+    ])
+    payment_stats = await payment_cursor.to_list(length=None)
+
+    stats_text += "<b>💰 Статистика оплат:</b>\n"
+    total_paid = 0
+    total_formula = 0
+    total_regular = 0
+
+    for stat in payment_stats:
+        city = stat["_id"]
+        paid = stat["total_paid"]
+        formula = stat["total_formula"]
+        regular = stat["total_regular"]
+        
+        total_paid += paid
+        total_formula += formula
+        total_regular += regular
+
+        # Calculate percentage of formula amount collected
+        pct_of_formula = (paid / formula * 100) if formula > 0 else 0
+        pct_of_regular = (paid / regular * 100) if regular > 0 else 0
+
+        stats_text += f"\n<b>{city}:</b>\n"
+        stats_text += f"💵 Собрано: <b>{paid:,}</b> руб.\n"
+        stats_text += f"📊 % от формулы: <i>{pct_of_formula:.1f}%</i>\n"
+        stats_text += f"📊 % от регулярной: <i>{pct_of_regular:.1f}%</i>\n\n"
+        
+        # Payment status distribution
+        stats_text += "<u>Статусы платежей:</u>\n"
+        stats_text += f"✅ Оплатили: <b>{stat['confirmed_count']}</b>\n"
+        stats_text += f"⏳ В обработке: <b>{stat['pending_count']}</b>\n"
+        stats_text += f"❌ Отклонено: <b>{stat['declined_count']}</b>\n"
+        stats_text += f"⚪️ Не оплачено: <b>{stat['unpaid_count']}</b>\n"
+
+    # Add totals
+    if total_paid > 0:
+        stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>\n"
+        total_pct_formula = (total_paid / total_formula * 100) if total_formula > 0 else 0
+        total_pct_regular = (total_paid / total_regular * 100) if total_regular > 0 else 0
+        stats_text += f"📊 % от общей формулы: <i>{total_pct_formula:.1f}%</i>\n"
+        stats_text += f"📊 % от общей регулярной: <i>{total_pct_regular:.1f}%</i>\n"
 
     await send_safe(message.chat.id, stats_text)
