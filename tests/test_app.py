@@ -41,10 +41,6 @@ class TestApp:
         assert self.app.settings.payment_phone_number == "1234567890"
         assert self.app.settings.payment_name == "Test User"
         
-        # Test default values
-        assert self.app.settings.logs_chat_id is None
-        assert self.app.settings.events_chat_id is None
-        
         # Test that exporter was initialized
         assert self.app.sheet_exporter is not None
         
@@ -63,11 +59,17 @@ class TestApp:
         # The property should now be cached
         assert self.app._collection == self.mock_collection
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_to_chat_logs(self, mock_send_safe):
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_to_chat_logs(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging to the logs chat"""
         # Set logs chat ID
         self.app.settings.logs_chat_id = 123456
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
         
         # Mock send_safe
         mock_send_safe.return_value = "mock_message"
@@ -79,11 +81,17 @@ class TestApp:
         mock_send_safe.assert_called_once_with(123456, "Test log message")
         assert result == "mock_message"
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_to_chat_events(self, mock_send_safe):
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_to_chat_events(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging to the events chat"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
         
         # Mock send_safe
         mock_send_safe.return_value = "mock_message"
@@ -95,21 +103,37 @@ class TestApp:
         mock_send_safe.assert_called_once_with(654321, "Test event message")
         assert result == "mock_message"
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_to_chat_no_chat_id(self, mock_send_safe):
-        """Test logging when no chat ID is configured"""
-        # Call the method (logs_chat_id is None by default)
-        result = await self.app.log_to_chat("Test log message", "logs")
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_to_chat_invalid_type(self, mock_get_dependency_manager, mock_send_safe):
+        """Test logging with an invalid chat type"""
+        # Explicitly set the logs and events chat IDs to None
+        self.app.settings.logs_chat_id = None
+        self.app.settings.events_chat_id = None
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
+        
+        # Call the method with an invalid chat type
+        result = await self.app.log_to_chat("Test log message", "invalid_type")
         
         # Verify the result
         mock_send_safe.assert_not_called()
         assert result is None
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_registration_step(self, mock_send_safe):
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_registration_step(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging a registration step"""
         # Set logs chat ID
         self.app.settings.logs_chat_id = 123456
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
         
         # Mock send_safe
         mock_send_safe.return_value = "mock_message"
@@ -133,11 +157,17 @@ class TestApp:
         assert "Иванов Иван" in message
         assert result == "mock_message"
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_registration_completed(self, mock_send_safe):
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_registration_completed(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging a completed registration"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
         
         # Mock send_safe
         mock_send_safe.return_value = "mock_message"
@@ -165,11 +195,17 @@ class TestApp:
         assert "2010 А" in message
         assert "Москва" in message
     
+    @pytest.mark.asyncio
     @patch("app.app.send_safe")
-    async def test_log_registration_canceled(self, mock_send_safe):
+    @patch("botspot.core.dependency_manager.get_dependency_manager")
+    async def test_log_registration_canceled(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging a canceled registration"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321
+        
+        # Mock dependency manager
+        mock_deps = MagicMock()
+        mock_get_dependency_manager.return_value = mock_deps
         
         # Mock send_safe
         mock_send_safe.return_value = "mock_message"

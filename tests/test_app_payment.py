@@ -157,6 +157,7 @@ class TestAppPayment:
         assert discount == 500
         assert discounted == 1500
 
+    @pytest.mark.asyncio
     @patch("app.app.datetime")
     async def test_save_payment_info(self, mock_datetime):
         """Test saving payment information"""
@@ -192,6 +193,7 @@ class TestAppPayment:
         assert update_data["payment_status"] == "pending"
         assert update_data["payment_timestamp"] == mock_now.isoformat()
 
+    @pytest.mark.asyncio
     @patch("app.app.datetime")
     async def test_update_payment_status_first_payment(self, mock_datetime):
         """Test updating payment status with first payment"""
@@ -234,6 +236,7 @@ class TestAppPayment:
         assert payment_record["total_after"] == payment_amount
         assert payment_record["timestamp"] == mock_now.isoformat()
 
+    @pytest.mark.asyncio
     @patch("app.app.datetime")
     async def test_update_payment_status_additional_payment(self, mock_datetime):
         """Test updating payment status with additional payment"""
@@ -286,6 +289,7 @@ class TestAppPayment:
         assert payment_record["total_after"] == 3000
         assert payment_record["timestamp"] == mock_now.isoformat()
 
+    @pytest.mark.asyncio
     @patch("app.app.datetime")
     async def test_update_payment_status_without_payment(self, mock_datetime):
         """Test updating payment status without payment amount"""
