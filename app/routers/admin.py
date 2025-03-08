@@ -110,10 +110,10 @@ async def show_stats(message: Message):
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = stat["_id"] or "GRADUATE"  # Default to GRADUATE if None
+        grad_type = stat["_id"].upper() or "GRADUATE"  # Default to GRADUATE if None
         count = stat["count"]
         # Get singular form from map and make it plural by adding 'и' or 'я'
-        singular = GRADUATE_TYPE_MAP.get(grad_type, grad_type)
+        singular = GRADUATE_TYPE_MAP[grad_type]
         plural = singular + ("и" if singular.endswith("к") else "я")  # Add proper plural ending
         stats_text += f"• {plural}: <b>{count}</b>\n"
     stats_text += "\n"
