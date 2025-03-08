@@ -246,20 +246,47 @@ async def process_payment(
                     bot = deps.bot
 
                     # Create validation buttons
-                    validation_markup = InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [
-                                InlineKeyboardButton(
-                                    text="✅ Подтвердить",
-                                    callback_data=f"confirm_payment_{user_id}_{city}",
-                                ),
-                                InlineKeyboardButton(
-                                    text="❌ Отклонить",
-                                    callback_data=f"decline_payment_{user_id}_{city}",
-                                ),
-                            ]
-                        ]
-                    )
+                    validation_buttons = []
+                    
+                    # Add buttons for different amounts
+                    if today < EARLY_REGISTRATION_DATE:
+                        validation_buttons.append([
+                            InlineKeyboardButton(
+                                text=f"✅ Подтвердить оплату по скидке ({discounted_amount} руб.)",
+                                callback_data=f"confirm_payment_{user_id}_{city}_{discounted_amount}"
+                            )
+                        ])
+                    
+                    validation_buttons.append([
+                        InlineKeyboardButton(
+                            text=f"✅ Подтвердить оплату ({regular_amount} руб.)",
+                            callback_data=f"confirm_payment_{user_id}_{city}_{regular_amount}"
+                        )
+                    ])
+                    
+                    if formula_amount > regular_amount:
+                        validation_buttons.append([
+                            InlineKeyboardButton(
+                                text=f"✅ Подтвердить оплату по формуле ({formula_amount} руб.)",
+                                callback_data=f"confirm_payment_{user_id}_{city}_{formula_amount}"
+                            )
+                        ])
+                    
+                    validation_buttons.append([
+                        InlineKeyboardButton(
+                            text="✅ Подтвердить другую сумму",
+                            callback_data=f"confirm_payment_{user_id}_{city}_custom"
+                        )
+                    ])
+                    
+                    validation_buttons.append([
+                        InlineKeyboardButton(
+                            text="❌ Отклонить",
+                            callback_data=f"decline_payment_{user_id}_{city}"
+                        )
+                    ])
+                    
+                    validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
 
                     # Send the photo or document with caption containing user info
                     if has_photo:
@@ -444,14 +471,15 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Дождитесь завершения текущей операции...")
         return
 
-    # Extract user_id and city from callback data
+    # Extract user_id, city and amount from callback data
     parts = callback_query.data.split("_")
-    if len(parts) < 3:
+    if len(parts) < 4:
         await callback_query.answer("Invalid callback data")
         return
 
     user_id = int(parts[2])
-    city = parts[3] if len(parts) > 3 else None
+    city = parts[3]
+    amount_str = parts[4] if len(parts) > 4 else None
 
     if not city:
         await callback_query.answer("Missing city information")
@@ -466,14 +494,6 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     username = registration.get("username", user_id)
     full_name = registration.get("full_name", "Неизвестно")
 
-    # Get the discounted amount to suggest as default
-    discounted_amount = registration.get("discounted_payment_amount", 0)
-    regular_amount = registration.get("regular_payment_amount", 0)
-
-    # Determine the relevant recommendation amount based on the current date
-    today = datetime.now()
-    recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
-
     # Get graduate type for information
     graduate_type = registration.get("graduate_type", GraduateType.GRADUATE.value)
     graduate_type_info = ""
@@ -487,29 +507,38 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         graduate_type_info = f"🎓 Выпускник {graduation_year} {class_letter}"
 
     chat_id = callback_query.message.chat.id
-    # Ask for payment amount directly using ask_user_raw, suggesting the recommended amount
-    amount_response = await ask_user_raw(
-        chat_id,
-        f"Укажите сумму платежа для пользователя {username} ({full_name})\n"
-        f"Город: {city}\n"
-        f"Статус: {graduate_type_info}\n"
-        f"Рекомендуемая сумма: {recommended_amount} руб.",
-        state=state,
-        timeout=300,
-    )
 
-    if amount_response is None or amount_response.text is None:
-        await send_safe(chat_id, "Время ожидания истекло или получен некорректный ответ.")
-        return
-
-    # Try to parse the amount
-    try:
-        payment_amount = int(amount_response.text)
-    except ValueError:
-        await send_safe(
-            chat_id, "Некорректная сумма платежа. Пожалуйста, используйте команду снова."
+    # Handle different amount cases
+    if amount_str == "custom" or not amount_str:
+        # Ask for payment amount directly using ask_user_raw
+        amount_response = await ask_user_raw(
+            chat_id,
+            f"Укажите сумму платежа для пользователя {username} ({full_name})\n"
+            f"Город: {city}\n"
+            f"Статус: {graduate_type_info}",
+            state=state,
+            timeout=300,
         )
-        return
+
+        if amount_response is None or amount_response.text is None:
+            await send_safe(chat_id, "Время ожидания истекло или получен некорректный ответ.")
+            return
+
+        # Try to parse the amount
+        try:
+            payment_amount = int(amount_response.text)
+        except ValueError:
+            await send_safe(
+                chat_id, "Некорректная сумма платежа. Пожалуйста, используйте команду снова."
+            )
+            return
+    else:
+        # Use the amount from callback data
+        try:
+            payment_amount = int(amount_str)
+        except ValueError:
+            await callback_query.answer("Invalid amount in callback data")
+            return
 
     # Update payment status
     await app.update_payment_status(user_id, city, "confirmed", payment_amount=payment_amount)
@@ -520,6 +549,14 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Check if this was an additional payment
     is_additional_payment = total_payment != payment_amount
+
+    # Get the discounted amount to check against
+    discounted_amount = registration.get("discounted_payment_amount", 0)
+    regular_amount = registration.get("regular_payment_amount", 0)
+
+    # Determine the relevant recommendation amount based on the current date
+    today = datetime.now()
+    recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
 
     # Check if the total payment amount is less than the recommended amount
     payment_message = ""
