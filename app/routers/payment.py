@@ -252,14 +252,14 @@ async def process_payment(
                     if today < EARLY_REGISTRATION_DATE:
                         validation_buttons.append([
                             InlineKeyboardButton(
-                                text=f"✅ Подтвердить оплату по скидке ({discounted_amount} руб.)",
+                                text=f"✅ {discounted_amount} руб. - Подтвердить оплату по скидке",
                                 callback_data=f"confirm_payment_{user_id}_{city}_{discounted_amount}"
                             )
                         ])
                     
                     validation_buttons.append([
                         InlineKeyboardButton(
-                            text=f"✅ Подтвердить оплату ({regular_amount} руб.)",
+                            text=f"✅ {regular_amount} руб. - Подтвердить оплату",
                             callback_data=f"confirm_payment_{user_id}_{city}_{regular_amount}"
                         )
                     ])
@@ -267,7 +267,7 @@ async def process_payment(
                     if formula_amount > regular_amount:
                         validation_buttons.append([
                             InlineKeyboardButton(
-                                text=f"✅ Подтвердить оплату по формуле ({formula_amount} руб.)",
+                                text=f"✅ {formula_amount} руб. - Подтвердить оплату по формуле",
                                 callback_data=f"confirm_payment_{user_id}_{city}_{formula_amount}"
                             )
                         ])
