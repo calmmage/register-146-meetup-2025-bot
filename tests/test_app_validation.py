@@ -120,7 +120,7 @@ class TestAppValidation:
             # Case 2: Year followed by letter without space
             ("2010А", 2010, "А", None),
             # Invalid year
-            ("1990А", None, None, "Год выпуска должен быть не раньше 1996."),
+            ("1990А", None, None, "Год выпуска должен быть не раньше 1995."),
             # Invalid letter
             ("2010 A", None, None, "Буква класса должна быть на русском языке."),
             # Invalid format

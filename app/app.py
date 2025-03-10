@@ -5,7 +5,7 @@ from enum import Enum
 from loguru import logger
 from pydantic import SecretStr, BaseModel
 from pydantic_settings import BaseSettings
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 from botspot import get_database
 from botspot.utils import send_safe
@@ -51,7 +51,7 @@ class AppSettings(BaseSettings):
     telegram_bot_token: SecretStr
     spreadsheet_id: Optional[str] = None
     logs_chat_id: Optional[int] = None
-    events_chat_id: Optional[int] = None
+    events_chat_id: int
     payment_phone_number: str
     payment_name: str
 
@@ -181,7 +181,7 @@ class App:
 
         # Check if year is in valid range
         if year < 1995:
-            return False, f"Год выпуска должен быть не раньше 1996."
+            return False, f"Год выпуска должен быть не раньше 1995."
 
         if year >= current_year:
             if year <= current_year + 4:
@@ -565,3 +565,21 @@ class App:
             [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}],
         )
         return result.modified_count
+        
+    async def get_unpaid_users(self) -> List[Dict]:
+        """
+        Get all users who have not paid yet (payment_status is not "confirmed")
+        
+        Returns:
+            List of user registrations with unpaid status
+        """
+        query = {
+            "$and": [
+                {"payment_status": {"$ne": "confirmed"}},
+                {"target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}},  # Exclude SPb as it's free
+                {"graduate_type": {"$ne": GraduateType.TEACHER.value}},  # Exclude teachers as they don't pay
+            ]
+        }
+        
+        cursor = self.collection.find(query)
+        return await cursor.to_list(length=None)
