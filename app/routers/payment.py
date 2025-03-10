@@ -18,6 +18,7 @@ from textwrap import dedent
 
 from app.app import App, TargetCity, GraduateType
 from app.router import is_admin, date_of_event, commands_menu
+from app.routers.admin import PaymentInfo
 from botspot.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
@@ -208,126 +209,152 @@ async def process_payment(
             # Get events chat ID from settings
             events_chat_id = app.settings.events_chat_id
 
-            if events_chat_id:
-                # if today is before early registration -> "discounted_amount (later {regular amount}}" else "regular_amount"
+            # if today is before early registration -> "discounted_amount (later {regular amount}}" else "regular_amount"
 
-                today = datetime.now()
-                if today < EARLY_REGISTRATION_DATE:
-                    needs_to_pay = f"{discounted_amount} руб (после {EARLY_REGISTRATION_DATE_HUMAN} - {regular_amount} руб)"
+            today = datetime.now()
+            if today < EARLY_REGISTRATION_DATE:
+                needs_to_pay = f"{discounted_amount} руб (после {EARLY_REGISTRATION_DATE_HUMAN} - {regular_amount} руб)"
+            else:
+                needs_to_pay = f"{regular_amount} руб"
+
+            # Get user info for the message
+            user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
+            user_info += f"📍 Город: {city}\n"
+            user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
+
+            # Get user registration for additional info
+            user_registration = await app.get_user_registration(user_id)
+            if user_registration:
+                user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
+
+                # Add graduate type info
+                graduate_type = user_registration.get("graduate_type", GraduateType.GRADUATE.value)
+                if graduate_type == GraduateType.TEACHER.value:
+                    user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
+                elif graduate_type == GraduateType.NON_GRADUATE.value:
+                    user_info += f"👥 Статус: Друг школы (не выпускник)\n"
                 else:
-                    needs_to_pay = f"{regular_amount} руб"
+                    user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
 
-                # Get user info for the message
-                user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
-                user_info += f"📍 Город: {city}\n"
-                user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
+            # Get bot instance
+            from botspot.core.dependency_manager import get_dependency_manager
 
-                # Get user registration for additional info
-                user_registration = await app.get_user_registration(user_id)
-                if user_registration:
-                    user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
+            deps = get_dependency_manager()
+            bot = deps.bot
 
-                    # Add graduate type info
-                    graduate_type = user_registration.get(
-                        "graduate_type", GraduateType.GRADUATE.value
-                    )
-                    if graduate_type == GraduateType.TEACHER.value:
-                        user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
-                    elif graduate_type == GraduateType.NON_GRADUATE.value:
-                        user_info += f"👥 Статус: Друг школы (не выпускник)\n"
-                    else:
-                        user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
+            # Try to parse payment amount from the screenshot/PDF
 
-                # Get bot instance
-                from botspot.core.dependency_manager import get_dependency_manager
+            payment_info = await parse_payment_info(response, has_photo, has_pdf, deps.bot)
 
-                deps = get_dependency_manager()
-                if hasattr(deps, "bot"):
-                    bot = deps.bot
+            # Create validation buttons
+            validation_buttons = []
 
-                    # Create validation buttons
-                    validation_buttons = []
-                    
-                    # Add buttons for different amounts
-                    if today < EARLY_REGISTRATION_DATE:
-                        validation_buttons.append([
-                            InlineKeyboardButton(
-                                text=f"✅ {discounted_amount} руб. - Подтвердить оплату по скидке",
-                                callback_data=f"confirm_payment_{user_id}_{city}_{discounted_amount}"
-                            )
-                        ])
-                    
-                    validation_buttons.append([
+            # If we successfully parsed a valid amount, show simplified buttons
+            if payment_info.is_valid:
+                # Add parsed amount button
+                validation_buttons.append(
+                    [
                         InlineKeyboardButton(
-                            text=f"✅ {regular_amount} руб. - Подтвердить оплату",
-                            callback_data=f"confirm_payment_{user_id}_{city}_{regular_amount}"
+                            text=f"✅ {payment_info.amount} руб. - Подтвердить распознанную сумму",
+                            callback_data=f"confirm_payment_{user_id}_{city}_{payment_info.amount}",
                         )
-                    ])
-                    
-                    if formula_amount > regular_amount:
-                        validation_buttons.append([
-                            InlineKeyboardButton(
-                                text=f"✅ {formula_amount} руб. - Подтвердить оплату по формуле",
-                                callback_data=f"confirm_payment_{user_id}_{city}_{formula_amount}"
-                            )
-                        ])
-                    
-                    validation_buttons.append([
+                    ]
+                )
+
+                # Add custom amount button
+                validation_buttons.append(
+                    [
                         InlineKeyboardButton(
                             text="✅ Подтвердить другую сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city}_custom"
+                            callback_data=f"confirm_payment_{user_id}_{city}_custom",
                         )
-                    ])
-                    
-                    validation_buttons.append([
-                        InlineKeyboardButton(
-                            text="❌ Отклонить",
-                            callback_data=f"decline_payment_{user_id}_{city}"
-                        )
-                    ])
-                    
-                    validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
-
-                    # Send the photo or document with caption containing user info
-                    if has_photo:
-                        # Get the photo file_id from the message
-                        photo = response.photo[-1]  # Get the largest photo
-
-                        # Send the photo with caption
-                        forwarded_msg = await bot.send_photo(
-                            chat_id=events_chat_id,
-                            photo=photo.file_id,
-                            caption=user_info,
-                            reply_markup=validation_markup,
-                        )
-                    else:  # has_pdf
-                        # Send the PDF document with caption
-                        forwarded_msg = await bot.send_document(
-                            chat_id=events_chat_id,
-                            document=response.document.file_id,
-                            caption=user_info,
-                            reply_markup=validation_markup,
-                        )
-
-                    # Save the screenshot message ID for reference
-                    await app.save_payment_info(
-                        user_id,
-                        city,
-                        discounted_amount,
-                        regular_amount,
-                        forwarded_msg.message_id,
-                        formula_amount=formula_amount,
-                    )
-
-                    logger.info(
-                        f"Payment proof from user {user_id} sent to validation chat with caption"
-                    )
-                else:
-                    logger.error(
-                        "Bot not available in dependency manager, cannot forward screenshot"
-                    )
+                    ]
+                )
             else:
-                logger.warning("Events chat ID not set, cannot forward screenshot")
+                # Add standard buttons for different amounts
+                if today < EARLY_REGISTRATION_DATE:
+                    validation_buttons.append(
+                        [
+                            InlineKeyboardButton(
+                                text=f"✅ {discounted_amount} руб. - Подтвердить оплату по скидке",
+                                callback_data=f"confirm_payment_{user_id}_{city}_{discounted_amount}",
+                            )
+                        ]
+                    )
+
+                validation_buttons.append(
+                    [
+                        InlineKeyboardButton(
+                            text=f"✅ {regular_amount} руб. - Подтвердить оплату",
+                            callback_data=f"confirm_payment_{user_id}_{city}_{regular_amount}",
+                        )
+                    ]
+                )
+
+                if formula_amount > regular_amount:
+                    validation_buttons.append(
+                        [
+                            InlineKeyboardButton(
+                                text=f"✅ {formula_amount} руб. - Подтвердить оплату по формуле",
+                                callback_data=f"confirm_payment_{user_id}_{city}_{formula_amount}",
+                            )
+                        ]
+                    )
+
+                # Add custom amount button
+                validation_buttons.append(
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Подтвердить другую сумму",
+                            callback_data=f"confirm_payment_{user_id}_{city}_custom",
+                        )
+                    ]
+                )
+
+            # Add decline button
+            validation_buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="❌ Отклонить",
+                        callback_data=f"decline_payment_{user_id}_{city}",
+                    )
+                ]
+            )
+
+            validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
+
+            # Send the photo or document with caption containing user info
+            if has_photo:
+                # Get the photo file_id from the message
+                photo = response.photo[-1]  # Get the largest photo
+
+                # Send the photo with caption
+                forwarded_msg = await bot.send_photo(
+                    chat_id=events_chat_id,
+                    photo=photo.file_id,
+                    caption=user_info,
+                    reply_markup=validation_markup,
+                )
+            else:  # has_pdf
+                # Send the PDF document with caption
+                forwarded_msg = await bot.send_document(
+                    chat_id=events_chat_id,
+                    document=response.document.file_id,
+                    caption=user_info,
+                    reply_markup=validation_markup,
+                )
+
+            # Save the screenshot message ID for reference
+            await app.save_payment_info(
+                user_id,
+                city,
+                discounted_amount,
+                regular_amount,
+                forwarded_msg.message_id,
+                formula_amount=formula_amount,
+            )
+
+            logger.info(f"Payment proof from user {user_id} sent to validation chat with caption")
         except Exception as e:
             logger.error(f"Error forwarding payment proof to validation chat: {e}")
 
@@ -352,7 +379,20 @@ async def process_payment(
     return has_photo or has_pdf
 
 
-# Removed the callback handler for "Pay Later" button since we now use ask_user_choice_raw
+async def parse_payment_info(response, has_photo: bool, has_pdf: bool, bot) -> PaymentInfo:
+    from app.routers.admin import extract_payment_from_image
+
+    # Get the file
+    if has_photo:
+        file_id = response.photo[-1].file_id
+        file = await bot.get_file(file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        return await extract_payment_from_image(file_bytes.read(), "image/jpeg")
+    elif has_pdf:
+        file_id = response.document.file_id
+        file = await bot.get_file(file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        return await extract_payment_from_image(file_bytes.read(), "application/pdf")
 
 
 # Add payment command handler

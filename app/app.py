@@ -51,7 +51,7 @@ class AppSettings(BaseSettings):
     telegram_bot_token: SecretStr
     spreadsheet_id: Optional[str] = None
     logs_chat_id: Optional[int] = None
-    events_chat_id: Optional[int] = None
+    events_chat_id: int
     payment_phone_number: str
     payment_name: str
 
