@@ -1,17 +1,37 @@
+import base64
+import json
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     Message,
 )
+from litellm import completion
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice
+from botspot.user_interactions import ask_user_choice, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
+
+# Define Pydantic model for payment information
+class PaymentInfo(BaseModel):
+    amount: Optional[float] = None
+    is_valid: bool = False  # Whether there's a clear payment amount in the document
+
+
 router = Router()
+
+
+# Helper function for calculating median
+def get_median(ratios):
+    if not ratios:
+        return 0
+    ratios.sort()
+    return ratios[len(ratios) // 2]
 
 
 async def admin_handler(message: Message, state: FSMContext):
@@ -228,12 +248,6 @@ async def show_stats(message: Message):
                     paid_ratios_discounted.append((p["payment"] / p["discounted"]) * 100)
 
         # Calculate medians
-        def get_median(ratios):
-            if not ratios:
-                return 0
-            ratios.sort()
-            return ratios[len(ratios) // 2]
-
         median_formula = get_median(paid_ratios_formula)
         median_regular = get_median(paid_ratios_regular)
         median_discounted = get_median(paid_ratios_discounted)
@@ -451,3 +465,152 @@ async def normalize_db(message: Message):
 
     # Update message with results
     await status_msg.edit_text(f"✅ Нормализация завершена. Обновлено записей: {modified}")
+
+
+async def extract_payment_from_image(image_bytes: bytes) -> Dict[str, Any]:
+    """Extract payment amount from an image or PDF using GPT-4 Vision via litellm"""
+    try:
+        # Encode image to base64
+        encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+
+        # Define the system prompt for payment extraction
+        system_prompt = """You are a payment receipt analyzer. 
+        Your task is to extract ONLY the payment amount in rubles from the receipt image.
+        
+        Return a JSON with two fields:
+        1. "amount": The payment amount as a number (no currency symbol, just the number)
+        2. "is_valid": A boolean indicating whether there is a clear payment amount in the document
+        
+        If you cannot determine the amount or if it's ambiguous, set amount to null and is_valid to false."""
+
+        # Create the messages for the API call
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Please extract the payment amount from this receipt:",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"},
+                    },
+                ],
+            },
+        ]
+
+        # Make the API call with JSON response format
+        response = completion(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=100,
+            response_format={"type": "json_object"},
+        )
+
+        # Extract content from the response
+        if hasattr(response, "choices") and response.choices:
+            content = response.choices[0].message.content
+        else:
+            # Handle litellm's different response format
+            content = response.content
+
+        # Parse the JSON response
+        if content:
+            result = json.loads(content)
+
+            # Ensure the amount is a number if present
+            if "amount" in result and result["amount"] is not None:
+                result["amount"] = float(result["amount"])
+
+            # Ensure is_valid is a boolean
+            if "is_valid" not in result:
+                result["is_valid"] = False
+
+            return result
+        else:
+            return {"error": "No content in response", "amount": None, "is_valid": False}
+
+    except Exception as e:
+        return {"error": str(e), "amount": None, "is_valid": False}
+
+
+@commands_menu.add_command(
+    "parse_payment", "Анализ платежа с помощью GPT-4", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("parse_payment"), AdminFilter())
+async def parse_payment_handler(message: Message, state: FSMContext):
+    """Hidden admin command to test payment parsing from images/PDFs"""
+    # Ask user to send a payment proof
+    response = await ask_user_raw(
+        message.chat.id,
+        "Отправьте скриншот или PDF с подтверждением платежа для анализа суммы платежа",
+        state,
+        timeout=300,  # 5 minutes timeout
+    )
+
+    if not response:
+        await send_safe(message.chat.id, "Время ожидания истекло.")
+        return
+
+    # Check if the message has a photo or document
+    has_photo = response.photo is not None and len(response.photo) > 0
+    has_pdf = response.document is not None and response.document.mime_type == "application/pdf"
+
+    if not (has_photo or has_pdf):
+        await send_safe(message.chat.id, "Пожалуйста, отправьте изображение или PDF-файл")
+        return
+
+    # Send status message
+    status_msg = await send_safe(message.chat.id, "⏳ Анализирую платеж...")
+
+    try:
+        # Download the file
+        from botspot.core.dependency_manager import get_dependency_manager
+
+        deps = get_dependency_manager()
+        bot = deps.bot
+
+        file_id = None
+        if has_photo and response.photo:
+            # Get the largest photo
+            file_id = response.photo[-1].file_id
+        elif has_pdf and response.document:
+            file_id = response.document.file_id
+
+        if not file_id:
+            await status_msg.edit_text("❌ Не удалось получить файл")
+            return
+
+        # Download the file
+        file = await bot.get_file(file_id)
+        if not file or not file.file_path:
+            await status_msg.edit_text("❌ Не удалось получить путь к файлу")
+            return
+
+        file_bytes = await bot.download_file(file.file_path)
+        if not file_bytes:
+            await status_msg.edit_text("❌ Не удалось скачать файл")
+            return
+
+        # Extract payment information
+        result = await extract_payment_from_image(file_bytes.read())
+
+        # Format the response
+        if "error" in result:
+            response_text = f"❌ Ошибка при анализе: {result['error']}"
+        else:
+            amount = result.get("amount")
+            is_valid = result.get("is_valid", False)
+
+            if is_valid and amount is not None:
+                response_text = f"✅ Обнаружен платеж на сумму: <b>{amount}</b> руб."
+            else:
+                response_text = "❌ Не удалось определить сумму платежа. Пожалуйста, убедитесь, что на изображении четко видна сумма платежа."
+
+        # Update the status message with the results
+        await status_msg.edit_text(response_text, parse_mode="HTML")
+
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Произошла ошибка: {str(e)}")

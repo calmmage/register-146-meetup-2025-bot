@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "register-146-meetup-2025-bot"
-version = "0.1.18a"
+version = "0.1.19"
 description = ""
 authors = ["Petr Lavrov <calmmage@gmail.com>"]
 readme = "README.md"
@@ -31,6 +31,7 @@ langchain = "*"
 langchain-openai = "*"
 langchain-community = "*"
 langchain-anthropic = "*"
+litellm = "^1.63.3"
 
 [tool.poetry.group.extras.dependencies]
 # dependencies for extra features
