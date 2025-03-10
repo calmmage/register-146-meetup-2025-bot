@@ -90,7 +90,7 @@ def _format_graduate_type(grad_type: str, plural=False):
 async def show_stats(message: Message):
     """Показать статистику регистраций"""
     from app.router import app
-    from app.app import GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+    from app.app import PAYMENT_STATUS_MAP
 
     # Initialize stats text
     stats_text = "<b>📊 Статистика регистраций</b>\n\n"
@@ -118,25 +118,29 @@ async def show_stats(message: Message):
                     "normalized_type": {
                         "$toUpper": {
                             "$cond": [
-                                {"$or": [
-                                    {"$eq": ["$graduate_type", None]},
-                                    {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
-                                ]},
+                                {
+                                    "$or": [
+                                        {"$eq": ["$graduate_type", None]},
+                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                    ]
+                                },
                                 "GRADUATE",
-                                "$graduate_type"
+                                "$graduate_type",
                             ]
                         }
                     }
                 }
             },
-            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}}
+            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}},
         ]
     )
     grad_stats = await grad_cursor.to_list(length=None)
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = (stat["_id"] or "GRADUATE").upper()  # Default to GRADUATE if None and ensure uppercase
+        grad_type = (
+            stat["_id"] or "GRADUATE"
+        ).upper()  # Default to GRADUATE if None and ensure uppercase
         count = stat["count"]
         text = _format_graduate_type(grad_type, plural=count != 1)
         stats_text += f"• {text}: <b>{count}</b>\n"
@@ -213,7 +217,7 @@ async def show_stats(message: Message):
         paid_ratios_formula = []
         paid_ratios_regular = []
         paid_ratios_discounted = []
-        
+
         for p in payments:
             if p["payment"] > 0:  # Only include those who paid
                 if p["formula"] > 0:
@@ -222,14 +226,14 @@ async def show_stats(message: Message):
                     paid_ratios_regular.append((p["payment"] / p["regular"]) * 100)
                 if p["discounted"] > 0:
                     paid_ratios_discounted.append((p["payment"] / p["discounted"]) * 100)
-                
+
         # Calculate medians
         def get_median(ratios):
             if not ratios:
                 return 0
             ratios.sort()
             return ratios[len(ratios) // 2]
-            
+
         median_formula = get_median(paid_ratios_formula)
         median_regular = get_median(paid_ratios_regular)
         median_discounted = get_median(paid_ratios_discounted)
@@ -259,12 +263,12 @@ async def show_stats(message: Message):
     # Add totals
     if total_paid > 0:
         stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>\n"
-        
+
         # Calculate overall medians
         all_ratios_formula = []
         all_ratios_regular = []
         all_ratios_discounted = []
-        
+
         for stat in payment_stats:
             for p in stat["payments"]:
                 if p["payment"] > 0:
@@ -274,14 +278,16 @@ async def show_stats(message: Message):
                         all_ratios_regular.append((p["payment"] / p["regular"]) * 100)
                     if p["discounted"] > 0:
                         all_ratios_discounted.append((p["payment"] / p["discounted"]) * 100)
-        
+
         total_median_formula = get_median(all_ratios_formula)
         total_median_regular = get_median(all_ratios_regular)
         total_median_discounted = get_median(all_ratios_discounted)
-        
+
         stats_text += f"📊 Общая медиана % от формулы: <i>{total_median_formula:.1f}%</i>\n"
         stats_text += f"📊 Общая медиана % от регулярной: <i>{total_median_regular:.1f}%</i>\n"
-        stats_text += f"📊 Общая медиана % от мин. со скидкой: <i>{total_median_discounted:.1f}%</i>\n"
+        stats_text += (
+            f"📊 Общая медиана % от мин. со скидкой: <i>{total_median_discounted:.1f}%</i>\n"
+        )
 
     await send_safe(message.chat.id, stats_text)
 
@@ -293,7 +299,7 @@ async def show_stats(message: Message):
 async def show_simple_stats(message: Message):
     """Показать краткую статистику регистраций"""
     from app.router import app
-    from app.app import GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+    from app.app import PAYMENT_STATUS_MAP
 
     stats_text = "<b>📊 Краткая статистика регистраций</b>\n\n"
 
@@ -320,25 +326,29 @@ async def show_simple_stats(message: Message):
                     "normalized_type": {
                         "$toUpper": {
                             "$cond": [
-                                {"$or": [
-                                    {"$eq": ["$graduate_type", None]},
-                                    {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
-                                ]},
+                                {
+                                    "$or": [
+                                        {"$eq": ["$graduate_type", None]},
+                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                    ]
+                                },
                                 "GRADUATE",
-                                "$graduate_type"
+                                "$graduate_type",
                             ]
                         }
                     }
                 }
             },
-            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}}
+            {"$group": {"_id": "$normalized_type", "count": {"$sum": 1}}},
         ]
     )
     grad_stats = await grad_cursor.to_list(length=None)
 
     stats_text += "<b>👥 По статусу:</b>\n"
     for stat in grad_stats:
-        grad_type = (stat["_id"] or "GRADUATE").upper()  # Default to GRADUATE if None and ensure uppercase
+        grad_type = (
+            stat["_id"] or "GRADUATE"
+        ).upper()  # Default to GRADUATE if None and ensure uppercase
         count = stat["count"]
         text = _format_graduate_type(grad_type, plural=count != 1)
         stats_text += f"• {text}: <b>{count}</b>\n"
@@ -377,6 +387,7 @@ async def show_simple_stats(message: Message):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
+                                        {"$not": "$payment_status"},  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -431,12 +442,12 @@ async def show_simple_stats(message: Message):
 async def normalize_db(message: Message):
     """Normalize graduate types in the database"""
     from app.router import app
-    
+
     # Send initial message
     status_msg = await send_safe(message.chat.id, "Нормализация типов выпускников в базе данных...")
-    
+
     # Run normalization
     modified = await app.normalize_graduate_types()
-    
+
     # Update message with results
     await status_msg.edit_text(f"✅ Нормализация завершена. Обновлено записей: {modified}")
