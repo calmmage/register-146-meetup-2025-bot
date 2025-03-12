@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "register-146-meetup-2025-bot"
-version = "0.1.21a"
+version = "0.1.21b"
 description = ""
 authors = ["Petr Lavrov <calmmage@gmail.com>"]
 readme = "README.md"
@@ -26,7 +26,9 @@ pydantic-settings = "^2.7.1"
 
 # Data visualization
 matplotlib = "^3.8.3"
+seaborn = "^0.13.1"
 numpy = "^1.26.4"
+pandas = "^2.2.1"
 
 # Bostpos components
 motor = "*"
