@@ -1,10 +1,16 @@
+from collections import defaultdict
+
 import base64
+import io
 import json
+import matplotlib.pyplot as plt
+import numpy as np
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     Message,
+    BufferedInputFile,
 )
 from litellm import acompletion
 from loguru import logger
@@ -46,6 +52,7 @@ async def admin_handler(message: Message, state: FSMContext):
             "export": "Экспортировать данные",
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
+            "view_year_stats": "Посмотреть статистику по годам выпуска",
             "notify_early_payment": "Уведомить о раннем платеже",
         },
         state=state,
@@ -58,6 +65,8 @@ async def admin_handler(message: Message, state: FSMContext):
         await show_stats(message)
     elif response == "view_simple_stats":
         await show_simple_stats(message)
+    elif response == "view_year_stats":
+        await show_year_stats(message)
     elif response == "notify_early_payment":
         await notify_early_payment_handler(message, state)
     # For "register", continue with normal flow
@@ -605,6 +614,163 @@ async def parse_payment_handler(message: Message, state: FSMContext):
 
     except Exception as e:
         await status_msg.edit_text(f"❌ Произошла ошибка: {str(e)}")
+
+
+@commands_menu.add_command(
+    "year_stats", "Статистика регистраций по годам выпуска", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("year_stats"), AdminFilter())
+async def show_year_stats(message: Message):
+    """Show registration statistics by graduation year with a matplotlib diagram"""
+    from app.router import app
+
+    # Send status message
+    status_msg = await send_safe(message.chat.id, "⏳ Генерация статистики по годам выпуска...")
+
+    # Get all registrations
+    cursor = app.collection.find(
+        {
+            "graduation_year": {
+                "$exists": True,
+                "$ne": 0,
+            },  # Filter out teachers and others without graduation year
+        }
+    )
+    registrations = await cursor.to_list(length=None)
+
+    if not registrations:
+        await status_msg.edit_text("❌ Нет данных о регистрациях с указанным годом выпуска.")
+        return
+
+    # Group registrations by city and graduation year
+    city_year_stats = defaultdict(lambda: defaultdict(int))
+    years = set()
+
+    for reg in registrations:
+        city = reg.get("target_city")
+        year = reg.get("graduation_year")
+
+        # Skip registrations without valid graduation year (teachers, etc.)
+        if not year or year == 0:
+            continue
+
+        # Add to city-year stats
+        city_year_stats[city][year] += 1
+        years.add(year)
+
+    # Group years into 5-year periods
+    min_year = min(years)
+    max_year = max(years)
+
+    # Round min_year down to the nearest multiple of 5
+    period_start = min_year - (min_year % 5)
+
+    # Create periods (e.g. 1995-1999, 2000-2004, etc.)
+    periods = []
+    period_labels = []
+    current = period_start
+
+    while current <= max_year:
+        period_end = current + 4
+        periods.append((current, period_end))
+        period_labels.append(f"{current}-{period_end}")
+        current += 5
+
+    # Count registrations by period for each city
+    period_counts = {
+        "Москва": [0] * len(periods),
+        "Пермь": [0] * len(periods),
+        "Санкт-Петербург": [0] * len(periods),
+    }
+
+    for city, year_counts in city_year_stats.items():
+        for year, count in year_counts.items():
+            # Find which period this year belongs to
+            for i, (start, end) in enumerate(periods):
+                if start <= year <= end:
+                    period_counts[city][i] += count
+                    break
+
+    # Prepare the summary statistics text
+    stats_text = "<b>📊 Статистика регистраций по годам выпуска</b>\n\n"
+
+    # Add total registrations per period
+    stats_text += "<b>🎓 По периодам (все города):</b>\n"
+    total_by_period = [0] * len(periods)
+
+    for i, period in enumerate(period_labels):
+        period_total = sum(period_counts[city][i] for city in period_counts)
+        total_by_period[i] = period_total
+        stats_text += f"• {period}: <b>{period_total}</b> человек\n"
+
+    # Add city breakdown
+    for city in ["Москва", "Пермь", "Санкт-Петербург"]:
+        stats_text += f"\n<b>🏙️ {city}:</b>\n"
+        for i, period in enumerate(period_labels):
+            count = period_counts[city][i]
+            stats_text += f"• {period}: <b>{count}</b> человек\n"
+
+    # Generate the matplotlib diagram
+    # Set up the figure with a specific size and DPI
+    plt.figure(figsize=(12, 8), dpi=100)
+    plt.style.use("ggplot")
+
+    # Create bar positions
+    x = np.arange(len(period_labels))
+    width = 0.25  # Width of the bars
+
+    # Plot bars for each city
+    bars1 = plt.bar(x - width, period_counts["Москва"], width, label="Москва", color="#FF9999")
+    bars2 = plt.bar(x, period_counts["Пермь"], width, label="Пермь", color="#66B2FF")
+    bars3 = plt.bar(
+        x + width, period_counts["Санкт-Петербург"], width, label="СПб", color="#99FF99"
+    )
+
+    # Add value labels on top of each bar
+    def add_labels(bars):
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:  # Only add labels to bars with non-zero height
+                plt.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    height + 0.5,
+                    str(int(height)),
+                    ha="center",
+                    va="bottom",
+                    fontweight="bold",
+                )
+
+    add_labels(bars1)
+    add_labels(bars2)
+    add_labels(bars3)
+
+    # Add title and labels
+    plt.title("Количество регистраций по годам выпуска", fontsize=16, pad=20)
+    plt.xlabel("Период выпуска", fontsize=12, labelpad=10)
+    plt.ylabel("Количество человек", fontsize=12, labelpad=10)
+    plt.xticks(x, period_labels, rotation=45)
+
+    # Add legend
+    plt.legend(title="Город", loc="upper left", frameon=True)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Save the plot to a bytes buffer
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    buf.seek(0)
+
+    # Close the plot to free memory
+    plt.close()
+
+    # Send the diagram and stats text
+    await status_msg.delete()
+    await message.answer_photo(
+        BufferedInputFile(buf.getvalue(), filename="registration_stats.png"),
+        caption=stats_text,
+        parse_mode="HTML",
+    )
 
 
 @commands_menu.add_command(
