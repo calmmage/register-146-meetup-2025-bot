@@ -621,156 +621,194 @@ async def parse_payment_handler(message: Message, state: FSMContext):
 )
 @router.message(Command("year_stats"), AdminFilter())
 async def show_year_stats(message: Message):
-    """Show registration statistics by graduation year with a matplotlib diagram"""
+    """Show registration statistics by graduation year with matplotlib diagrams"""
     from app.router import app
+    from app.app import PAYMENT_STATUS_MAP
 
     # Send status message
     status_msg = await send_safe(message.chat.id, "⏳ Генерация статистики по годам выпуска...")
 
     # Get all registrations
-    cursor = app.collection.find(
-        {
-            "graduation_year": {
-                "$exists": True,
-                "$ne": 0,
-            },  # Filter out teachers and others without graduation year
-        }
-    )
+    cursor = app.collection.find({
+        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out teachers and others without graduation year
+    })
     registrations = await cursor.to_list(length=None)
 
     if not registrations:
         await status_msg.edit_text("❌ Нет данных о регистрациях с указанным годом выпуска.")
         return
 
-    # Group registrations by city and graduation year
-    city_year_stats = defaultdict(lambda: defaultdict(int))
-    years = set()
+    # Group registrations by city, year, and payment status
+    cities = ["Москва", "Пермь", "Санкт-Петербург"]
+    city_year_data = {}
+    
+    for city in cities:
+        city_year_data[city] = {}
+        
+    all_years = set()
 
     for reg in registrations:
         city = reg.get("target_city")
         year = reg.get("graduation_year")
-
+        payment_status = reg.get("payment_status")
+        
         # Skip registrations without valid graduation year (teachers, etc.)
-        if not year or year == 0:
+        if not year or year == 0 or city not in cities:
             continue
+        
+        # Initialize year data structure if not exists
+        if year not in city_year_data[city]:
+            city_year_data[city][year] = {
+                "confirmed": 0,  # paid
+                "pending": 0,    # pay later
+                "none": 0,       # not paid (includes None, declined, etc.)
+                "total": 0
+            }
+        
+        # Normalize payment status
+        if payment_status == "confirmed":
+            city_year_data[city][year]["confirmed"] += 1
+        elif payment_status == "pending":
+            city_year_data[city][year]["pending"] += 1
+        else:
+            city_year_data[city][year]["none"] += 1
+            
+        city_year_data[city][year]["total"] += 1
+        all_years.add(year)
 
-        # Add to city-year stats
-        city_year_stats[city][year] += 1
-        years.add(year)
-
-    # Group years into 5-year periods
-    min_year = min(years)
-    max_year = max(years)
-
-    # Round min_year down to the nearest multiple of 5
-    period_start = min_year - (min_year % 5)
-
-    # Create periods (e.g. 1995-1999, 2000-2004, etc.)
-    periods = []
-    period_labels = []
-    current = period_start
-
-    while current <= max_year:
-        period_end = current + 4
-        periods.append((current, period_end))
-        period_labels.append(f"{current}-{period_end}")
-        current += 5
-
-    # Count registrations by period for each city
-    period_counts = {
-        "Москва": [0] * len(periods),
-        "Пермь": [0] * len(periods),
-        "Санкт-Петербург": [0] * len(periods),
-    }
-
-    for city, year_counts in city_year_stats.items():
-        for year, count in year_counts.items():
-            # Find which period this year belongs to
-            for i, (start, end) in enumerate(periods):
-                if start <= year <= end:
-                    period_counts[city][i] += count
-                    break
-
-    # Prepare the summary statistics text
+    # Prepare summary statistics
     stats_text = "<b>📊 Статистика регистраций по годам выпуска</b>\n\n"
-
-    # Add total registrations per period
-    stats_text += "<b>🎓 По периодам (все города):</b>\n"
-    total_by_period = [0] * len(periods)
-
-    for i, period in enumerate(period_labels):
-        period_total = sum(period_counts[city][i] for city in period_counts)
-        total_by_period[i] = period_total
-        stats_text += f"• {period}: <b>{period_total}</b> человек\n"
-
-    # Add city breakdown
-    for city in ["Москва", "Пермь", "Санкт-Петербург"]:
+    
+    # Create sorted list of years and overall statistics
+    sorted_years = sorted(all_years)
+    
+    total_stats = {
+        "confirmed": 0,
+        "pending": 0,
+        "none": 0,
+        "total": 0
+    }
+    
+    # Add city breakdown with payment status details
+    for city in cities:
         stats_text += f"\n<b>🏙️ {city}:</b>\n"
-        for i, period in enumerate(period_labels):
-            count = period_counts[city][i]
-            stats_text += f"• {period}: <b>{count}</b> человек\n"
-
-    # Generate the matplotlib diagram
-    # Set up the figure with a specific size and DPI
-    plt.figure(figsize=(12, 8), dpi=100)
-    plt.style.use("ggplot")
-
-    # Create bar positions
-    x = np.arange(len(period_labels))
-    width = 0.25  # Width of the bars
-
-    # Plot bars for each city
-    bars1 = plt.bar(x - width, period_counts["Москва"], width, label="Москва", color="#FF9999")
-    bars2 = plt.bar(x, period_counts["Пермь"], width, label="Пермь", color="#66B2FF")
-    bars3 = plt.bar(
-        x + width, period_counts["Санкт-Петербург"], width, label="СПб", color="#99FF99"
-    )
-
-    # Add value labels on top of each bar
-    def add_labels(bars):
-        for bar in bars:
-            height = bar.get_height()
-            if height > 0:  # Only add labels to bars with non-zero height
-                plt.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    height + 0.5,
-                    str(int(height)),
-                    ha="center",
-                    va="bottom",
-                    fontweight="bold",
-                )
-
-    add_labels(bars1)
-    add_labels(bars2)
-    add_labels(bars3)
-
-    # Add title and labels
-    plt.title("Количество регистраций по годам выпуска", fontsize=16, pad=20)
-    plt.xlabel("Период выпуска", fontsize=12, labelpad=10)
-    plt.ylabel("Количество человек", fontsize=12, labelpad=10)
-    plt.xticks(x, period_labels, rotation=45)
-
-    # Add legend
-    plt.legend(title="Город", loc="upper left", frameon=True)
-
-    # Adjust layout
-    plt.tight_layout()
-
-    # Save the plot to a bytes buffer
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
-
-    # Close the plot to free memory
-    plt.close()
-
-    # Send the diagram and stats text
+        city_total = {"confirmed": 0, "pending": 0, "none": 0, "total": 0}
+        
+        for year in sorted_years:
+            if year in city_year_data[city]:
+                data = city_year_data[city][year]
+                confirmed = data["confirmed"]
+                pending = data["pending"]
+                none = data["none"]
+                total = data["total"]
+                
+                stats_text += f"• {year}: <b>{total}</b> чел. "
+                if total > 0:
+                    stats_text += f"(✅ {confirmed}, ⏳ {pending}, ⚪️ {none})\n"
+                else:
+                    stats_text += "\n"
+                
+                # Add to city totals
+                city_total["confirmed"] += confirmed
+                city_total["pending"] += pending
+                city_total["none"] += none
+                city_total["total"] += total
+                
+                # Add to overall totals
+                total_stats["confirmed"] += confirmed
+                total_stats["pending"] += pending
+                total_stats["none"] += none
+                total_stats["total"] += total
+        
+        # Add city total
+        stats_text += f"<b>Всего</b>: {city_total['total']} чел. "
+        if city_total["total"] > 0:
+            stats_text += f"(✅ {city_total['confirmed']}, ⏳ {city_total['pending']}, ⚪️ {city_total['none']})\n"
+        else:
+            stats_text += "\n"
+    
+    # Add overall total
+    stats_text += f"\n<b>🌍 ИТОГО ПО ВСЕМ ГОРОДАМ: {total_stats['total']}</b> чел. "
+    if total_stats["total"] > 0:
+        stats_text += f"(✅ {total_stats['confirmed']}, ⏳ {total_stats['pending']}, ⚪️ {total_stats['none']})\n"
+    
+    # Generate separate matplotlib diagrams for each city
+    figures = []
+    
+    # Define payment status colors
+    colors = {
+        "confirmed": "#66CC66",  # green - paid
+        "pending": "#FFCC44",    # yellow - pay later
+        "none": "#EEEEEE"        # white/light gray - not paid
+    }
+    
+    for city in cities:
+        # Skip if no data
+        if not city_year_data[city]:
+            continue
+            
+        # Set up the figure
+        plt.figure(figsize=(12, 6), dpi=100)
+        plt.style.use('ggplot')
+        
+        # Get years for this city
+        city_years = sorted(city_year_data[city].keys())
+        
+        # Create positions for bars
+        x = np.arange(len(city_years))
+        width = 0.8  # Width of bars
+        
+        # Create bottom values for stacked bars
+        bottom_values = np.zeros(len(city_years))
+        
+        # Draw stacked bars for each payment status
+        for status, color in colors.items():
+            values = [city_year_data[city][year][status] for year in city_years]
+            
+            bars = plt.bar(x, values, width, 
+                  label=PAYMENT_STATUS_MAP.get(status, "Не оплачено") if status != "none" else "Не оплачено", 
+                  bottom=bottom_values, color=color)
+            
+            # Add value labels to bars
+            for j, bar in enumerate(bars):
+                height = bar.get_height()
+                if height > 0:
+                    plt.text(bar.get_x() + bar.get_width()/2, bottom_values[j] + height/2,
+                            str(int(height)), ha='center', va='center', fontweight='bold', color='black')
+            
+            # Update bottom values for next stack
+            bottom_values += values
+        
+        # Add title and labels
+        plt.title(f'Регистрации по годам выпуска - {city}', fontsize=16, pad=20)
+        plt.xlabel('Год выпуска', fontsize=12, labelpad=10)
+        plt.ylabel('Количество человек', fontsize=12, labelpad=10)
+        plt.xticks(x, city_years, rotation=45)
+        
+        # Add legend
+        plt.legend(title='Статус оплаты', loc='upper left')
+        
+        # Adjust layout
+        plt.tight_layout()
+        
+        # Save to bytes buffer
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        plt.close()
+        
+        # Store the buffer for sending
+        figures.append(BufferedInputFile(buf.getvalue(), filename=f"stats_{city}.png"))
+    
+    # Send all diagrams and stats text
     await status_msg.delete()
-    await message.answer_photo(
-        BufferedInputFile(buf.getvalue(), filename="registration_stats.png"),
-        caption=stats_text,
-        parse_mode="HTML",
-    )
+    
+    # Send the text first
+    await send_safe(message.chat.id, stats_text, parse_mode="HTML")
+    
+    # Send each figure separately
+    for figure in figures:
+        await message.answer_photo(figure)
 
 
 @commands_menu.add_command(
