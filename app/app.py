@@ -15,6 +15,7 @@ class TargetCity(Enum):
     PERM = "Пермь"
     MOSCOW = "Москва"
     SAINT_PETERSBURG = "Санкт-Петербург"
+    BELGRADE = "Белград"
 
 
 class GraduateType(str, Enum):
@@ -375,6 +376,8 @@ class App:
             message += f"💰 Оплата: Бесплатно (учитель)\n"
         elif city == TargetCity.SAINT_PETERSBURG.value:
             message += f"💰 Оплата: За свой счет (Санкт-Петербург)\n"
+        elif city == TargetCity.BELGRADE.value:
+            message += f"💰 Оплата: За свой счет (Белград)\n"
 
         await self.log_to_chat(message, "events")
 
@@ -418,8 +421,8 @@ class App:
         Returns:
             Tuple of (regular_amount, discount, discounted_amount)
         """
-        # Teachers and Saint Petersburg attendees are free
-        if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value:
+        # Teachers and Saint Petersburg/Belgrade attendees are free
+        if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value or city == TargetCity.BELGRADE.value:
             return 0, 0, 0, 0
 
         # For non-graduates, use fixed recommended amounts
@@ -577,6 +580,7 @@ class App:
             "$and": [
                 {"payment_status": {"$ne": "confirmed"}},
                 {"target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}},  # Exclude SPb as it's free
+                {"target_city": {"$ne": TargetCity.BELGRADE.value}},  # Exclude Belgrade as it's free
                 {"graduate_type": {"$ne": GraduateType.TEACHER.value}},  # Exclude teachers as they don't pay
             ]
         }

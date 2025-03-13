@@ -29,12 +29,14 @@ date_of_event = {
     TargetCity.PERM: "29 Марта, Сб",
     TargetCity.MOSCOW: "5 Апреля, Сб",
     TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
+    TargetCity.BELGRADE: "5 Апреля, Сб",
 }
 
 padezhi = {
     TargetCity.PERM: "Перми",
     TargetCity.MOSCOW: "Москве",
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
+    TargetCity.BELGRADE: "Белграде",
 }
 
 
@@ -60,7 +62,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
             # Add payment status indicator
             payment_status = ""
-            if city != TargetCity.SAINT_PETERSBURG.value:
+            if city != TargetCity.SAINT_PETERSBURG.value and city != TargetCity.BELGRADE.value:
                 status = reg.get("payment_status", "не оплачено")
                 status_emoji = (
                     "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
@@ -110,6 +112,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         needs_payment = False
         if (
             city != TargetCity.SAINT_PETERSBURG.value
+            and city != TargetCity.BELGRADE.value
             and graduate_type != GraduateType.TEACHER.value
             and reg.get("payment_status") != "confirmed"
         ):
@@ -119,6 +122,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         payment_status = ""
         if (
             city != TargetCity.SAINT_PETERSBURG.value
+            and city != TargetCity.BELGRADE.value
             and graduate_type != GraduateType.TEACHER.value
         ):
             status = reg.get("payment_status", "не оплачено")
@@ -692,7 +696,7 @@ async def register_user(
         f"в {padezhi[location]} {date_of_event[location]}. "
     )
 
-    # Skip payment flow for St. Petersburg and teachers
+    # Skip payment flow for St. Petersburg, Belgrade and teachers
     if location.value == TargetCity.SAINT_PETERSBURG.value:
         # Mark Saint Petersburg registrations as paid automatically
         await app.update_payment_status(
@@ -709,9 +713,24 @@ async def register_user(
             confirmation_msg,
             reply_markup=ReplyKeyboardRemove(),
         )
+        return
+    elif location.value == TargetCity.BELGRADE.value:
+        # Mark Belgrade registrations as paid automatically
+        await app.update_payment_status(
+            user_id=user_id,
+            city=location.value,
+            status="confirmed",
+            admin_comment="Автоматически подтверждено (Белград)",
+            payment_amount=0,
+        )
 
-        # Auto-export to sheets after registration with confirmed payment
-        await app.export_registered_users_to_google_sheets()
+        confirmation_msg += "\nДля встречи в Белграде оплата не требуется. Все расходы участники несут самостоятельно."
+        await send_safe(
+            message.chat.id,
+            confirmation_msg,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
     elif graduate_type == GraduateType.TEACHER:
         # Mark teachers as paid automatically
         await app.update_payment_status(
