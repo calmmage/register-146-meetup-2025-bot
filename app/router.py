@@ -725,6 +725,7 @@ async def register_user(
         )
 
         confirmation_msg += "\nДля встречи в Белграде оплата не требуется. Все расходы участники несут самостоятельно."
+        confirmation_msg += "\n\nПрисоединяйтесь к группе встречи в Telegram: https://t.me/+8-4xPvS-PTcxZTEy"
         await send_safe(
             message.chat.id,
             confirmation_msg,
