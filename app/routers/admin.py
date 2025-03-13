@@ -185,6 +185,8 @@ async def show_stats(message: Message):
     payment_cursor = app.collection.aggregate(
         [
             {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
+            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
@@ -387,6 +389,8 @@ async def show_simple_stats(message: Message):
     payment_cursor = app.collection.aggregate(
         [
             {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
+            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
@@ -641,7 +645,7 @@ async def show_year_stats(message: Message):
         return
 
     # Group registrations by city and year
-    cities = ["Москва", "Пермь", "Санкт-Петербург"]
+    cities = ["Москва", "Пермь", "Санкт-Петербург", "Белград"]
     city_year_counts = {}
     
     for city in cities:
@@ -727,7 +731,8 @@ async def show_year_stats(message: Message):
     city_palette = {
         "Москва": "#FF6666",       # stronger red
         "Пермь": "#5599FF",        # stronger blue
-        "Санкт-Петербург": "#66CC66"  # stronger green
+        "Санкт-Петербург": "#66CC66",  # stronger green
+        "Белград": "#FF00FF"  # stronger purple
     }
     
     # Create figure with better size for readability

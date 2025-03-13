@@ -418,11 +418,12 @@ async def pay_handler(message: Message, state: FSMContext):
         return
 
     # Filter registrations that require payment
-    # Skip St. Petersburg and teachers
+    # Skip St. Petersburg, Belgrade and teachers
     payment_registrations = [
         reg
         for reg in registrations
         if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value
+        and reg["target_city"] != TargetCity.BELGRADE.value
         and reg.get("graduate_type", GraduateType.GRADUATE.value) != GraduateType.TEACHER.value
     ]
 
