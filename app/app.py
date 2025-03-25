@@ -76,6 +76,8 @@ class App:
     name = "146 Meetup Register Bot"
 
     registration_collection_name = "registered_users"
+    event_logs_collection_name = "event_logs"
+    deleted_users_collection_name = "deleted_users"
 
     def __init__(self, **kwargs):
         from app.export import SheetExporter
@@ -84,12 +86,26 @@ class App:
         self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id, app=self)
 
         self._collection = None
+        self._event_logs = None
+        self._deleted_users = None
 
     @property
     def collection(self):
         if self._collection is None:
             self._collection = get_database().get_collection(self.registration_collection_name)
         return self._collection
+        
+    @property
+    def event_logs(self):
+        if self._event_logs is None:
+            self._event_logs = get_database().get_collection(self.event_logs_collection_name)
+        return self._event_logs
+        
+    @property
+    def deleted_users(self):
+        if self._deleted_users is None:
+            self._deleted_users = get_database().get_collection(self.deleted_users_collection_name)
+        return self._deleted_users
 
     async def save_registered_user(
         self, registered_user: RegisteredUser, user_id: int = None, username: str = None
@@ -132,20 +148,27 @@ class App:
         registrations = await self.get_user_registrations(user_id)
         return registrations[0] if registrations else None
 
-    async def delete_user_registration(self, user_id: int, city: str = None):
+    async def delete_user_registration(self, user_id: int, city: str = None, username: str = None, full_name: str = None):
         """
-        Delete a user's registration
-
+        Move a user's registration to deleted_users collection instead of permanent deletion
+        
         Args:
             user_id: The user's Telegram ID
             city: Optional city to delete specific registration. If None, deletes all.
+            username: Optional user's Telegram username for logging
+            full_name: Optional user's full name for logging
         """
+        # Log the deletion event
+        log_data = {"action": "delete_registration"}
         if city:
-            result = await self.collection.delete_one({"user_id": user_id, "target_city": city})
-        else:
-            result = await self.collection.delete_many({"user_id": user_id})
-
-        return result.deleted_count > 0
+            log_data["city"] = city
+        if full_name:
+            log_data["full_name"] = full_name
+            
+        await self.save_event_log("user_deletion", log_data, user_id, username)
+        
+        # Move the user to deleted_users collection
+        return await self.move_user_to_deleted(user_id, city)
 
     def validate_full_name(self, full_name: str) -> Tuple[bool, str]:
         """
@@ -587,3 +610,61 @@ class App:
         
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
+        
+    async def save_event_log(self, event_type: str, data: Dict, user_id: Optional[int] = None, username: Optional[str] = None) -> None:
+        """
+        Save a record to the event logs collection
+        
+        Args:
+            event_type: Type of the event (e.g., 'registration', 'payment', 'cancellation')
+            data: Additional data about the event
+            user_id: Optional user's Telegram ID
+            username: Optional user's Telegram username
+        """
+        log_entry = {
+            "event_type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "data": data
+        }
+        
+        if user_id is not None:
+            log_entry["user_id"] = user_id
+        if username is not None:
+            log_entry["username"] = username
+            
+        await self.event_logs.insert_one(log_entry)
+        
+    async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
+        """
+        Move a user from registered_users to deleted_users collection
+        
+        Args:
+            user_id: The user's Telegram ID
+            city: Optional city to move specific registration. If None, moves all registrations.
+            
+        Returns:
+            Boolean indicating whether any records were moved
+        """
+        # Find user registrations to move
+        if city:
+            query = {"user_id": user_id, "target_city": city}
+        else:
+            query = {"user_id": user_id}
+            
+        registrations = await self.collection.find(query).to_list(length=None)
+        
+        if not registrations:
+            return False
+            
+        # Add deletion timestamp and move to deleted_users collection
+        for registration in registrations:
+            registration["deleted_at"] = datetime.now().isoformat()
+            await self.deleted_users.insert_one(registration)
+            
+        # Delete from original collection
+        if city:
+            result = await self.collection.delete_one({"user_id": user_id, "target_city": city})
+        else:
+            result = await self.collection.delete_many({"user_id": user_id})
+            
+        return result.deleted_count > 0
