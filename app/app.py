@@ -94,13 +94,13 @@ class App:
         if self._collection is None:
             self._collection = get_database().get_collection(self.registration_collection_name)
         return self._collection
-        
+
     @property
     def event_logs(self):
         if self._event_logs is None:
             self._event_logs = get_database().get_collection(self.event_logs_collection_name)
         return self._event_logs
-        
+
     @property
     def deleted_users(self):
         if self._deleted_users is None:
@@ -131,7 +131,7 @@ class App:
             "graduation_year": data.get("graduation_year"),
             "class_letter": data.get("class_letter"),
             "target_city": data.get("target_city"),
-            "graduate_type": data.get("graduate_type")
+            "graduate_type": data.get("graduate_type"),
         }
 
         # Check if user is already registered for this specific city
@@ -147,19 +147,14 @@ class App:
                 log_data["action"] = "update_registration"
                 log_data["existing_id"] = str(existing["_id"])
                 is_update = True
-                
+
         if not is_update:
             # Insert new record
             result = await self.collection.insert_one(data)
             log_data["new_id"] = str(result.inserted_id)
-        
+
         # Log the registration action
-        await self.save_event_log(
-            "user_registration", 
-            log_data, 
-            user_id, 
-            username
-        )
+        await self.save_event_log("user_registration", log_data, user_id, username)
 
     async def get_user_registrations(self, user_id: int):
         """Get all registrations for a user"""
@@ -171,10 +166,12 @@ class App:
         registrations = await self.get_user_registrations(user_id)
         return registrations[0] if registrations else None
 
-    async def delete_user_registration(self, user_id: int, city: str = None, username: str = None, full_name: str = None):
+    async def delete_user_registration(
+        self, user_id: int, city: str = None, username: str = None, full_name: str = None
+    ):
         """
         Move a user's registration to deleted_users collection instead of permanent deletion
-        
+
         Args:
             user_id: The user's Telegram ID
             city: Optional city to delete specific registration. If None, deletes all.
@@ -187,9 +184,9 @@ class App:
             log_data["city"] = city
         if full_name:
             log_data["full_name"] = full_name
-            
+
         await self.save_event_log("user_deletion", log_data, user_id, username)
-        
+
         # Move the user to deleted_users collection
         return await self.move_user_to_deleted(user_id, city)
 
@@ -468,7 +465,11 @@ class App:
             Tuple of (regular_amount, discount, discounted_amount)
         """
         # Teachers and Saint Petersburg/Belgrade attendees are free
-        if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value or city == TargetCity.BELGRADE.value:
+        if (
+            graduate_type == GraduateType.TEACHER.value
+            or city == TargetCity.SAINT_PETERSBURG.value
+            or city == TargetCity.BELGRADE.value
+        ):
             return 0, 0, 0, 0
 
         # For non-graduates, use fixed recommended amounts
@@ -602,7 +603,7 @@ class App:
         registration = None
         if payment_amount is not None or status:
             registration = await self.collection.find_one({"user_id": user_id, "target_city": city})
-            
+
         # Prepare log data
         log_data = {
             "action": "update_payment_status",
@@ -610,17 +611,17 @@ class App:
             "city": city,
             "new_status": status,
         }
-        
+
         if registration:
             log_data["full_name"] = registration.get("full_name")
             log_data["previous_status"] = registration.get("payment_status")
-            
+
         if admin_comment:
             log_data["admin_comment"] = admin_comment
-            
+
         if admin_id:
             log_data["admin_id"] = admin_id
-            
+
         if admin_username:
             log_data["admin_username"] = admin_username
 
@@ -628,7 +629,7 @@ class App:
         if payment_amount is not None:
             # Add payment amount to log data
             log_data["payment_amount"] = payment_amount
-            
+
             if registration and "payment_amount" in registration:
                 # Add the new payment to the existing amount
                 total_payment = registration["payment_amount"] + payment_amount
@@ -661,10 +662,7 @@ class App:
 
         # Log the payment status update
         await self.save_event_log(
-            "payment_status_update", 
-            log_data, 
-            admin_id or user_id, 
-            admin_username
+            "payment_status_update", log_data, admin_id or user_id, admin_username
         )
 
         # Update the database
@@ -678,46 +676,55 @@ class App:
             {"graduate_type": {"$exists": True}},
             [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}],
         )
-        
+
         # Log the normalization operation
-        log_data = {
-            "action": "normalize_graduate_types",
-            "modified_count": result.modified_count
-        }
-        
+        log_data = {"action": "normalize_graduate_types", "modified_count": result.modified_count}
+
         if admin_id:
             log_data["admin_id"] = admin_id
-            
+
         if admin_username:
             log_data["admin_username"] = admin_username
-            
+
         await self.save_event_log("admin_action", log_data, admin_id, admin_username)
-        
+
         return result.modified_count
-        
+
     async def get_unpaid_users(self) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
-        
+
         Returns:
             List of user registrations with unpaid status
         """
         query = {
             "$and": [
                 {"payment_status": {"$ne": "confirmed"}},
-                {"target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}},  # Exclude SPb as it's free
-                {"target_city": {"$ne": TargetCity.BELGRADE.value}},  # Exclude Belgrade as it's free
-                {"graduate_type": {"$ne": GraduateType.TEACHER.value}},  # Exclude teachers as they don't pay
+                {
+                    "target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}
+                },  # Exclude SPb as it's free
+                {
+                    "target_city": {"$ne": TargetCity.BELGRADE.value}
+                },  # Exclude Belgrade as it's free
+                {
+                    "graduate_type": {"$ne": GraduateType.TEACHER.value}
+                },  # Exclude teachers as they don't pay
             ]
         }
-        
+
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
-        
-    async def save_event_log(self, event_type: str, data: Dict, user_id: Optional[int] = None, username: Optional[str] = None) -> None:
+
+    async def save_event_log(
+        self,
+        event_type: str,
+        data: Dict,
+        user_id: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> None:
         """
         Save a record to the event logs collection
-        
+
         Args:
             event_type: Type of the event (e.g., 'registration', 'payment', 'cancellation')
             data: Additional data about the event
@@ -727,35 +734,57 @@ class App:
         log_entry = {
             "event_type": event_type,
             "timestamp": datetime.now().isoformat(),
-            "data": data
+            "data": data,
         }
-        
+
         if user_id is not None:
             log_entry["user_id"] = user_id
         if username is not None:
             log_entry["username"] = username
-            
+
         await self.event_logs.insert_one(log_entry)
-        
+
     async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
         """
         Move a user from registered_users to deleted_users collection
-        
+
         Args:
             user_id: The user's Telegram ID
             city: Optional city to move specific registration. If None, moves all registrations.
-            
+
         Returns:
             Boolean indicating whether any records were moved
         """
-        try:
-            # Direct deletion for tests
-            if city:
-                result = await self.collection.delete_one({"user_id": user_id, "target_city": city})
-            else:
-                result = await self.collection.delete_many({"user_id": user_id})
-                
-            return result.deleted_count > 0
-        except Exception as e:
-            logger.error(f"Error moving user to deleted: {e}")
+        # Build query
+        query = {"user_id": user_id}
+        if city:
+            query["target_city"] = city
+
+        # Find records to move
+        cursor = self.collection.find(query)
+        records = await cursor.to_list(length=None)
+
+        if not records:
+            logger.warning(f"No records found to move for user_id={user_id}, city={city}")
             return False
+
+        # Add deletion timestamp to each record
+        now = datetime.now().isoformat()
+        for record in records:
+            record["deletion_timestamp"] = now
+
+        # Insert into deleted_users collection
+        if len(records) == 1:
+            await self.deleted_users.insert_one(records[0])
+            logger.info(f"Moved 1 record to deleted_users: user_id={user_id}, city={city}")
+        else:
+            await self.deleted_users.insert_many(records)
+            logger.info(f"Moved {len(records)} records to deleted_users: user_id={user_id}")
+
+        # Now that records are backed up, delete from main collection
+        if city:
+            result = await self.collection.delete_one(query)
+        else:
+            result = await self.collection.delete_many(query)
+
+        return result.deleted_count > 0

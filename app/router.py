@@ -175,39 +175,24 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             state=state,
             timeout=None,
         )
-        
+
         # Log single registration action choice
         if message.from_user:
             await app.save_event_log(
-                "button_click", 
+                "button_click",
                 {
                     "button": response,
                     "context": "single_registration_menu",
                     "city": city,
                     "needs_payment": needs_payment,
-                    "payment_status": reg.get("payment_status")
-                }, 
-                message.from_user.id, 
-                message.from_user.username
+                    "payment_status": reg.get("payment_status"),
+                },
+                message.from_user.id,
+                message.from_user.username,
             )
 
         if response == "cancel":
-            # Delete registration
-            await app.delete_user_registration(message.from_user.id, city)
-
-            # Log cancellation
-            await app.log_registration_canceled(
-                message.from_user.id,
-                message.from_user.username or "",
-                full_name,
-                city,
-            )
-
-            await send_safe(
-                message.chat.id,
-                "Ваша регистрация отменена. Если передумаете, используйте /start чтобы зарегистрироваться снова.",
-                reply_markup=ReplyKeyboardRemove(),
-            )
+            await cancel_registration_handler(message, state)
 
         elif response == "pay":
             # Process payment for this registration
@@ -261,15 +246,15 @@ async def manage_registrations(message: Message, state: FSMContext, registration
     # Log entering registration management
     if message.from_user:
         await app.save_event_log(
-            "navigation", 
+            "navigation",
             {
                 "action": "enter_registration_management",
-                "cities": [reg["target_city"] for reg in registrations]
-            }, 
-            message.from_user.id, 
-            message.from_user.username
+                "cities": [reg["target_city"] for reg in registrations],
+            },
+            message.from_user.id,
+            message.from_user.username,
         )
-        
+
     response = await ask_user_choice(
         message.chat.id,
         "Выберите регистрацию для управления:",
@@ -281,16 +266,16 @@ async def manage_registrations(message: Message, state: FSMContext, registration
     # Log button click
     if message.from_user:
         await app.save_event_log(
-            "button_click", 
+            "button_click",
             {
                 "button": response,
                 "context": "registration_management",
-                "cities": [reg["target_city"] for reg in registrations]
-            }, 
-            message.from_user.id, 
-            message.from_user.username
+                "cities": [reg["target_city"] for reg in registrations],
+            },
+            message.from_user.id,
+            message.from_user.username,
         )
-    
+
     if response == "all":
         # Confirm deletion of all registrations
         confirm = await ask_user_choice(
@@ -304,15 +289,12 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         # Log confirmation button click
         if message.from_user:
             await app.save_event_log(
-                "button_click", 
-                {
-                    "button": confirm,
-                    "context": "confirm_delete_all_registrations"
-                }, 
-                message.from_user.id, 
-                message.from_user.username
+                "button_click",
+                {"button": confirm, "context": "confirm_delete_all_registrations"},
+                message.from_user.id,
+                message.from_user.username,
             )
-            
+
         if confirm == "yes":
             await app.delete_user_registration(message.from_user.id)
 
@@ -369,18 +351,14 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             state=state,
             timeout=None,
         )
-        
+
         # Log city-specific action
         if message.from_user:
             await app.save_event_log(
-                "button_click", 
-                {
-                    "button": action,
-                    "context": "city_registration_management",
-                    "city": city
-                }, 
-                message.from_user.id, 
-                message.from_user.username
+                "button_click",
+                {"button": action, "context": "city_registration_management", "city": city},
+                message.from_user.id,
+                message.from_user.username,
             )
 
         if action == "cancel":
@@ -510,18 +488,18 @@ async def register_user(
         log_msg = await app.log_registration_step(
             user_id, username, "Выбор города", f"Выбранный город: {location.value}"
         )
-        
+
         # Also log to event_logs collection
         await app.save_event_log(
-            "registration_step", 
+            "registration_step",
             {
                 "step": "city_selection",
                 "city": location.value,
                 "available_cities": list(available_cities.keys()),
-                "existing_cities": existing_cities
-            }, 
-            user_id, 
-            username
+                "existing_cities": existing_cities,
+            },
+            user_id,
+            username,
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
@@ -862,17 +840,17 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
-        
+
     # Log the cancel registration command
     await app.save_event_log(
-        "command", 
+        "command",
         {
             "command": "/cancel_registration",
             "content": message.text,
-            "chat_type": message.chat.type
-        }, 
-        message.from_user.id, 
-        message.from_user.username
+            "chat_type": message.chat.type,
+        },
+        message.from_user.id,
+        message.from_user.username,
     )
 
     user_id = message.from_user.id
@@ -1009,6 +987,92 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
             )
 
 
+@commands_menu.add_command("status", "Статус регистрации")
+@router.message(Command("status"))
+async def status_handler(message: Message, state: FSMContext):
+    """
+    Show user registration status
+    """
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
+
+    # Log the status command
+    await app.save_event_log(
+        "command",
+        {"command": "/status", "content": message.text, "chat_type": message.chat.type},
+        message.from_user.id,
+        message.from_user.username,
+    )
+
+    user_id = message.from_user.id
+    registrations = await app.get_user_registrations(user_id)
+
+    if not registrations:
+        await send_safe(
+            message.chat.id,
+            "У вас нет активных регистраций. Используйте /start для регистрации на встречу.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    status_text = "📋 Ваши регистрации:\n\n"
+
+    for reg in registrations:
+        city = reg["target_city"]
+        city_enum = next((c for c in TargetCity if c.value == city), None)
+        full_name = reg["full_name"]
+        graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
+
+        # Add city and date information
+        status_text += f"🏙️ Город: {city}"
+        if city_enum and city_enum in date_of_event:
+            status_text += f" ({date_of_event[city_enum]})"
+        status_text += "\n"
+
+        # Add personal information
+        status_text += f"👤 ФИО: {full_name}\n"
+
+        # Show different info based on graduate type
+        if graduate_type == GraduateType.TEACHER.value:
+            status_text += "👨‍🏫 Статус: Учитель\n"
+        elif graduate_type == GraduateType.NON_GRADUATE.value:
+            status_text += "👥 Статус: Не выпускник\n"
+        else:
+            status_text += f"🎓 Выпуск: {reg['graduation_year']} {reg['class_letter']}\n"
+
+        # Add payment status
+        if city == TargetCity.SAINT_PETERSBURG.value or city == TargetCity.BELGRADE.value:
+            status_text += "💰 Оплата: За свой счет\n"
+        elif graduate_type == GraduateType.TEACHER.value:
+            status_text += "💰 Оплата: Бесплатно (учитель)\n"
+        else:
+            payment_status = reg.get("payment_status", "не оплачено")
+            status_emoji = (
+                "✅"
+                if payment_status == "confirmed"
+                else "❌" if payment_status == "declined" else "⏳"
+            )
+            status_text += f"💰 Статус оплаты: {status_emoji} {payment_status}\n"
+
+            # Add payment amount if available
+            if "payment_amount" in reg:
+                status_text += f"💵 Сумма оплаты: {reg['payment_amount']} руб.\n"
+            elif payment_status == "pending" and "discounted_payment_amount" in reg:
+                status_text += f"💵 Ожидаемая сумма: {reg['discounted_payment_amount']} руб.\n"
+
+        # Add separator between registrations
+        status_text += "\n"
+
+    # Add available commands information
+    status_text += "Доступные команды:\n"
+    status_text += "- /start - управление регистрациями\n"
+    status_text += "- /pay - оплатить участие\n"
+    status_text += "- /cancel_registration - отменить регистрацию\n"
+
+    await send_safe(message.chat.id, status_text, reply_markup=ReplyKeyboardRemove())
+
+
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
 @router.message(F.text, F.chat.type == "private")  # only handle private messages
@@ -1019,14 +1083,10 @@ async def start_handler(message: Message, state: FSMContext):
     # Log the start command
     if message.from_user:
         await app.save_event_log(
-            "command", 
-            {
-                "command": "/start",
-                "content": message.text,
-                "chat_type": message.chat.type
-            }, 
-            message.from_user.id, 
-            message.from_user.username
+            "command",
+            {"command": "/start", "content": message.text, "chat_type": message.chat.type},
+            message.from_user.id,
+            message.from_user.username,
         )
 
     if is_admin(message.from_user):
