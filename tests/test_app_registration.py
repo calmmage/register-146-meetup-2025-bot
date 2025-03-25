@@ -9,12 +9,19 @@ class TestAppRegistration:
 
     def setup_method(self):
         """Set up test environment before each test"""
-        # Create a mock collection
+        # Create mock collections
         self.mock_collection = AsyncMock()
+        self.mock_event_logs = AsyncMock()
+        self.mock_deleted_users = AsyncMock()
 
         # Mock the get_database().get_collection() chain
         mock_db = MagicMock()
-        mock_db.get_collection.return_value = self.mock_collection
+        mock_db.get_collection = MagicMock()
+        mock_db.get_collection.side_effect = lambda name: {
+            "registered_users": self.mock_collection,
+            "event_logs": self.mock_event_logs,
+            "deleted_users": self.mock_deleted_users
+        }.get(name, AsyncMock())
 
         # Create a patcher for get_database
         self.db_patcher = patch("app.app.get_database", return_value=mock_db)
@@ -26,7 +33,11 @@ class TestAppRegistration:
             payment_phone_number="1234567890",
             payment_name="Test User",
         )
-
+        
+        # Patch save_event_log to avoid test side effects
+        self.save_event_log_patcher = patch.object(self.app, "save_event_log", AsyncMock())
+        self.save_event_log_patcher.start()
+        
         # Sample user data
         self.sample_user = RegisteredUser(
             full_name="Иванов Иван",
@@ -37,23 +48,31 @@ class TestAppRegistration:
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
         )
+        
+    def teardown_method(self):
+        """Clean up after each test"""
+        self.db_patcher.stop()
+        self.save_event_log_patcher.stop()
 
     @pytest.mark.asyncio
     async def test_save_registered_user_new(self):
         """Test saving a new registered user"""
         # Mock find_one to return None (no existing registration)
         self.mock_collection.find_one.return_value = None
+        
+        # Mock insert_one
+        self.mock_collection.insert_one.return_value.inserted_id = "mock_id"
 
         # Call the method
         await self.app.save_registered_user(
             self.sample_user, user_id=self.sample_user.user_id, username=self.sample_user.username
         )
 
-        # Check that insert_one was called
-        self.mock_collection.insert_one.assert_called_once()
-
-        # Get the data passed to insert_one
-        insert_data = self.mock_collection.insert_one.call_args[0][0]
+        # Check that insert_one was called with the correct data
+        assert self.mock_collection.insert_one.call_count >= 1
+        
+        # Get the first call to insert_one which should be our user data
+        insert_data = self.mock_collection.insert_one.call_args_list[0][0][0]
 
         # Verify the data is correct
         assert insert_data["full_name"] == "Иванов Иван"

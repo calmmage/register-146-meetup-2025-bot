@@ -175,6 +175,21 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             state=state,
             timeout=None,
         )
+        
+        # Log single registration action choice
+        if message.from_user:
+            await app.save_event_log(
+                "button_click", 
+                {
+                    "button": response,
+                    "context": "single_registration_menu",
+                    "city": city,
+                    "needs_payment": needs_payment,
+                    "payment_status": reg.get("payment_status")
+                }, 
+                message.from_user.id, 
+                message.from_user.username
+            )
 
         if response == "cancel":
             # Delete registration
@@ -243,6 +258,18 @@ async def manage_registrations(message: Message, state: FSMContext, registration
     choices["all"] = "Отменить все регистрации"
     choices["back"] = "Вернуться назад"
 
+    # Log entering registration management
+    if message.from_user:
+        await app.save_event_log(
+            "navigation", 
+            {
+                "action": "enter_registration_management",
+                "cities": [reg["target_city"] for reg in registrations]
+            }, 
+            message.from_user.id, 
+            message.from_user.username
+        )
+        
     response = await ask_user_choice(
         message.chat.id,
         "Выберите регистрацию для управления:",
@@ -251,6 +278,19 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         timeout=None,
     )
 
+    # Log button click
+    if message.from_user:
+        await app.save_event_log(
+            "button_click", 
+            {
+                "button": response,
+                "context": "registration_management",
+                "cities": [reg["target_city"] for reg in registrations]
+            }, 
+            message.from_user.id, 
+            message.from_user.username
+        )
+    
     if response == "all":
         # Confirm deletion of all registrations
         confirm = await ask_user_choice(
@@ -261,6 +301,18 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             timeout=None,
         )
 
+        # Log confirmation button click
+        if message.from_user:
+            await app.save_event_log(
+                "button_click", 
+                {
+                    "button": confirm,
+                    "context": "confirm_delete_all_registrations"
+                }, 
+                message.from_user.id, 
+                message.from_user.username
+            )
+            
         if confirm == "yes":
             await app.delete_user_registration(message.from_user.id)
 
@@ -317,6 +369,19 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             state=state,
             timeout=None,
         )
+        
+        # Log city-specific action
+        if message.from_user:
+            await app.save_event_log(
+                "button_click", 
+                {
+                    "button": action,
+                    "context": "city_registration_management",
+                    "city": city
+                }, 
+                message.from_user.id, 
+                message.from_user.username
+            )
 
         if action == "cancel":
             # Delete this registration
@@ -444,6 +509,19 @@ async def register_user(
         # Log city selection
         log_msg = await app.log_registration_step(
             user_id, username, "Выбор города", f"Выбранный город: {location.value}"
+        )
+        
+        # Also log to event_logs collection
+        await app.save_event_log(
+            "registration_step", 
+            {
+                "step": "city_selection",
+                "city": location.value,
+                "available_cities": list(available_cities.keys()),
+                "existing_cities": existing_cities
+            }, 
+            user_id, 
+            username
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
@@ -784,6 +862,18 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
+        
+    # Log the cancel registration command
+    await app.save_event_log(
+        "command", 
+        {
+            "command": "/cancel_registration",
+            "content": message.text,
+            "chat_type": message.chat.type
+        }, 
+        message.from_user.id, 
+        message.from_user.username
+    )
 
     user_id = message.from_user.id
     registrations = await app.get_user_registrations(user_id)
@@ -926,6 +1016,18 @@ async def start_handler(message: Message, state: FSMContext):
     """
     Main scenario flow.
     """
+    # Log the start command
+    if message.from_user:
+        await app.save_event_log(
+            "command", 
+            {
+                "command": "/start",
+                "content": message.text,
+                "chat_type": message.chat.type
+            }, 
+            message.from_user.id, 
+            message.from_user.username
+        )
 
     if is_admin(message.from_user):
         result = await admin_handler(message, state)

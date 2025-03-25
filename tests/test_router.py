@@ -32,6 +32,7 @@ def mock_app():
         mock_app.delete_user_registration = AsyncMock()
         mock_app.log_registration_canceled = AsyncMock()
         mock_app.log_registration_completed = AsyncMock()
+        mock_app.save_event_log = AsyncMock()
         yield mock_app
 
 
