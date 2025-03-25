@@ -160,7 +160,6 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         choices.update(
             {
                 "register_another": "Зарегистрироваться в другом городе",
-                "change": "Изменить данные регистрации",
                 "cancel": "Отменить регистрацию",
             }
         )
@@ -177,13 +176,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             timeout=None,
         )
 
-        if response == "change":
-            # Delete current registration and start new one
-            await app.delete_user_registration(message.from_user.id, city)
-            await send_safe(message.chat.id, "Давайте обновим вашу регистрацию.")
-            await register_user(message, state)
-
-        elif response == "cancel":
+        if response == "cancel":
             # Delete registration
             await app.delete_user_registration(message.from_user.id, city)
 
@@ -318,7 +311,6 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             message.chat.id,
             info_text,
             choices={
-                "change": "Изменить данные",
                 "cancel": "Отменить регистрацию",
                 "back": "Вернуться назад",
             },
@@ -326,15 +318,7 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             timeout=None,
         )
 
-        if action == "change":
-            # Delete this registration and start new one
-            await app.delete_user_registration(message.from_user.id, city)
-            await send_safe(message.chat.id, f"Давайте обновим вашу регистрацию в городе {city}.")
-
-            # Pre-select the city for the new registration
-            await register_user(message, state, preselected_city=city)
-
-        elif action == "cancel":
+        if action == "cancel":
             # Delete this registration
             await app.delete_user_registration(message.from_user.id, city)
 
@@ -725,7 +709,9 @@ async def register_user(
         )
 
         confirmation_msg += "\nДля встречи в Белграде оплата не требуется. Все расходы участники несут самостоятельно."
-        confirmation_msg += "\n\nПрисоединяйтесь к группе встречи в Telegram: https://t.me/+8-4xPvS-PTcxZTEy"
+        confirmation_msg += (
+            "\n\nПрисоединяйтесь к группе встречи в Telegram: https://t.me/+8-4xPvS-PTcxZTEy"
+        )
         await send_safe(
             message.chat.id,
             confirmation_msg,
@@ -870,7 +856,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
             )
 
         choices["all"] = "Отменить все регистрации"
-        choices["cancel"] = "Отмена - ничего не отменять"
+        choices["cancel"] = "Ничего не отменять"
 
         response = await ask_user_choice(
             message.chat.id,
