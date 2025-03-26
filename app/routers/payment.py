@@ -148,6 +148,20 @@ async def process_payment(
     choices = {"pay_later": "Оплачу позже"}
 
     # Wait for response using ask_user_choice_raw (either screenshot or choice)
+    # Log payment proof request
+    await app.save_event_log(
+        "payment_action", 
+        {
+            "action": "request_payment_proof",
+            "city": city,
+            "amount": discounted_amount,
+            "regular_amount": regular_amount,
+            "graduate_type": graduate_type
+        }, 
+        user_id, 
+        username
+    )
+    
     response = await ask_user_choice_raw(
         message.chat.id,
         "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или выберите опцию ниже:",
@@ -174,8 +188,23 @@ async def process_payment(
             reply_markup=ReplyKeyboardRemove(),
         )
 
+        # Log to chat log
         await app.log_registration_step(
             user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
+        )
+        
+        # Log to event logs
+        await app.save_event_log(
+            "payment_action", 
+            {
+                "action": "pay_later_selected",
+                "city": city,
+                "amount": discounted_amount,
+                "regular_amount": regular_amount,
+                "graduate_type": graduate_type
+            }, 
+            user_id, 
+            username
         )
 
         # Save payment info with pending status
@@ -194,6 +223,20 @@ async def process_payment(
     )
 
     if has_photo or has_pdf:
+        # Log payment proof submission
+        await app.save_event_log(
+            "payment_action", 
+            {
+                "action": "payment_proof_submitted",
+                "city": city,
+                "amount": discounted_amount,
+                "proof_type": "photo" if has_photo else "pdf",
+                "graduate_type": graduate_type
+            }, 
+            user_id, 
+            username
+        )
+        
         # Save payment info with pending status
         await app.save_payment_info(
             user_id,
@@ -202,6 +245,7 @@ async def process_payment(
             regular_amount,
             response.message_id,
             formula_amount=formula_amount,
+            username=username,
         )
 
         # Forward screenshot to events chat (which is used as validation chat)
@@ -403,6 +447,18 @@ async def pay_handler(message: Message, state: FSMContext):
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
+        
+    # Log the pay command
+    await app.save_event_log(
+        "command", 
+        {
+            "command": "/pay",
+            "content": message.text,
+            "chat_type": message.chat.type
+        }, 
+        message.from_user.id, 
+        message.from_user.username
+    )
 
     user_id = message.from_user.id
 
@@ -455,6 +511,18 @@ async def pay_handler(message: Message, state: FSMContext):
             choices=choices,
             state=state,
             timeout=None,
+        )
+        
+        # Log the payment city choice
+        await app.save_event_log(
+            "button_click", 
+            {
+                "button": response,
+                "context": "payment_city_selection",
+                "available_cities": list(choices.keys())
+            }, 
+            message.from_user.id, 
+            message.from_user.username
         )
 
         # Find the selected registration

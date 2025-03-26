@@ -76,6 +76,8 @@ class App:
     name = "146 Meetup Register Bot"
 
     registration_collection_name = "registered_users"
+    event_logs_collection_name = "event_logs"
+    deleted_users_collection_name = "deleted_users"
 
     def __init__(self, **kwargs):
         from app.export import SheetExporter
@@ -84,12 +86,26 @@ class App:
         self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id, app=self)
 
         self._collection = None
+        self._event_logs = None
+        self._deleted_users = None
 
     @property
     def collection(self):
         if self._collection is None:
             self._collection = get_database().get_collection(self.registration_collection_name)
         return self._collection
+
+    @property
+    def event_logs(self):
+        if self._event_logs is None:
+            self._event_logs = get_database().get_collection(self.event_logs_collection_name)
+        return self._event_logs
+
+    @property
+    def deleted_users(self):
+        if self._deleted_users is None:
+            self._deleted_users = get_database().get_collection(self.deleted_users_collection_name)
+        return self._deleted_users
 
     async def save_registered_user(
         self, registered_user: RegisteredUser, user_id: int = None, username: str = None
@@ -108,7 +124,18 @@ class App:
         if username is not None:
             data["username"] = username
 
+        # Copy data for event log (exclude some fields for brevity)
+        log_data = {
+            "action": "save_registration",
+            "full_name": data.get("full_name"),
+            "graduation_year": data.get("graduation_year"),
+            "class_letter": data.get("class_letter"),
+            "target_city": data.get("target_city"),
+            "graduate_type": data.get("graduate_type"),
+        }
+
         # Check if user is already registered for this specific city
+        is_update = False
         if user_id is not None:
             existing = await self.collection.find_one(
                 {"user_id": user_id, "target_city": data["target_city"]}
@@ -117,10 +144,17 @@ class App:
             if existing:
                 # Update existing registration for this city
                 await self.collection.update_one({"_id": existing["_id"]}, {"$set": data})
-                return
+                log_data["action"] = "update_registration"
+                log_data["existing_id"] = str(existing["_id"])
+                is_update = True
 
-        # Insert new record
-        await self.collection.insert_one(data)
+        if not is_update:
+            # Insert new record
+            result = await self.collection.insert_one(data)
+            log_data["new_id"] = str(result.inserted_id)
+
+        # Log the registration action
+        await self.save_event_log("user_registration", log_data, user_id, username)
 
     async def get_user_registrations(self, user_id: int):
         """Get all registrations for a user"""
@@ -132,20 +166,29 @@ class App:
         registrations = await self.get_user_registrations(user_id)
         return registrations[0] if registrations else None
 
-    async def delete_user_registration(self, user_id: int, city: str = None):
+    async def delete_user_registration(
+        self, user_id: int, city: str = None, username: str = None, full_name: str = None
+    ):
         """
-        Delete a user's registration
+        Move a user's registration to deleted_users collection instead of permanent deletion
 
         Args:
             user_id: The user's Telegram ID
             city: Optional city to delete specific registration. If None, deletes all.
+            username: Optional user's Telegram username for logging
+            full_name: Optional user's full name for logging
         """
+        # Log the deletion event
+        log_data = {"action": "delete_registration"}
         if city:
-            result = await self.collection.delete_one({"user_id": user_id, "target_city": city})
-        else:
-            result = await self.collection.delete_many({"user_id": user_id})
+            log_data["city"] = city
+        if full_name:
+            log_data["full_name"] = full_name
 
-        return result.deleted_count > 0
+        await self.save_event_log("user_deletion", log_data, user_id, username)
+
+        # Move the user to deleted_users collection
+        return await self.move_user_to_deleted(user_id, city)
 
     def validate_full_name(self, full_name: str) -> Tuple[bool, str]:
         """
@@ -422,7 +465,11 @@ class App:
             Tuple of (regular_amount, discount, discounted_amount)
         """
         # Teachers and Saint Petersburg/Belgrade attendees are free
-        if graduate_type == GraduateType.TEACHER.value or city == TargetCity.SAINT_PETERSBURG.value or city == TargetCity.BELGRADE.value:
+        if (
+            graduate_type == GraduateType.TEACHER.value
+            or city == TargetCity.SAINT_PETERSBURG.value
+            or city == TargetCity.BELGRADE.value
+        ):
             return 0, 0, 0, 0
 
         # For non-graduates, use fixed recommended amounts
@@ -474,6 +521,7 @@ class App:
         regular_amount: int,
         screenshot_message_id: int = None,
         formula_amount: int = None,
+        username: str = None,
     ):
         """
         Save payment information for a user
@@ -485,6 +533,7 @@ class App:
             regular_amount: The regular payment amount without discount
             screenshot_message_id: ID of the message containing the payment screenshot
             formula_amount: The payment amount calculated by formula
+            username: Optional user's Telegram username for logging
         """
         # Update the user's registration with payment info
         update_data = {
@@ -499,6 +548,25 @@ class App:
         if formula_amount is not None:
             update_data["formula_payment_amount"] = formula_amount
 
+        # Get user registration for logging
+        user_data = await self.collection.find_one({"user_id": user_id, "target_city": city})
+        full_name = user_data.get("full_name") if user_data else None
+
+        # Log payment info submission
+        log_data = {
+            "action": "save_payment_info",
+            "city": city,
+            "discounted_amount": discounted_amount,
+            "regular_amount": regular_amount,
+            "has_screenshot": screenshot_message_id is not None,
+            "full_name": full_name,
+        }
+        if formula_amount is not None:
+            log_data["formula_amount"] = formula_amount
+
+        await self.save_event_log("payment_info", log_data, user_id, username)
+
+        # Update the database
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city},
             {"$set": update_data},
@@ -511,6 +579,8 @@ class App:
         status: str,
         admin_comment: str = None,
         payment_amount: int = None,
+        admin_id: int = None,
+        admin_username: str = None,
     ):
         """
         Update the payment status for a user
@@ -521,20 +591,51 @@ class App:
             status: The new payment status (confirmed, declined, pending)
             admin_comment: Optional comment from admin
             payment_amount: Amount paid by the user (in rubles)
+            admin_id: Optional admin's Telegram ID for logging
+            admin_username: Optional admin's Telegram username for logging
         """
         update_data = {"payment_status": status, "payment_verified_at": datetime.now().isoformat()}
 
         if admin_comment:
             update_data["admin_comment"] = admin_comment
 
-        if payment_amount is not None:
-            # Get current registration to check for existing payment
+        # Get user registration for logging
+        registration = None
+        if payment_amount is not None or status:
             registration = await self.collection.find_one({"user_id": user_id, "target_city": city})
+
+        # Prepare log data
+        log_data = {
+            "action": "update_payment_status",
+            "user_id": user_id,
+            "city": city,
+            "new_status": status,
+        }
+
+        if registration:
+            log_data["full_name"] = registration.get("full_name")
+            log_data["previous_status"] = registration.get("payment_status")
+
+        if admin_comment:
+            log_data["admin_comment"] = admin_comment
+
+        if admin_id:
+            log_data["admin_id"] = admin_id
+
+        if admin_username:
+            log_data["admin_username"] = admin_username
+
+        total_payment = None
+        if payment_amount is not None:
+            # Add payment amount to log data
+            log_data["payment_amount"] = payment_amount
 
             if registration and "payment_amount" in registration:
                 # Add the new payment to the existing amount
                 total_payment = registration["payment_amount"] + payment_amount
                 update_data["payment_amount"] = total_payment
+                log_data["previous_amount"] = registration["payment_amount"]
+                log_data["total_after"] = total_payment
 
                 # Store payment history as an array of individual payments
                 payment_history = registration.get("payment_history", [])
@@ -548,6 +649,7 @@ class App:
                 update_data["payment_history"] = payment_history
             else:
                 # First payment
+                total_payment = payment_amount
                 update_data["payment_amount"] = payment_amount
                 update_data["payment_history"] = [
                     {
@@ -556,34 +658,133 @@ class App:
                         "total_after": payment_amount,
                     }
                 ]
+                log_data["total_after"] = payment_amount
 
+        # Log the payment status update
+        await self.save_event_log(
+            "payment_status_update", log_data, admin_id or user_id, admin_username
+        )
+
+        # Update the database
         await self.collection.update_one(
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
         )
 
-    async def normalize_graduate_types(self):
+    async def normalize_graduate_types(self, admin_id: int = None, admin_username: str = None):
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
             {"graduate_type": {"$exists": True}},
             [{"$set": {"graduate_type": {"$toUpper": "$graduate_type"}}}],
         )
+
+        # Log the normalization operation
+        log_data = {"action": "normalize_graduate_types", "modified_count": result.modified_count}
+
+        if admin_id:
+            log_data["admin_id"] = admin_id
+
+        if admin_username:
+            log_data["admin_username"] = admin_username
+
+        await self.save_event_log("admin_action", log_data, admin_id, admin_username)
+
         return result.modified_count
-        
+
     async def get_unpaid_users(self) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
-        
+
         Returns:
             List of user registrations with unpaid status
         """
         query = {
             "$and": [
                 {"payment_status": {"$ne": "confirmed"}},
-                {"target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}},  # Exclude SPb as it's free
-                {"target_city": {"$ne": TargetCity.BELGRADE.value}},  # Exclude Belgrade as it's free
-                {"graduate_type": {"$ne": GraduateType.TEACHER.value}},  # Exclude teachers as they don't pay
+                {
+                    "target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}
+                },  # Exclude SPb as it's free
+                {
+                    "target_city": {"$ne": TargetCity.BELGRADE.value}
+                },  # Exclude Belgrade as it's free
+                {
+                    "graduate_type": {"$ne": GraduateType.TEACHER.value}
+                },  # Exclude teachers as they don't pay
             ]
         }
-        
+
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
+
+    async def save_event_log(
+        self,
+        event_type: str,
+        data: Dict,
+        user_id: Optional[int] = None,
+        username: Optional[str] = None,
+    ) -> None:
+        """
+        Save a record to the event logs collection
+
+        Args:
+            event_type: Type of the event (e.g., 'registration', 'payment', 'cancellation')
+            data: Additional data about the event
+            user_id: Optional user's Telegram ID
+            username: Optional user's Telegram username
+        """
+        log_entry = {
+            "event_type": event_type,
+            "timestamp": datetime.now().isoformat(),
+            "data": data,
+        }
+
+        if user_id is not None:
+            log_entry["user_id"] = user_id
+        if username is not None:
+            log_entry["username"] = username
+
+        await self.event_logs.insert_one(log_entry)
+
+    async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
+        """
+        Move a user from registered_users to deleted_users collection
+
+        Args:
+            user_id: The user's Telegram ID
+            city: Optional city to move specific registration. If None, moves all registrations.
+
+        Returns:
+            Boolean indicating whether any records were moved
+        """
+        # Build query
+        query = {"user_id": user_id}
+        if city:
+            query["target_city"] = city
+
+        # Find records to move
+        cursor = self.collection.find(query)
+        records = await cursor.to_list(length=None)
+
+        if not records:
+            logger.warning(f"No records found to move for user_id={user_id}, city={city}")
+            return False
+
+        # Add deletion timestamp to each record
+        now = datetime.now().isoformat()
+        for record in records:
+            record["deletion_timestamp"] = now
+
+        # Insert into deleted_users collection
+        if len(records) == 1:
+            await self.deleted_users.insert_one(records[0])
+            logger.info(f"Moved 1 record to deleted_users: user_id={user_id}, city={city}")
+        else:
+            await self.deleted_users.insert_many(records)
+            logger.info(f"Moved {len(records)} records to deleted_users: user_id={user_id}")
+
+        # Now that records are backed up, delete from main collection
+        if city:
+            result = await self.collection.delete_one(query)
+        else:
+            result = await self.collection.delete_many(query)
+
+        return result.deleted_count > 0

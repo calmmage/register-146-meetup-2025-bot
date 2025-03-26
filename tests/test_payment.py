@@ -48,6 +48,7 @@ def mock_app():
         )  # regular, discount, discounted, formula
         mock_app.save_payment_info = AsyncMock()
         mock_app.update_payment_status = AsyncMock()
+        mock_app.save_event_log = AsyncMock()
         mock_app.log_registration_step = AsyncMock()
         mock_app.export_registered_users_to_google_sheets = AsyncMock()
 
