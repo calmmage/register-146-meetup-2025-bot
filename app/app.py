@@ -200,6 +200,10 @@ class App:
         Returns:
             Tuple of (is_valid, error_message)
         """
+        # Check if full_name is None
+        if full_name is None:
+            return False, "Отсутствует имя. Пожалуйста, попробуйте ещё раз."
+            
         # Check if name has at least 2 words
         words = full_name.strip().split()
         if len(words) < 2:

@@ -184,13 +184,54 @@ class TestSheetExporter:
         # Verify the error message
         assert "No Google credentials found" in str(exc_info.value)
 
-    # TODO: Fix mocking of async methods for export
-    # @pytest.mark.asyncio
-    # @patch("app.export.SheetExporter._get_client")
-    # @patch("app.export.logger")
-    def test_export_registered_users_success(self):
-        """This test is disabled until we fix the mocking"""
-        pass
+    @pytest.mark.asyncio
+    @patch("app.export.SheetExporter._get_client")
+    @patch("app.export.logger")
+    async def test_export_registered_users_success(self, mock_logger, mock_get_client):
+        """Test successful export to Google Sheets with clearing sheet first"""
+        # Set up mock users for collection.find().to_list()
+        mock_to_list = AsyncMock(return_value=self.sample_users)
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = mock_to_list
+        
+        # Replace the mock collection with our new one
+        self.mock_collection.find = MagicMock(return_value=mock_cursor)
+        
+        # Set up mock sheet
+        mock_sheet = MagicMock()
+        mock_sheet.update = MagicMock()
+        mock_sheet.clear = MagicMock()
+        mock_sheet.url = "https://docs.google.com/spreadsheets/mock_id"
+        
+        # Set up mock client
+        mock_client = MagicMock()
+        mock_client.open_by_key = MagicMock(return_value=MagicMock(sheet1=mock_sheet))
+        mock_get_client.return_value = mock_client
+        
+        # Call the method
+        result = await self.exporter.export_registered_users()
+        
+        # Verify sheet was cleared first
+        mock_sheet.clear.assert_called_once()
+        
+        # Verify the sheet was updated with headers and data
+        assert mock_sheet.update.call_count == 2
+        # First update call should be for headers
+        headers_call = mock_sheet.update.call_args_list[0]
+        assert len(headers_call[0][0]) == 1  # One row for headers
+        
+        # Second update call should be for data
+        data_call = mock_sheet.update.call_args_list[1]
+        assert data_call[0][0] == "A2"  # Starting at A2
+        assert len(data_call[0][1]) == 2  # Two rows of data
+        
+        # Verify successful message
+        assert "Успешно экспортировано 2 пользователей" in result
+        assert mock_sheet.url in result
+        
+        # Verify log message
+        mock_logger.success.assert_called_once()
+        mock_logger.info.assert_called_with("Cleared all existing data from the sheet")
 
     # TODO: Fix mocking of async methods for export
     # @pytest.mark.asyncio

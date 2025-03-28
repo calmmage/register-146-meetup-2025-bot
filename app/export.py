@@ -82,7 +82,11 @@ class SheetExporter:
             # Connect to Google Sheets
             client = self._get_client()
             sheet = client.open_by_key(self.spreadsheet_id).sheet1
-
+            
+            # Clear the entire sheet first
+            sheet.clear()
+            logger.info("Cleared all existing data from the sheet")
+            
             # Prepare headers and data
             headers = [
                 "ФИО", 

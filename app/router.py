@@ -482,6 +482,16 @@ async def register_user(
             state=state,
             timeout=None,
         )
+        
+        # Handle timeout/None response
+        if response is None:
+            await send_safe(
+                message.chat.id,
+                "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+            
         location = TargetCity(response)
 
         # Log city selection
@@ -562,6 +572,15 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
+            
+            # Handle timeout/None response
+            if response is None:
+                await send_safe(
+                    message.chat.id,
+                    "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
 
             # Validate full name
             valid, error = app.validate_full_name(response)
@@ -605,6 +624,15 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
+            
+            # Handle timeout/None response
+            if response is None:
+                await send_safe(
+                    message.chat.id,
+                    "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
 
             # Check for special commands
             if response == "/i_am_a_teacher":
