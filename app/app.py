@@ -328,6 +328,10 @@ class App:
     async def export_to_csv(self):
         """Export registered users to CSV"""
         return await self.sheet_exporter.export_to_csv()
+        
+    async def export_deleted_users_to_csv(self):
+        """Export deleted users to CSV"""
+        return await self.sheet_exporter.export_deleted_users_to_csv()
 
     async def log_to_chat(self, message: str, chat_type: str = "logs") -> Optional[Message]:
         """

@@ -76,15 +76,27 @@ async def admin_handler(message: Message, state: FSMContext):
 
 
 @commands_menu.add_command(
-    "export", "Экспорт списка зарегистрированных участников", visibility=Visibility.ADMIN_ONLY
+    "export", "Экспорт списка участников (активных и удаленных)", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("export"), AdminFilter())
 async def export_handler(message: Message, state: FSMContext):
-    """Экспорт списка зарегистрированных участников в Google Sheets или CSV"""
+    """Экспорт списка зарегистрированных или удаленных участников в Google Sheets или CSV"""
     notif = await send_safe(message.chat.id, "Подготовка экспорта...")
 
+    # Ask user for export type
+    export_type_response = await ask_user_choice(
+        message.chat.id,
+        "Что вы хотите экспортировать?",
+        choices={
+            "registered": "Зарегистрированные участники", 
+            "deleted": "Удаленные участники"
+        },
+        state=state,
+        timeout=None,
+    )
+
     # Ask user for export format
-    response = await ask_user_choice(
+    export_format_response = await ask_user_choice(
         message.chat.id,
         "Выберите формат экспорта:",
         choices={"sheets": "Google Таблицы", "csv": "CSV Файл"},
@@ -94,20 +106,38 @@ async def export_handler(message: Message, state: FSMContext):
 
     from app.router import app
 
-    if response == "sheets":
-        await notif.edit_text("Экспорт данных в Google Таблицы...")
-        result = await app.export_registered_users_to_google_sheets()
-        await send_safe(message.chat.id, result)
-    else:
-        # Export to CSV
-        await notif.edit_text("Экспорт данных в CSV файл...")
-        csv_content, result_message = await app.export_to_csv()
-
-        if csv_content:
-            # Send the CSV content as a file using send_safe
-            await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
+    # Handle registered users export
+    if export_type_response == "registered":
+        if export_format_response == "sheets":
+            await notif.edit_text("Экспорт данных в Google Таблицы...")
+            result = await app.export_registered_users_to_google_sheets()
+            await send_safe(message.chat.id, result)
         else:
-            await send_safe(message.chat.id, result_message)
+            # Export to CSV
+            await notif.edit_text("Экспорт данных в CSV файл...")
+            csv_content, result_message = await app.export_to_csv()
+
+            if csv_content:
+                # Send the CSV content as a file using send_safe
+                await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
+            else:
+                await send_safe(message.chat.id, result_message)
+    
+    # Handle deleted users export
+    else: # export_type_response == "deleted"
+        if export_format_response == "sheets":
+            await notif.edit_text("Экспорт удаленных участников в Google Таблицы...")
+            await send_safe(message.chat.id, "Экспорт удаленных участников в Google Таблицы пока не поддерживается")
+        else:
+            # Export to CSV
+            await notif.edit_text("Экспорт удаленных участников в CSV файл...")
+            csv_content, result_message = await app.export_deleted_users_to_csv()
+
+            if csv_content:
+                # Send the CSV content as a file using send_safe
+                await send_safe(message.chat.id, csv_content, filename="удаленные_участники.csv")
+            else:
+                await send_safe(message.chat.id, result_message)
 
     await notif.delete()
 
