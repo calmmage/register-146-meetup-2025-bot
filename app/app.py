@@ -530,6 +530,7 @@ class App:
         screenshot_message_id: int = None,
         formula_amount: int = None,
         username: str = None,
+        payment_status: str = "pending",
     ):
         """
         Save payment information for a user
@@ -542,13 +543,14 @@ class App:
             screenshot_message_id: ID of the message containing the payment screenshot
             formula_amount: The payment amount calculated by formula
             username: Optional user's Telegram username for logging
+            payment_status: Payment status (pending, confirmed, None for just registered)
         """
         # Update the user's registration with payment info
         update_data = {
             "discounted_payment_amount": discounted_amount,
             "regular_payment_amount": regular_amount,
             "payment_screenshot_id": screenshot_message_id,
-            "payment_status": "pending",
+            "payment_status": payment_status,
             "payment_timestamp": datetime.now().isoformat(),
         }
 
