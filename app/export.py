@@ -82,7 +82,11 @@ class SheetExporter:
             # Connect to Google Sheets
             client = self._get_client()
             sheet = client.open_by_key(self.spreadsheet_id).sheet1
-
+            
+            # Clear the entire sheet first
+            sheet.clear()
+            logger.info("Cleared all existing data from the sheet")
+            
             # Prepare headers and data
             headers = [
                 "ФИО", 
@@ -227,3 +231,71 @@ class SheetExporter:
         except Exception as e:
             logger.error(f"Ошибка при экспорте данных в CSV: {e}")
             return None, f"Ошибка при экспорте данных в CSV: {e}"
+            
+    async def export_deleted_users_to_csv(self):
+        """Export all deleted users to a CSV file"""
+        # Get all deleted users from MongoDB
+        cursor = self.app.deleted_users.find({})
+        users = await cursor.to_list(length=None)
+
+        if not users:
+            logger.info("Нет удаленных пользователей для экспорта")
+            return None, "Нет удаленных пользователей для экспорта"
+
+        # Create CSV content
+        import csv
+        from io import StringIO
+
+        output = StringIO()
+        writer = csv.writer(output)
+
+        # Write headers
+        headers = [
+            "ФИО", 
+            "Год выпуска", 
+            "Класс", 
+            "Город участия во встрече",
+            "Статус участника",  # graduate_type
+            "Telegram Username", 
+            "Статус оплаты", 
+            "Сумма оплаты (факт)", 
+            "Дата удаления",
+            "Причина удаления"
+        ]
+        writer.writerow(headers)
+
+        # Write user data
+        for user in users:
+            # Get payment status and amount
+            raw_status = user.get("payment_status", None)
+            payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
+            payment_amount = user.get("payment_amount", 0)  # Actual payment amount
+            
+            # Get graduate type and convert to human-readable format
+            graduate_type = user.get("graduate_type", "GRADUATE")
+            graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
+            
+            # Get deletion info
+            deletion_timestamp = user.get("deletion_timestamp", "")
+            deletion_reason = user.get("deletion_reason", "")
+            
+            writer.writerow(
+                [
+                    user["full_name"],
+                    user["graduation_year"],
+                    user["class_letter"],
+                    user["target_city"],
+                    graduate_type_display,
+                    user.get("username", ""),
+                    payment_status,
+                    payment_amount,
+                    deletion_timestamp,
+                    deletion_reason
+                ]
+            )
+
+        csv_content = output.getvalue()
+        output.close()
+
+        logger.success(f"Успешно экспортировано {len(users)} удаленных пользователей в CSV")
+        return csv_content, f"Успешно экспортировано {len(users)} удаленных пользователей в CSV"

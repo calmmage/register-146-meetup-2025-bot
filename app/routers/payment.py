@@ -630,7 +630,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         )
 
         if amount_response is None or amount_response.text is None:
-            await send_safe(chat_id, "Время ожидания истекло или получен некорректный ответ.")
+            await send_safe(chat_id, "Время ожидания истекло. Операция отменена.")
+            # Log the timeout event
+            logger.warning(f"Payment amount input timeout for user {user_id} in city {city}")
             return
 
         # Try to parse the amount

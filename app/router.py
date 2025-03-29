@@ -482,6 +482,16 @@ async def register_user(
             state=state,
             timeout=None,
         )
+        
+        # Handle timeout/None response
+        if response is None:
+            await send_safe(
+                message.chat.id,
+                "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+            
         location = TargetCity(response)
 
         # Log city selection
@@ -562,6 +572,15 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
+            
+            # Handle timeout/None response
+            if response is None:
+                await send_safe(
+                    message.chat.id,
+                    "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
 
             # Validate full name
             valid, error = app.validate_full_name(response)
@@ -605,6 +624,15 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
+            
+            # Handle timeout/None response
+            if response is None:
+                await send_safe(
+                    message.chat.id,
+                    "⏰ Время ожидания истекло. Пожалуйста, начните регистрацию заново с команды /start",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
 
             # Check for special commands
             if response == "/i_am_a_teacher":
@@ -795,6 +823,23 @@ async def register_user(
         await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow for everyone else who needs to pay
+        
+        # Calculate payment amounts first
+        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+            location.value, graduation_year, graduate_type.value
+        )
+        
+        # Save payment info with "not paid" status - different from "pending" which is used after "pay later" click
+        await app.save_payment_info(
+            user_id=user_id,
+            city=location.value,
+            discounted_amount=discounted_amount,
+            regular_amount=regular_amount,
+            formula_amount=formula_amount,
+            username=username,
+            payment_status="not paid",
+        )
+        
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 

@@ -200,6 +200,10 @@ class App:
         Returns:
             Tuple of (is_valid, error_message)
         """
+        # Check if full_name is None
+        if full_name is None:
+            return False, "Отсутствует имя. Пожалуйста, попробуйте ещё раз."
+            
         # Check if name has at least 2 words
         words = full_name.strip().split()
         if len(words) < 2:
@@ -324,6 +328,10 @@ class App:
     async def export_to_csv(self):
         """Export registered users to CSV"""
         return await self.sheet_exporter.export_to_csv()
+        
+    async def export_deleted_users_to_csv(self):
+        """Export deleted users to CSV"""
+        return await self.sheet_exporter.export_deleted_users_to_csv()
 
     async def log_to_chat(self, message: str, chat_type: str = "logs") -> Optional[Message]:
         """
@@ -522,6 +530,7 @@ class App:
         screenshot_message_id: int = None,
         formula_amount: int = None,
         username: str = None,
+        payment_status: str = "pending",
     ):
         """
         Save payment information for a user
@@ -534,13 +543,14 @@ class App:
             screenshot_message_id: ID of the message containing the payment screenshot
             formula_amount: The payment amount calculated by formula
             username: Optional user's Telegram username for logging
+            payment_status: Payment status (pending, confirmed, None for just registered)
         """
         # Update the user's registration with payment info
         update_data = {
             "discounted_payment_amount": discounted_amount,
             "regular_payment_amount": regular_amount,
             "payment_screenshot_id": screenshot_message_id,
-            "payment_status": "pending",
+            "payment_status": payment_status,
             "payment_timestamp": datetime.now().isoformat(),
         }
 
