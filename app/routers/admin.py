@@ -928,3 +928,178 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
     )
 
     await status_msg.edit_text(result_text)
+
+
+@commands_menu.add_command(
+    "five_year_stats", "График по пятилеткам выпуска", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("five_year_stats"), AdminFilter())
+async def show_five_year_stats(message: Message):
+    """Показать график регистраций по пятилеткам выпуска и городам"""
+    from app.router import app
+
+    # Send status message
+    status_msg = await send_safe(message.chat.id, "⏳ Генерация графика по пятилеткам выпуска...")
+
+    # Get all registrations
+    cursor = app.collection.find({
+        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out entries without graduation year
+    })
+    registrations = await cursor.to_list(length=None)
+
+    if not registrations:
+        await status_msg.edit_text("❌ Нет данных о регистрациях с указанным годом выпуска.")
+        return
+
+    # Convert MongoDB records to pandas DataFrame
+    df = pd.DataFrame(registrations)
+    
+    # Обработка годов выпуска
+    df['graduation_year'] = pd.to_numeric(df['graduation_year'], errors='coerce')
+    df = df.dropna(subset=['graduation_year'])
+    df['Пятилетка'] = df['graduation_year'].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+
+    # Упрощённая категоризация городов
+    def simplify_city(city):
+        if pd.isna(city):
+            return "Другие"
+        city = str(city).strip().lower()
+        if "перм" in city:
+            return "Пермь"
+        elif "моск" in city:
+            return "Москва"
+        elif "спб" in city or "питер" in city or "санкт" in city:
+            return "Санкт-Петербург"
+        elif "белград" in city:
+            return "Белград"
+        else:
+            return "Другие"
+
+    df['Город (укрупнённо)'] = df['target_city'].apply(simplify_city)
+
+    # Группировка по пятилеткам и городам
+    pivot = df.groupby(['Пятилетка', 'Город (укрупнённо)'])['full_name'].count().unstack().fillna(0).sort_index()
+
+    # Упорядочим колонки
+    city_order = ["Пермь", "Москва", "Санкт-Петербург", "Белград", "Другие"]
+    available_cities = [c for c in city_order if c in pivot.columns]
+    if available_cities:
+        pivot = pivot[available_cities]
+
+    # Построение графика
+    plt.figure(figsize=(12, 7), dpi=100)
+    ax = pivot.plot(kind='bar', stacked=True, figsize=(12, 7), colormap='Set2')
+
+    plt.title("Зарегистрировавшиеся по пятилеткам выпуска (города: Пермь, Москва, СПб, Белград)")
+    plt.xlabel("Пятилетка")
+    plt.ylabel("Количество участников")
+    plt.xticks(rotation=45)
+    plt.legend(title="Город", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.grid(axis='y')
+
+    # Подписи на графике
+    for bar_idx, (idx, row) in enumerate(pivot.iterrows()):
+        cumulative = 0
+        for city in pivot.columns:
+            value = row[city]
+            if value > 0:
+                ax.text(
+                    x=bar_idx,
+                    y=cumulative + value / 2,
+                    s=int(value),
+                    ha='center',
+                    va='center',
+                    fontsize=9
+                )
+                cumulative += value
+
+    # Save the plot to a bytes buffer
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+
+    # Delete status message
+    await status_msg.delete()
+    
+    # Send the diagram
+    await message.answer_photo(
+        BufferedInputFile(buf.getvalue(), filename="five_year_stats.png"),
+        caption="📊 Зарегистрировавшиеся по пятилеткам выпуска и городам участия"
+    )
+
+
+@commands_menu.add_command(
+    "payment_stats", "Круговая диаграмма оплат", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("payment_stats"), AdminFilter())
+async def show_payment_stats(message: Message):
+    """Показать круговую диаграмму оплат по пятилеткам выпуска"""
+    from app.router import app
+
+    # Send status message
+    status_msg = await send_safe(message.chat.id, "⏳ Генерация круговой диаграммы оплат...")
+
+    # Get all registrations
+    cursor = app.collection.find({
+        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out entries without graduation year
+        "payment_status": "confirmed",  # Only include confirmed payments
+        "payment_amount": {"$gt": 0}    # Only include payments > 0
+    })
+    registrations = await cursor.to_list(length=None)
+
+    if not registrations:
+        await status_msg.edit_text("❌ Нет данных об оплатах с указанным годом выпуска.")
+        return
+
+    # Convert MongoDB records to pandas DataFrame
+    df = pd.DataFrame(registrations)
+    
+    # Обработка годов выпуска
+    df['graduation_year'] = pd.to_numeric(df['graduation_year'], errors='coerce')
+    df = df.dropna(subset=['graduation_year'])
+    df['Пятилетка'] = df['graduation_year'].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+
+    # Группировка и сумма по пятилеткам
+    donation_by_period = df.groupby('Пятилетка')['payment_amount'].sum()
+    donation_by_period = donation_by_period[donation_by_period > 0].sort_index()
+
+    # Построение круговой диаграммы
+    plt.figure(figsize=(10, 10), dpi=100)
+    
+    # Get a nicer color palette
+    colors = plt.cm.Set3.colors[:len(donation_by_period)]
+    
+    # Add percentage and absolute values to the labels
+    total = donation_by_period.sum()
+    labels = [f"{period}: {amount:,.0f} ₽ ({amount/total:.1%})" 
+             for period, amount in zip(donation_by_period.index, donation_by_period.values)]
+    
+    plt.pie(
+        donation_by_period.values,
+        labels=labels,
+        autopct='',  # We already added percentages to labels
+        startangle=90,
+        colors=colors,
+        shadow=False,
+        wedgeprops={'linewidth': 1, 'edgecolor': 'white'}
+    )
+
+    plt.title("Суммарные оплаты по пятилеткам выпуска", fontsize=16, pad=20)
+    plt.tight_layout()
+
+    # Save the plot to a bytes buffer
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+
+    # Delete status message
+    await status_msg.delete()
+    
+    # Send the diagram
+    await message.answer_photo(
+        BufferedInputFile(buf.getvalue(), filename="payment_stats.png"),
+        caption="💰 Суммарные оплаты по пятилеткам выпуска"
+    )
