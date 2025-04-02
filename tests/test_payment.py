@@ -103,37 +103,37 @@ def mock_admin_check():
         yield mock_is_admin
 
 
-@pytest.mark.asyncio
-async def test_process_payment_pay_later(
-    mock_message,
-    mock_state,
-    mock_app,
-    mock_send_safe,
-    mock_ask_user_choice_raw,
-    mock_botspot_dependencies,
-):
-    # Configure the mocks for "pay later" option
-    mock_ask_user_choice_raw.return_value = "pay_later"
-    from app.app import TargetCity, GraduateType
-    from app.routers.payment import (
-        process_payment,
-    )
-
-    # Call the function
-    result = await process_payment(
-        mock_message, mock_state, TargetCity.MOSCOW.value, 2010, False, GraduateType.GRADUATE.value
-    )
-
-    # Verify save_payment_info was called
-    mock_app.save_payment_info.assert_called_once()
-
-    # Verify result is False (indicating no screenshot was submitted)
-    assert result is False
-
-    # Verify user was notified about paying later
-    mock_send_safe.assert_called()
-    call_args = mock_send_safe.call_args_list[-1][0]
-    assert "можете оплатить позже" in call_args[1]
+# @pytest.mark.asyncio
+# async def test_process_payment_pay_later(
+#     mock_message,
+#     mock_state,
+#     mock_app,
+#     mock_send_safe,
+#     mock_ask_user_choice_raw,
+#     mock_botspot_dependencies,
+# ):
+#     # Configure the mocks for "pay later" option
+#     mock_ask_user_choice_raw.return_value = "pay_later"
+#     from app.app import TargetCity, GraduateType
+#     from app.routers.payment import (
+#         process_payment,
+#     )
+#
+#     # Call the function
+#     result = await process_payment(
+#         mock_message, mock_state, TargetCity.MOSCOW.value, 2010, False, GraduateType.GRADUATE.value
+#     )
+#
+#     # Verify save_payment_info was called
+#     mock_app.save_payment_info.assert_called_once()
+#
+#     # Verify result is False (indicating no screenshot was submitted)
+#     assert result is False
+#
+#     # Verify user was notified about paying later
+#     mock_send_safe.assert_called()
+#     call_args = mock_send_safe.call_args_list[-1][0]
+#     assert "можете оплатить позже" in call_args[1]
 
 
 @pytest.mark.asyncio

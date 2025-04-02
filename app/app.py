@@ -203,7 +203,7 @@ class App:
         # Check if full_name is None
         if full_name is None:
             return False, "Отсутствует имя. Пожалуйста, попробуйте ещё раз."
-            
+
         # Check if name has at least 2 words
         words = full_name.strip().split()
         if len(words) < 2:
@@ -328,7 +328,7 @@ class App:
     async def export_to_csv(self):
         """Export registered users to CSV"""
         return await self.sheet_exporter.export_to_csv()
-        
+
     async def export_deleted_users_to_csv(self):
         """Export deleted users to CSV"""
         return await self.sheet_exporter.export_deleted_users_to_csv()
