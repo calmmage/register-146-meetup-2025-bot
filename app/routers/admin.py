@@ -49,19 +49,38 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "register": "Протестировать бота (обычный сценарий)",
-            "export": "Экспортировать данные",
+            "notify_users": "Рассылка пользователям",
+            # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
-            "view_year_stats": "Посмотреть статистику по годам выпуска",
-            "five_year_stats": "График по пятилеткам выпуска",
-            "payment_stats": "Круговая диаграмма оплат",
+            # not finished
             # "mark_payment": "Отметить оплату пользователя вручную",
-            "notify_early_payment": "Уведомить о раннем платеже",
+            # testing
+            "register": "Протестировать бота (обычный сценарий)",
+            # other
+            "other": "Другие действия",
         },
         state=state,
         timeout=None,
     )
+
+    if response == "other":
+
+        response = await ask_user_choice(
+            message.chat.id,
+            "Другие команды:",
+            choices={
+                "view_year_stats": "Посмотреть статистику по годам выпуска",
+                "five_year_stats": "График по пятилеткам выпуска",
+                "payment_stats": "Круговая диаграмма оплат",
+                # old
+                "export": "Экспортировать данные",
+                # too late
+                # "notify_early_payment": "Уведомить о раннем платеже",
+            },
+            state=state,
+            timeout=None,
+        )
 
     if response == "export":
         await export_handler(message, state)
@@ -77,8 +96,10 @@ async def admin_handler(message: Message, state: FSMContext):
         await show_payment_stats(message)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
-    elif response == "notify_early_payment":
-        await notify_early_payment_handler(message, state)
+    elif response == "notify_users":
+        from app.routers.crm import notify_users_handler
+
+        await notify_users_handler(message, state)
     # For "register", continue with normal flow
     return response
 
