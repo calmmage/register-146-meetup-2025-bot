@@ -73,6 +73,7 @@ async def admin_handler(message: Message, state: FSMContext):
                 "view_year_stats": "Посмотреть статистику по годам выпуска",
                 "five_year_stats": "График по пятилеткам выпуска",
                 "payment_stats": "Круговая диаграмма оплат",
+                "test_user_selection": "Тест выборки пользователей",
                 # old
                 "export": "Экспортировать данные",
                 # too late
@@ -94,6 +95,10 @@ async def admin_handler(message: Message, state: FSMContext):
         await show_five_year_stats(message)
     elif response == "payment_stats":
         await show_payment_stats(message)
+    elif response == "test_user_selection":
+        from app.routers.crm import test_user_selection_handler
+        
+        await test_user_selection_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":

@@ -165,6 +165,58 @@ async def notify_users_handler(message: Message, state: FSMContext):
 
 
 @commands_menu.add_command(
+    "test_user_selection", "Тест выборки пользователей", visibility=Visibility.ADMIN_ONLY
+)
+@router.message(Command("test_user_selection"), AdminFilter())
+async def test_user_selection_handler(message: Message, state: FSMContext):
+    """Test the user selection methods by reporting counts for each city and payment status"""
+    from app.router import app
+
+    # Show processing message
+    status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
+
+    # Cities to test
+    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "all"]
+
+    # Initialize report
+    report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
+
+    # Get counts for all cities combined
+    all_users = await app.get_all_users()
+    all_paid = await app.get_paid_users()
+    all_unpaid = await app.get_unpaid_users()
+
+    report += f"<b>Все города:</b>\n"
+    report += f"- Всего пользователей: {len(all_users)}\n"
+    report += f"- Оплатившие: {len(all_paid)}\n"
+    report += f"- Неоплатившие: {len(all_unpaid)}\n\n"
+
+    # Get counts for each city
+    for city in cities:
+        if city == "all":
+            continue  # Already handled above
+
+        city_display = {
+            "MOSCOW": "Москва",
+            "PERM": "Пермь",
+            "SAINT_PETERSBURG": "Санкт-Петербург",
+            "BELGRADE": "Белград",
+        }.get(city, city)
+
+        city_all = await app.get_all_users(city)
+        city_paid = await app.get_paid_users(city)
+        city_unpaid = await app.get_unpaid_users(city)
+
+        report += f"<b>{city_display}:</b>\n"
+        report += f"- Всего пользователей: {len(city_all)}\n"
+        report += f"- Оплатившие: {len(city_paid)}\n"
+        report += f"- Неоплатившие: {len(city_unpaid)}\n\n"
+
+    # Update status message with report
+    await status_msg.edit_text(report, parse_mode="HTML")
+
+
+@commands_menu.add_command(
     "notify_early_payment", "Уведомить о раннем платеже", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("notify_early_payment"), AdminFilter())

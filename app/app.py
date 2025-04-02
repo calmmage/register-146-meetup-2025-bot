@@ -700,30 +700,84 @@ class App:
 
         return result.modified_count
 
-    async def get_unpaid_users(self) -> List[Dict]:
+    async def _get_users_base(
+        self, payment_status: Optional[str] = None, city: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Base method to get users with various filters
+        
+        Args:
+            payment_status: Filter by payment status ("confirmed", "pending", "declined", None for any)
+            city: Filter by city (None for all cities)
+            
+        Returns:
+            List of user registrations matching the criteria
+        """
+        query = {}
+        
+        # Build the query conditions
+        and_conditions = []
+        
+        # Filter by payment status
+        if payment_status == "unpaid":
+            and_conditions.append({"payment_status": {"$ne": "confirmed"}})
+        elif payment_status == "paid":
+            and_conditions.append({"payment_status": "confirmed"})
+            
+        # Filter by city if specified
+        if city and city != "all":
+            # Map city key to actual value
+            city_mapping = {
+                "MOSCOW": TargetCity.MOSCOW.value,
+                "PERM": TargetCity.PERM.value,
+                "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
+                "BELGRADE": TargetCity.BELGRADE.value
+            }
+            if city in city_mapping:
+                and_conditions.append({"target_city": city_mapping[city]})
+        
+        # Add the conditions to the query if we have any
+        if and_conditions:
+            query["$and"] = and_conditions
+            
+        cursor = self.collection.find(query)
+        return await cursor.to_list(length=None)
+        
+    async def get_unpaid_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
-
+        
+        Args:
+            city: Optional city to filter by
+            
         Returns:
             List of user registrations with unpaid status
         """
-        query = {
-            "$and": [
-                {"payment_status": {"$ne": "confirmed"}},
-                {
-                    "target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}
-                },  # Exclude SPb as it's free
-                {
-                    "target_city": {"$ne": TargetCity.BELGRADE.value}
-                },  # Exclude Belgrade as it's free
-                {
-                    "graduate_type": {"$ne": GraduateType.TEACHER.value}
-                },  # Exclude teachers as they don't pay
-            ]
-        }
-
-        cursor = self.collection.find(query)
-        return await cursor.to_list(length=None)
+        return await self._get_users_base(payment_status="unpaid", city=city)
+        
+    async def get_paid_users(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users who have paid (payment_status is "confirmed")
+        
+        Args:
+            city: Optional city to filter by
+            
+        Returns:
+            List of user registrations with paid status
+        """
+        return await self._get_users_base(payment_status="paid", city=city)
+        
+    async def get_all_users(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users regardless of payment status
+        
+        Args:
+            city: Optional city to filter by
+            
+        Returns:
+            List of all user registrations
+        """
+        return await self._get_users_base(city=city)
 
     async def save_event_log(
         self,
