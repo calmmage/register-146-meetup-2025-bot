@@ -41,9 +41,11 @@ async def notify_users_handler(message: Message, state: FSMContext):
         message.chat.id,
         "Шаг 2: Выберите город для рассылки",
         choices={
-            "moscow": "Москва",
-            "perm": "Пермь",
-            "all": "Оба города",
+            "MOSCOW": "Москва",
+            "PERM": "Пермь",
+            "SAINT_PETERSBURG": "Санкт-Петербург",
+            "BELGRADE": "Белград",
+            "all": "Все города",
             "cancel": "Отмена",
         },
         state=state,
@@ -90,7 +92,13 @@ async def notify_users_handler(message: Message, state: FSMContext):
         return
 
     # Format city for display
-    city_name = {"moscow": "Москве", "perm": "Перми", "all": "обоих городах"}.get(city, city)
+    city_name = {
+        "MOSCOW": "Москве",
+        "PERM": "Перми",
+        "SAINT_PETERSBURG": "Санкт-Петербурге",
+        "BELGRADE": "Белграде",
+        "all": "всех городах",
+    }.get(city, city)
 
     # Generate preview report
     preview = f"📊 Найдено {len(users)} {audience_name} в {city_name}:\n\n"
@@ -183,7 +191,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
     from app.router import app
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка неоплативших...")
+    status_msg = await send_safe(message.chat.id, "⏳ Получение списка не оплативших...")
 
     # Get list of users who haven't paid
     unpaid_users = await app.get_unpaid_users()
