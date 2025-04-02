@@ -88,6 +88,25 @@ class App:
         self._collection = None
         self._event_logs = None
         self._deleted_users = None
+        
+    async def startup(self):
+        """
+        Run startup tasks like fixing the database and initializing collections
+        """
+        logger.info("Running app startup tasks...")
+        
+        # Initialize collections
+        _ = self.collection
+        _ = self.event_logs
+        _ = self.deleted_users
+        
+        # Fix database (SPb, Belgrade, teachers should have 'confirmed' payment status)
+        fix_results = await self._fix_database()
+        if fix_results["total_fixed"] > 0:
+            logger.info(f"Database fix applied to {fix_results['total_fixed']} records:")
+            logger.info(f"- SPb: {fix_results['spb_fixed']}")
+            logger.info(f"- Belgrade: {fix_results['belgrade_fixed']}")
+            logger.info(f"- Teachers: {fix_results['teachers_fixed']}")
 
     @property
     def collection(self):
@@ -778,6 +797,73 @@ class App:
             List of all user registrations
         """
         return await self._get_users_base(city=city)
+        
+    async def _fix_database(self) -> Dict[str, int]:
+        """
+        Fix the database by setting payment_status to "confirmed" for:
+        1. All users in Saint Petersburg (free event)
+        2. All users in Belgrade (free event)
+        3. All users with graduate_type=TEACHER (free for teachers)
+        
+        Returns:
+            Dictionary with counts of fixed records for each category
+        """
+        results = {
+            "spb_fixed": 0,
+            "belgrade_fixed": 0,
+            "teachers_fixed": 0,
+            "total_fixed": 0
+        }
+        
+        # Fix Saint Petersburg registrations
+        spb_result = await self.collection.update_many(
+            {
+                "target_city": TargetCity.SAINT_PETERSBURG.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["spb_fixed"] = spb_result.modified_count
+        
+        # Fix Belgrade registrations
+        belgrade_result = await self.collection.update_many(
+            {
+                "target_city": TargetCity.BELGRADE.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["belgrade_fixed"] = belgrade_result.modified_count
+        
+        # Fix teacher registrations
+        teachers_result = await self.collection.update_many(
+            {
+                "graduate_type": GraduateType.TEACHER.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["teachers_fixed"] = teachers_result.modified_count
+        
+        # Calculate total fixed
+        results["total_fixed"] = (
+            results["spb_fixed"] + 
+            results["belgrade_fixed"] + 
+            results["teachers_fixed"]
+        )
+        
+        # Log the fix operation if any records were updated
+        if results["total_fixed"] > 0:
+            log_data = {
+                "action": "fix_database",
+                "modified_count": results["total_fixed"],
+                "spb_fixed": results["spb_fixed"],
+                "belgrade_fixed": results["belgrade_fixed"],
+                "teachers_fixed": results["teachers_fixed"],
+            }
+            await self.save_event_log("admin_action", log_data)
+            
+        return results
 
     async def save_event_log(
         self,

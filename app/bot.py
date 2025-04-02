@@ -35,6 +35,9 @@ def main(debug=False) -> None:
     # Initialize bot manager
     bm = BotManager(bot=bot)
 
+    # Run database fix on startup
+    dp.startup.register(app.startup)
+
     # Setup dispatcher with our components
     bm.setup_dispatcher(dp)
 

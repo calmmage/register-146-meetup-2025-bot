@@ -180,6 +180,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext):
 
     # Initialize report
     report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
+    report += "<i>Примечание: Санкт-Петербург, Белград и учителя автоматически помечаются как оплатившие.</i>\n\n"
 
     # Get counts for all cities combined
     all_users = await app.get_all_users()
