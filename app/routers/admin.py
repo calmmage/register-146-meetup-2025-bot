@@ -1,10 +1,10 @@
-from collections import defaultdict
-
 import base64
 import io
 import json
+from collections import defaultdict
+from typing import Optional
+
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
 from aiogram import Router
@@ -17,11 +17,10 @@ from aiogram.types import (
 from litellm import acompletion
 from loguru import logger
 from pydantic import BaseModel
-from typing import Optional, Dict, List
 
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice, ask_user_raw, ask_user_confirmation
+from botspot.user_interactions import ask_user_choice, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
@@ -50,16 +49,39 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "register": "Протестировать бота (обычный сценарий)",
-            "export": "Экспортировать данные",
+            "notify_users": "Рассылка пользователям",
+            # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
-            "view_year_stats": "Посмотреть статистику по годам выпуска",
-            "notify_early_payment": "Уведомить о раннем платеже",
+            # not finished
+            # "mark_payment": "Отметить оплату пользователя вручную",
+            # testing
+            "register": "Протестировать бота (обычный сценарий)",
+            # other
+            "other": "Другие действия",
         },
         state=state,
         timeout=None,
     )
+
+    if response == "other":
+
+        response = await ask_user_choice(
+            message.chat.id,
+            "Другие команды:",
+            choices={
+                "view_year_stats": "Посмотреть статистику по годам выпуска",
+                "five_year_stats": "График по пятилеткам выпуска",
+                "payment_stats": "Круговая диаграмма оплат",
+                "test_user_selection": "Тест выборки пользователей",
+                # old
+                "export": "Экспортировать данные",
+                # too late
+                # "notify_early_payment": "Уведомить о раннем платеже",
+            },
+            state=state,
+            timeout=None,
+        )
 
     if response == "export":
         await export_handler(message, state)
@@ -69,8 +91,20 @@ async def admin_handler(message: Message, state: FSMContext):
         await show_simple_stats(message)
     elif response == "view_year_stats":
         await show_year_stats(message)
-    elif response == "notify_early_payment":
-        await notify_early_payment_handler(message, state)
+    elif response == "five_year_stats":
+        await show_five_year_stats(message)
+    elif response == "payment_stats":
+        await show_payment_stats(message)
+    elif response == "test_user_selection":
+        from app.routers.crm import test_user_selection_handler
+        
+        await test_user_selection_handler(message, state)
+    # elif response == "mark_payment":
+    # await mark_payment_handler(message, state)
+    elif response == "notify_users":
+        from app.routers.crm import notify_users_handler
+
+        await notify_users_handler(message, state)
     # For "register", continue with normal flow
     return response
 
@@ -87,10 +121,7 @@ async def export_handler(message: Message, state: FSMContext):
     export_type_response = await ask_user_choice(
         message.chat.id,
         "Что вы хотите экспортировать?",
-        choices={
-            "registered": "Зарегистрированные участники", 
-            "deleted": "Удаленные участники"
-        },
+        choices={"registered": "Зарегистрированные участники", "deleted": "Удаленные участники"},
         state=state,
         timeout=None,
     )
@@ -122,12 +153,15 @@ async def export_handler(message: Message, state: FSMContext):
                 await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
             else:
                 await send_safe(message.chat.id, result_message)
-    
+
     # Handle deleted users export
-    else: # export_type_response == "deleted"
+    else:  # export_type_response == "deleted"
         if export_format_response == "sheets":
             await notif.edit_text("Экспорт удаленных участников в Google Таблицы...")
-            await send_safe(message.chat.id, "Экспорт удаленных участников в Google Таблицы пока не поддерживается")
+            await send_safe(
+                message.chat.id,
+                "Экспорт удаленных участников в Google Таблицы пока не поддерживается",
+            )
         else:
             # Export to CSV
             await notif.edit_text("Экспорт удаленных участников в CSV файл...")
@@ -659,15 +693,19 @@ async def parse_payment_handler(message: Message, state: FSMContext):
 async def show_year_stats(message: Message):
     """Show registration statistics by graduation year with matplotlib diagrams"""
     from app.router import app
-    from app.app import PAYMENT_STATUS_MAP
 
     # Send status message
     status_msg = await send_safe(message.chat.id, "⏳ Генерация статистики по годам выпуска...")
 
     # Get all registrations
-    cursor = app.collection.find({
-        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out teachers and others without graduation year
-    })
+    cursor = app.collection.find(
+        {
+            "graduation_year": {
+                "$exists": True,
+                "$ne": 0,
+            },  # Filter out teachers and others without graduation year
+        }
+    )
     registrations = await cursor.to_list(length=None)
 
     if not registrations:
@@ -677,20 +715,20 @@ async def show_year_stats(message: Message):
     # Group registrations by city and year
     cities = ["Москва", "Пермь", "Санкт-Петербург", "Белград"]
     city_year_counts = {}
-    
+
     for city in cities:
         city_year_counts[city] = defaultdict(int)
-        
+
     all_years = set()
 
     for reg in registrations:
         city = reg.get("target_city")
         year = reg.get("graduation_year")
-        
+
         # Skip registrations without valid graduation year (teachers, etc.)
         if not year or year == 0 or city not in cities:
             continue
-            
+
         # Count by city and year
         city_year_counts[city][year] += 1
         all_years.add(year)
@@ -698,15 +736,15 @@ async def show_year_stats(message: Message):
     # Group years into 5-year periods for text statistics
     min_year = min(all_years)
     max_year = max(all_years)
-    
+
     # Round min_year down to the nearest multiple of 5
     period_start = min_year - (min_year % 5)
-    
+
     # Create periods (e.g. 1995-1999, 2000-2004, etc.)
     periods = []
     period_labels = []
     current = period_start
-    
+
     while current <= max_year:
         period_end = current + 4
         periods.append((current, period_end))
@@ -715,7 +753,7 @@ async def show_year_stats(message: Message):
 
     # Count registrations by period for each city
     period_counts = {city: [0] * len(periods) for city in cities}
-    
+
     for city in cities:
         for year, count in city_year_counts[city].items():
             # Find which period this year belongs to
@@ -726,208 +764,82 @@ async def show_year_stats(message: Message):
 
     # Prepare the summary statistics text
     stats_text = "<b>📊 Статистика регистраций по годам выпуска</b>\n\n"
-    
+
     # Add total registrations per period
     stats_text += "<b>🎓 По периодам (все города):</b>\n"
-    
+
     for i, period in enumerate(period_labels):
         period_total = sum(period_counts[city][i] for city in cities)
         stats_text += f"• {period}: <b>{period_total}</b> человек\n"
-    
+
     # Add city breakdown
     for city in cities:
         stats_text += f"\n<b>🏙️ {city}:</b>\n"
         for i, period in enumerate(period_labels):
             count = period_counts[city][i]
             stats_text += f"• {period}: <b>{count}</b> человек\n"
-    
+
     # Convert data to pandas DataFrame for seaborn
     data = []
     sorted_years = sorted(all_years)
-    
+
     for city in cities:
         for year in sorted_years:
             count = city_year_counts[city].get(year, 0)
             if count > 0:  # Only include non-zero values
-                data.append({
-                    'Город': city,
-                    'Год выпуска': year,
-                    'Количество': count
-                })
-    
+                data.append({"Город": city, "Год выпуска": year, "Количество": count})
+
     df = pd.DataFrame(data)
-    
+
     # Define the color palette
     city_palette = {
-        "Москва": "#FF6666",       # stronger red
-        "Пермь": "#5599FF",        # stronger blue
+        "Москва": "#FF6666",  # stronger red
+        "Пермь": "#5599FF",  # stronger blue
         "Санкт-Петербург": "#66CC66",  # stronger green
-        "Белград": "#FF00FF"  # stronger purple
+        "Белград": "#FF00FF",  # stronger purple
     }
-    
+
     # Create figure with better size for readability
     plt.figure(figsize=(15, 8), dpi=100)
-    
+
     # Use seaborn with custom styling
     sns.set_style("whitegrid")
-    
+
     # Create the bar plot
     ax = sns.barplot(
-        data=df,
-        x='Год выпуска',
-        y='Количество',
-        hue='Город',
-        palette=city_palette,
-        errorbar=None
+        data=df, x="Год выпуска", y="Количество", hue="Город", palette=city_palette, errorbar=None
     )
-    
+
     # Add annotations for each bar
     for container in ax.containers:
-        ax.bar_label(container, fontsize=9, fontweight='bold', padding=3)
-    
+        ax.bar_label(container, fontsize=9, fontweight="bold", padding=3)
+
     # Enhance the plot with better styling
-    plt.title('Количество регистраций по годам выпуска', fontsize=18, pad=20)
-    plt.xlabel('Год выпуска', fontsize=14, labelpad=10)
-    plt.ylabel('Количество человек', fontsize=14, labelpad=10)
+    plt.title("Количество регистраций по годам выпуска", fontsize=18, pad=20)
+    plt.xlabel("Год выпуска", fontsize=14, labelpad=10)
+    plt.ylabel("Количество человек", fontsize=14, labelpad=10)
     plt.xticks(rotation=45)
-    plt.legend(title='Город', fontsize=12, title_fontsize=14)
-    
+    plt.legend(title="Город", fontsize=12, title_fontsize=14)
+
     # Adjust layout
     plt.tight_layout()
-    
+
     # Save the plot to a bytes buffer
     buf_all_cities = io.BytesIO()
-    plt.savefig(buf_all_cities, format='png')
+    plt.savefig(buf_all_cities, format="png")
     buf_all_cities.seek(0)
     plt.close()
-    
+
     # Send the stats text and diagram
     await status_msg.delete()
-    
+
     # Send the text first
     await send_safe(message.chat.id, stats_text, parse_mode="HTML")
-    
+
     # Send the diagram
     await message.answer_photo(
         BufferedInputFile(buf_all_cities.getvalue(), filename="registration_stats.png")
     )
-
-
-@commands_menu.add_command(
-    "notify_early_payment", "Уведомить о раннем платеже", visibility=Visibility.ADMIN_ONLY
-)
-@router.message(Command("notify_early_payment"), AdminFilter())
-async def notify_early_payment_handler(message: Message, state: FSMContext):
-    """Notify users who haven't paid yet about the early payment deadline"""
-
-    # Ask user for action choice
-    response = await ask_user_choice(
-        message.chat.id,
-        "Что вы хотите сделать?",
-        choices={
-            "notify": "Отправить уведомления о раннем платеже",
-            "dry_run": "Тестовый режим (показать список, но не отправлять)",
-            "cancel": "Отмена",
-        },
-        state=state,
-        timeout=None,
-    )
-
-    if response == "cancel":
-        await send_safe(message.chat.id, "Операция отменена")
-        return
-
-    from app.router import app
-
-    # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка неоплативших...")
-
-    # Get list of users who haven't paid
-    unpaid_users = await app.get_unpaid_users()
-
-    # Check if we have unpaid users
-    if not unpaid_users:
-        await status_msg.edit_text("✅ Все пользователи оплатили!")
-        return
-
-    # Generate report for both dry run and actual notification
-    report = f"📊 Найдено {len(unpaid_users)} пользователей без оплаты:\n\n"
-
-    for i, user in enumerate(unpaid_users, 1):
-        username = user.get("username", "без имени")
-        user_id = user.get("user_id", "??")
-        full_name = user.get("full_name", "Имя не указано")
-        city = user.get("target_city", "Город не указан")
-        payment_status = user.get("payment_status", "Не оплачено")
-
-        # Format payment status
-        if payment_status == "pending":
-            payment_status = "Оплачу позже"
-        elif payment_status == "declined":
-            payment_status = "Отклонено"
-        else:
-            payment_status = "Не оплачено"
-
-        report += f"{i}. {full_name} (@{username or user_id})\n"
-        report += f"   🏙️ {city}, 💰 {payment_status}\n\n"
-
-    # Update status message with report
-    await status_msg.edit_text(report)
-
-    # For dry run, we're done
-    if response == "dry_run":
-        await send_safe(message.chat.id, "🔍 Тестовый режим завершен. Уведомления не отправлялись.")
-        return
-
-    # For actual notification, ask for confirmation
-    confirm = await ask_user_confirmation(
-        message.chat.id,
-        f"⚠️ Вы собираетесь отправить уведомление {len(unpaid_users)} пользователям о раннем платеже. Продолжить?",
-        state=state,
-    )
-
-    if not confirm:
-        await send_safe(message.chat.id, "Операция отменена")
-        return
-
-    # Send notifications
-    notification_text = (
-        "🔔 <b>Напоминание о раннем платеже</b>\n\n"
-        "Привет! Напоминаем, что до окончания периода ранней оплаты "
-        "осталось совсем немного времени (до 15 марта 2025).\n\n"
-        "Оплатив сейчас, ты получаешь скидку:\n"
-        "- Москва: 1000 руб.\n"
-        "- Пермь: 500 руб.\n\n"
-        "Чтобы оплатить, используй команду /pay"
-    )
-
-    sent_count = 0
-    failed_count = 0
-
-    status_msg = await send_safe(message.chat.id, "⏳ Отправка уведомлений...")
-
-    for user in unpaid_users:
-        user_id = user.get("user_id")
-        if not user_id:
-            failed_count += 1
-            continue
-
-        try:
-            await send_safe(user_id, notification_text)
-            sent_count += 1
-        except Exception as e:
-            logger.error(f"Failed to send notification to user {user_id}: {e}")
-            failed_count += 1
-
-    # Update status message with results
-    result_text = (
-        f"✅ Уведомления отправлены!\n\n"
-        f"📊 Статистика:\n"
-        f"- Успешно отправлено: {sent_count}\n"
-        f"- Ошибок: {failed_count}"
-    )
-
-    await status_msg.edit_text(result_text)
 
 
 @commands_menu.add_command(
@@ -942,9 +854,14 @@ async def show_five_year_stats(message: Message):
     status_msg = await send_safe(message.chat.id, "⏳ Генерация графика по пятилеткам выпуска...")
 
     # Get all registrations
-    cursor = app.collection.find({
-        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out entries without graduation year
-    })
+    cursor = app.collection.find(
+        {
+            "graduation_year": {
+                "$exists": True,
+                "$ne": 0,
+            },  # Filter out entries without graduation year
+        }
+    )
     registrations = await cursor.to_list(length=None)
 
     if not registrations:
@@ -953,11 +870,11 @@ async def show_five_year_stats(message: Message):
 
     # Convert MongoDB records to pandas DataFrame
     df = pd.DataFrame(registrations)
-    
+
     # Обработка годов выпуска
-    df['graduation_year'] = pd.to_numeric(df['graduation_year'], errors='coerce')
-    df = df.dropna(subset=['graduation_year'])
-    df['Пятилетка'] = df['graduation_year'].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+    df["graduation_year"] = pd.to_numeric(df["graduation_year"], errors="coerce")
+    df = df.dropna(subset=["graduation_year"])
+    df["Пятилетка"] = df["graduation_year"].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
 
     # Упрощённая категоризация городов
     def simplify_city(city):
@@ -975,10 +892,16 @@ async def show_five_year_stats(message: Message):
         else:
             return "Другие"
 
-    df['Город (укрупнённо)'] = df['target_city'].apply(simplify_city)
+    df["Город (укрупнённо)"] = df["target_city"].apply(simplify_city)
 
     # Группировка по пятилеткам и городам
-    pivot = df.groupby(['Пятилетка', 'Город (укрупнённо)'])['full_name'].count().unstack().fillna(0).sort_index()
+    pivot = (
+        df.groupby(["Пятилетка", "Город (укрупнённо)"])["full_name"]
+        .count()
+        .unstack()
+        .fillna(0)
+        .sort_index()
+    )
 
     # Упорядочим колонки
     city_order = ["Пермь", "Москва", "Санкт-Петербург", "Белград", "Другие"]
@@ -988,15 +911,15 @@ async def show_five_year_stats(message: Message):
 
     # Построение графика
     plt.figure(figsize=(12, 7), dpi=100)
-    ax = pivot.plot(kind='bar', stacked=True, figsize=(12, 7), colormap='Set2')
+    ax = pivot.plot(kind="bar", stacked=True, figsize=(12, 7), colormap="Set2")
 
     plt.title("Зарегистрировавшиеся по пятилеткам выпуска (города: Пермь, Москва, СПб, Белград)")
     plt.xlabel("Пятилетка")
     plt.ylabel("Количество участников")
     plt.xticks(rotation=45)
-    plt.legend(title="Город", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.legend(title="Город", bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.tight_layout()
-    plt.grid(axis='y')
+    plt.grid(axis="y")
 
     # Подписи на графике
     for bar_idx, (idx, row) in enumerate(pivot.iterrows()):
@@ -1008,26 +931,417 @@ async def show_five_year_stats(message: Message):
                     x=bar_idx,
                     y=cumulative + value / 2,
                     s=int(value),
-                    ha='center',
-                    va='center',
-                    fontsize=9
+                    ha="center",
+                    va="center",
+                    fontsize=9,
                 )
                 cumulative += value
 
     # Save the plot to a bytes buffer
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf, format="png")
     buf.seek(0)
     plt.close()
 
     # Delete status message
     await status_msg.delete()
-    
+
     # Send the diagram
     await message.answer_photo(
         BufferedInputFile(buf.getvalue(), filename="five_year_stats.png"),
-        caption="📊 Зарегистрировавшиеся по пятилеткам выпуска и городам участия"
+        caption="📊 Зарегистрировавшиеся по пятилеткам выпуска и городам участия",
     )
+
+
+# @commands_menu.add_command(
+#     "mark_payment", "Пометить оплату пользователя", visibility=Visibility.ADMIN_ONLY
+# )
+# @router.message(Command("mark_payment"), AdminFilter())
+# async def mark_payment_handler(message: Message, state: FSMContext):
+#     """Поиск пользователя по имени или юзернейму и отметка оплаты"""
+#     from app.router import app
+#
+#     # Ask for search term
+#     search_message = await ask_user(
+#         message.chat.id, "Введите часть ФИО или @username пользователя для поиска:", state
+#     )
+#
+#     from app.router import app
+#
+#     search_term = message.text.strip()
+#     if len(search_term) < 3:
+#         await send_safe(
+#             message.chat.id,
+#             "Поисковый запрос слишком короткий. Введите не менее 3 символов:",
+#         )
+#         return
+#
+#     # Get state data
+#     state_data = await state.get_data()
+#     search_message_id = state_data.get("search_message_id")
+#
+#     # Show searching message
+#     status_msg = await send_safe(
+#         message.chat.id,
+#         f"🔍 Поиск пользователей по запросу '{search_term}'...",
+#     )
+#
+#     # Build search query (search in username or fullname)
+#     if search_term.startswith("@"):
+#         # Remove @ for username search
+#         username_query = search_term[1:].lower()
+#         query = {"username": {"$regex": username_query, "$options": "i"}}
+#     else:
+#         # Search in full_name
+#         query = {"full_name": {"$regex": search_term, "$options": "i"}}
+#
+#     # Execute search
+#     cursor = app.collection.find(query)
+#     users = await cursor.to_list(length=None)
+#
+#     # Group users by user_id to avoid duplicates
+#     users_by_id = {}
+#     for user in users:
+#         user_id = user.get("user_id")
+#         if user_id not in users_by_id:
+#             users_by_id[user_id] = user
+#
+#     # Check if we found any users
+#     if not users_by_id:
+#         await status_msg.edit_text(
+#             f"❌ Пользователи по запросу '{search_term}' не найдены. Попробуйте другой запрос."
+#         )
+#         return
+#
+#     # Prepare choices for selection
+#     choices = {}
+#     for user_id, user in users_by_id.items():
+#         username = user.get("username", "")
+#         full_name = user.get("full_name", "Имя не указано")
+#         city = user.get("target_city", "Город не указан")
+#         payment_status = user.get("payment_status", "Не оплачено")
+#
+#         # Format payment status
+#         if payment_status == "confirmed":
+#             payment_status = "Оплачено"
+#         elif payment_status == "pending":
+#             payment_status = "Оплачу позже"
+#         elif payment_status == "declined":
+#             payment_status = "Отклонено"
+#         else:
+#             payment_status = "Не оплачено"
+#
+#         # Format display text
+#         display = f"{full_name}"
+#         if username:
+#             display += f" (@{username})"
+#         display += f" - {city}, {payment_status}"
+#
+#         # Add to choices
+#         choices[str(user_id)] = display
+#
+#     # Add cancel option
+#     choices["cancel"] = "❌ Отмена"
+#
+#     # Update search status message
+#     await status_msg.edit_text(
+#         f"🔍 Найдено {len(users_by_id)} пользователей по запросу '{search_term}'.\nВыберите пользователя:"
+#     )
+#
+#     # Ask for user selection
+#     response = await ask_user_choice(
+#         message.chat.id,
+#         "Выберите пользователя:",
+#         choices=choices,
+#         state=state,
+#         timeout=None,
+#     )
+#
+#     # Handle response
+#     if response == "cancel":
+#         await send_safe(message.chat.id, "Операция отменена.")
+#         await state.clear()
+#         return
+#
+#     # Get selected user
+#     user_id = int(response)
+#     selected_user = users_by_id.get(user_id)
+#
+#     if not selected_user:
+#         await send_safe(message.chat.id, "Ошибка: выбранный пользователь не найден в результатах.")
+#         await state.clear()
+#         return
+#
+#     # Get all cities for this user to choose from
+#     all_registrations = await app.get_user_registrations(user_id)
+#
+#     # Filter only cities that require payment (exclude SPb, Belgrade, and teacher registrations)
+#     payment_registrations = [
+#         reg
+#         for reg in all_registrations
+#         if reg["target_city"] != "Санкт-Петербург"
+#         and reg["target_city"] != "Белград"
+#         and reg.get("graduate_type", "GRADUATE") != "TEACHER"
+#     ]
+#
+#     if not payment_registrations:
+#         await send_safe(
+#             message.chat.id,
+#             f"У пользователя {selected_user.get('full_name')} нет регистраций, требующих оплаты.",
+#         )
+#         await state.clear()
+#         return
+#
+#     # If only one city requires payment, select it automatically
+#     if len(payment_registrations) == 1:
+#         city = payment_registrations[0]["target_city"]
+#         graduation_year = payment_registrations[0]["graduation_year"]
+#
+#         # Calculate payment amounts
+#         graduate_type = payment_registrations[0].get("graduate_type", "GRADUATE")
+#         regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+#             city, graduation_year, graduate_type
+#         )
+#
+#         # Store values for confirmation
+#         await state.update_data(
+#             selected_user_id=user_id,
+#             selected_city=city,
+#             regular_amount=regular_amount,
+#             discounted_amount=discounted_amount,
+#             formula_amount=formula_amount,
+#             graduation_year=graduation_year,
+#             graduate_type=graduate_type,
+#         )
+#
+#         # Ask for payment amount
+#         username = selected_user.get("username", "")
+#         username_display = f" (@{username})" if username else ""
+#
+#         # Format status message with payment options
+#         from datetime import datetime
+#         from app.routers.payment import EARLY_REGISTRATION_DATE
+#
+#         # Check if we're in early registration period
+#         today = datetime.now()
+#         is_early_registration = today < EARLY_REGISTRATION_DATE
+#
+#         payment_options = f"💰 Варианты суммы:\n"
+#
+#         if is_early_registration:
+#             payment_options += f"• Ранняя оплата (со скидкой): {discounted_amount} руб.\n"
+#
+#         payment_options += f"• Стандартная сумма: {regular_amount} руб.\n"
+#
+#         if formula_amount > regular_amount:
+#             payment_options += f"• По формуле: {formula_amount} руб.\n"
+#
+#         status_msg = await send_safe(
+#             message.chat.id,
+#             f"Пользователь: {selected_user.get('full_name')}{username_display}\n"
+#             f"Город: {city}\n"
+#             f"Год выпуска: {graduation_year}\n\n"
+#             f"{payment_options}\n"
+#             f"Введите сумму оплаты:",
+#         )
+#     else:
+#         # Multiple cities, ask which one to mark payment for
+#         city_choices = {}
+#         for reg in payment_registrations:
+#             city = reg["target_city"]
+#             payment_status = reg.get("payment_status", "Не оплачено")
+#
+#             # Format payment status
+#             if payment_status == "confirmed":
+#                 status_emoji = "✅"
+#             elif payment_status == "pending":
+#                 status_emoji = "⏳"
+#             elif payment_status == "declined":
+#                 status_emoji = "❌"
+#             else:
+#                 status_emoji = "⚪"
+#
+#             city_choices[city] = f"{city} {status_emoji}"
+#
+#         # Add cancel option
+#         city_choices["cancel"] = "❌ Отмена"
+#
+#         # Ask for city selection
+#         response = await ask_user_choice(
+#             message.chat.id,
+#             f"У пользователя {selected_user.get('full_name')} несколько регистраций. Выберите город:",
+#             choices=city_choices,
+#             state=state,
+#             timeout=None,
+#         )
+#
+#         if response == "cancel":
+#             await send_safe(message.chat.id, "Операция отменена.")
+#             await state.clear()
+#             return
+#
+#         # Get the registration for selected city
+#         selected_reg = next(
+#             (reg for reg in payment_registrations if reg["target_city"] == response), None
+#         )
+#
+#         if not selected_reg:
+#             await send_safe(message.chat.id, "Ошибка: выбранный город не найден.")
+#             await state.clear()
+#             return
+#
+#         city = selected_reg["target_city"]
+#         graduation_year = selected_reg["graduation_year"]
+#
+#         # Calculate payment amounts
+#         graduate_type = selected_reg.get("graduate_type", "GRADUATE")
+#         regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+#             city, graduation_year, graduate_type
+#         )
+#
+#         # Store values for confirmation
+#         await state.update_data(
+#             selected_user_id=user_id,
+#             selected_city=city,
+#             regular_amount=regular_amount,
+#             discounted_amount=discounted_amount,
+#             formula_amount=formula_amount,
+#             graduation_year=graduation_year,
+#             graduate_type=graduate_type,
+#         )
+#
+#         # Ask for payment amount
+#         username = selected_user.get("username", "")
+#         username_display = f" (@{username})" if username else ""
+#
+#         # Format status message with payment options
+#         from datetime import datetime
+#         from app.routers.payment import EARLY_REGISTRATION_DATE
+#
+#         # Check if we're in early registration period
+#         today = datetime.now()
+#         is_early_registration = today < EARLY_REGISTRATION_DATE
+#
+#         payment_options = f"💰 Варианты суммы:\n"
+#
+#         if is_early_registration:
+#             payment_options += f"• Ранняя оплата (со скидкой): {discounted_amount} руб.\n"
+#
+#         payment_options += f"• Стандартная сумма: {regular_amount} руб.\n"
+#
+#         if formula_amount > regular_amount:
+#             payment_options += f"• По формуле: {formula_amount} руб.\n"
+#
+#         while True:
+#             try:
+#                 response = await ask_user(
+#                     message.chat.id,
+#                     f"Пользователь: {selected_user.get('full_name')}{username_display}\n"
+#                     f"Город: {city}\n"
+#                     f"Год выпуска: {graduation_year}\n\n"
+#                     f"{payment_options}\n"
+#                     f"Введите сумму оплаты:",
+#                 )
+#                 if not response:
+#                     return
+#                 payment_amount = int(response)
+#                 break
+#             except:
+#                 await send_safe(
+#                     message.chat.id, "❌ Некорректная сумма. Введите положительное число:"
+#                 )
+#
+#     from app.router import app
+#
+#     # Get user info
+#     user_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+#
+#     if not user_data:
+#         await send_safe(message.chat.id, "❌ Ошибка: пользователь или регистрация не найдены.")
+#         await state.clear()
+#         return
+#
+#     # Format confirmation message
+#     username = user_data.get("username", "")
+#     username_display = f" (@{username})" if username else ""
+#     full_name = user_data.get("full_name", "Неизвестное имя")
+#
+#     # Get current payment amount if exists
+#     current_amount = user_data.get("payment_amount", 0)
+#     payment_status = user_data.get("payment_status", None)
+#
+#     confirmation_text = f"⚠️ Подтвердите данные платежа:\n\n"
+#     confirmation_text += f"👤 {full_name}{username_display}\n"
+#     confirmation_text += f"🏙️ {city}\n"
+#     confirmation_text += f"💰 Сумма к зачислению: {payment_amount} руб.\n"
+#
+#     if payment_status == "confirmed" and current_amount > 0:
+#         # This is an additional payment
+#         confirmation_text += (
+#             f"\n⚠️ У пользователя уже есть подтвержденный платеж на сумму {current_amount} руб.\n"
+#         )
+#         confirmation_text += (
+#             f"✅ Итоговая сумма после зачисления: {current_amount + payment_amount} руб."
+#         )
+#
+#     confirm = await ask_user_confirmation(
+#         message.chat.id,
+#         confirmation_text,
+#         state=state,
+#     )
+#
+#     if not confirm:
+#         await send_safe(message.chat.id, "Операция отменена.")
+#         await state.clear()
+#         return
+#
+#     await app.update_payment_status(
+#         user_id=user_id,
+#         city=city,
+#         status="confirmed",
+#         payment_amount=payment_amount,
+#         admin_id=message.from_user.id,
+#         admin_username=message.from_user.username,
+#         admin_comment="Платеж отмечен администратором",
+#     )
+#
+#     # Get updated user data
+#     updated_user = await app.collection.find_one({"user_id": user_id, "target_city": city})
+#     total_amount = updated_user.get("payment_amount", payment_amount)
+#
+#     # Send success message
+#     success_message = (
+#         f"✅ Платеж успешно зачислен!\n\n"
+#         f"👤 {full_name}{username_display}\n"
+#         f"🏙️ {city}\n"
+#         f"💰 Сумма платежа: {payment_amount} руб.\n"
+#     )
+#
+#     if total_amount != payment_amount:
+#         success_message += f"💵 Итоговая сумма: {total_amount} руб.\n"
+#
+#     # Notify the user about the payment
+#     try:
+#         user_notification = (
+#             f"✅ Ваш платеж для участия во встрече в городе {city} подтвержден!\n"
+#             f"Сумма: {payment_amount} руб."
+#         )
+#
+#         if total_amount != payment_amount:
+#             user_notification += f"\nОбщая сумма внесенных платежей: {total_amount} руб."
+#
+#         user_notification += "\nСпасибо за оплату."
+#
+#         await send_safe(user_id, user_notification)
+#         success_message += "\n✉️ Уведомление пользователю отправлено."
+#     except Exception as e:
+#         logger.error(f"Failed to notify user {user_id} about payment: {e}")
+#         success_message += "\n⚠️ Не удалось отправить уведомление пользователю."
+#
+#     await send_safe(message.chat.id, success_message)
+#
+#     # Auto-export to Google Sheets
+#     await app.export_registered_users_to_google_sheets()
 
 
 @commands_menu.add_command(
@@ -1042,11 +1356,16 @@ async def show_payment_stats(message: Message):
     status_msg = await send_safe(message.chat.id, "⏳ Генерация круговой диаграммы оплат...")
 
     # Get all registrations
-    cursor = app.collection.find({
-        "graduation_year": {"$exists": True, "$ne": 0},  # Filter out entries without graduation year
-        "payment_status": "confirmed",  # Only include confirmed payments
-        "payment_amount": {"$gt": 0}    # Only include payments > 0
-    })
+    cursor = app.collection.find(
+        {
+            "graduation_year": {
+                "$exists": True,
+                "$ne": 0,
+            },  # Filter out entries without graduation year
+            "payment_status": "confirmed",  # Only include confirmed payments
+            "payment_amount": {"$gt": 0},  # Only include payments > 0
+        }
+    )
     registrations = await cursor.to_list(length=None)
 
     if not registrations:
@@ -1055,35 +1374,37 @@ async def show_payment_stats(message: Message):
 
     # Convert MongoDB records to pandas DataFrame
     df = pd.DataFrame(registrations)
-    
+
     # Обработка годов выпуска
-    df['graduation_year'] = pd.to_numeric(df['graduation_year'], errors='coerce')
-    df = df.dropna(subset=['graduation_year'])
-    df['Пятилетка'] = df['graduation_year'].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+    df["graduation_year"] = pd.to_numeric(df["graduation_year"], errors="coerce")
+    df = df.dropna(subset=["graduation_year"])
+    df["Пятилетка"] = df["graduation_year"].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
 
     # Группировка и сумма по пятилеткам
-    donation_by_period = df.groupby('Пятилетка')['payment_amount'].sum()
+    donation_by_period = df.groupby("Пятилетка")["payment_amount"].sum()
     donation_by_period = donation_by_period[donation_by_period > 0].sort_index()
 
     # Построение круговой диаграммы
     plt.figure(figsize=(10, 10), dpi=100)
-    
+
     # Get a nicer color palette
-    colors = plt.cm.Set3.colors[:len(donation_by_period)]
-    
+    colors = plt.cm.Set3.colors[: len(donation_by_period)]
+
     # Add percentage and absolute values to the labels
     total = donation_by_period.sum()
-    labels = [f"{period}: {amount:,.0f} ₽ ({amount/total:.1%})" 
-             for period, amount in zip(donation_by_period.index, donation_by_period.values)]
-    
+    labels = [
+        f"{period}: {amount:,.0f} ₽ ({amount/total:.1%})"
+        for period, amount in zip(donation_by_period.index, donation_by_period.values)
+    ]
+
     plt.pie(
         donation_by_period.values,
         labels=labels,
-        autopct='',  # We already added percentages to labels
+        autopct="",  # We already added percentages to labels
         startangle=90,
         colors=colors,
         shadow=False,
-        wedgeprops={'linewidth': 1, 'edgecolor': 'white'}
+        wedgeprops={"linewidth": 1, "edgecolor": "white"},
     )
 
     plt.title("Суммарные оплаты по пятилеткам выпуска", fontsize=16, pad=20)
@@ -1091,15 +1412,15 @@ async def show_payment_stats(message: Message):
 
     # Save the plot to a bytes buffer
     buf = io.BytesIO()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf, format="png")
     buf.seek(0)
     plt.close()
 
     # Delete status message
     await status_msg.delete()
-    
+
     # Send the diagram
     await message.answer_photo(
         BufferedInputFile(buf.getvalue(), filename="payment_stats.png"),
-        caption="💰 Суммарные оплаты по пятилеткам выпуска"
+        caption="💰 Суммарные оплаты по пятилеткам выпуска",
     )

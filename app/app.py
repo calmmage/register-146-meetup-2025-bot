@@ -88,6 +88,25 @@ class App:
         self._collection = None
         self._event_logs = None
         self._deleted_users = None
+        
+    async def startup(self):
+        """
+        Run startup tasks like fixing the database and initializing collections
+        """
+        logger.info("Running app startup tasks...")
+        
+        # Initialize collections
+        _ = self.collection
+        _ = self.event_logs
+        _ = self.deleted_users
+        
+        # Fix database (SPb, Belgrade, teachers should have 'confirmed' payment status)
+        fix_results = await self._fix_database()
+        if fix_results["total_fixed"] > 0:
+            logger.info(f"Database fix applied to {fix_results['total_fixed']} records:")
+            logger.info(f"- SPb: {fix_results['spb_fixed']}")
+            logger.info(f"- Belgrade: {fix_results['belgrade_fixed']}")
+            logger.info(f"- Teachers: {fix_results['teachers_fixed']}")
 
     @property
     def collection(self):
@@ -203,7 +222,7 @@ class App:
         # Check if full_name is None
         if full_name is None:
             return False, "Отсутствует имя. Пожалуйста, попробуйте ещё раз."
-            
+
         # Check if name has at least 2 words
         words = full_name.strip().split()
         if len(words) < 2:
@@ -328,7 +347,7 @@ class App:
     async def export_to_csv(self):
         """Export registered users to CSV"""
         return await self.sheet_exporter.export_to_csv()
-        
+
     async def export_deleted_users_to_csv(self):
         """Export deleted users to CSV"""
         return await self.sheet_exporter.export_deleted_users_to_csv()
@@ -700,30 +719,151 @@ class App:
 
         return result.modified_count
 
-    async def get_unpaid_users(self) -> List[Dict]:
+    async def _get_users_base(
+        self, payment_status: Optional[str] = None, city: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Base method to get users with various filters
+        
+        Args:
+            payment_status: Filter by payment status ("confirmed", "pending", "declined", None for any)
+            city: Filter by city (None for all cities)
+            
+        Returns:
+            List of user registrations matching the criteria
+        """
+        query = {}
+        
+        # Build the query conditions
+        and_conditions = []
+        
+        # Filter by payment status
+        if payment_status == "unpaid":
+            and_conditions.append({"payment_status": {"$ne": "confirmed"}})
+        elif payment_status == "paid":
+            and_conditions.append({"payment_status": "confirmed"})
+            
+        # Filter by city if specified
+        if city and city != "all":
+            # Map city key to actual value
+            city_mapping = {
+                "MOSCOW": TargetCity.MOSCOW.value,
+                "PERM": TargetCity.PERM.value,
+                "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
+                "BELGRADE": TargetCity.BELGRADE.value
+            }
+            if city in city_mapping:
+                and_conditions.append({"target_city": city_mapping[city]})
+        
+        # Add the conditions to the query if we have any
+        if and_conditions:
+            query["$and"] = and_conditions
+            
+        cursor = self.collection.find(query)
+        return await cursor.to_list(length=None)
+        
+    async def get_unpaid_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
-
+        
+        Args:
+            city: Optional city to filter by
+            
         Returns:
             List of user registrations with unpaid status
         """
-        query = {
-            "$and": [
-                {"payment_status": {"$ne": "confirmed"}},
-                {
-                    "target_city": {"$ne": TargetCity.SAINT_PETERSBURG.value}
-                },  # Exclude SPb as it's free
-                {
-                    "target_city": {"$ne": TargetCity.BELGRADE.value}
-                },  # Exclude Belgrade as it's free
-                {
-                    "graduate_type": {"$ne": GraduateType.TEACHER.value}
-                },  # Exclude teachers as they don't pay
-            ]
+        return await self._get_users_base(payment_status="unpaid", city=city)
+        
+    async def get_paid_users(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users who have paid (payment_status is "confirmed")
+        
+        Args:
+            city: Optional city to filter by
+            
+        Returns:
+            List of user registrations with paid status
+        """
+        return await self._get_users_base(payment_status="paid", city=city)
+        
+    async def get_all_users(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users regardless of payment status
+        
+        Args:
+            city: Optional city to filter by
+            
+        Returns:
+            List of all user registrations
+        """
+        return await self._get_users_base(city=city)
+        
+    async def _fix_database(self) -> Dict[str, int]:
+        """
+        Fix the database by setting payment_status to "confirmed" for:
+        1. All users in Saint Petersburg (free event)
+        2. All users in Belgrade (free event)
+        3. All users with graduate_type=TEACHER (free for teachers)
+        
+        Returns:
+            Dictionary with counts of fixed records for each category
+        """
+        results = {
+            "spb_fixed": 0,
+            "belgrade_fixed": 0,
+            "teachers_fixed": 0,
+            "total_fixed": 0
         }
-
-        cursor = self.collection.find(query)
-        return await cursor.to_list(length=None)
+        
+        # Fix Saint Petersburg registrations
+        spb_result = await self.collection.update_many(
+            {
+                "target_city": TargetCity.SAINT_PETERSBURG.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["spb_fixed"] = spb_result.modified_count
+        
+        # Fix Belgrade registrations
+        belgrade_result = await self.collection.update_many(
+            {
+                "target_city": TargetCity.BELGRADE.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["belgrade_fixed"] = belgrade_result.modified_count
+        
+        # Fix teacher registrations
+        teachers_result = await self.collection.update_many(
+            {
+                "graduate_type": GraduateType.TEACHER.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["teachers_fixed"] = teachers_result.modified_count
+        
+        # Calculate total fixed
+        results["total_fixed"] = (
+            results["spb_fixed"] + 
+            results["belgrade_fixed"] + 
+            results["teachers_fixed"]
+        )
+        
+        # Log the fix operation if any records were updated
+        if results["total_fixed"] > 0:
+            log_data = {
+                "action": "fix_database",
+                "modified_count": results["total_fixed"],
+                "spb_fixed": results["spb_fixed"],
+                "belgrade_fixed": results["belgrade_fixed"],
+                "teachers_fixed": results["teachers_fixed"],
+            }
+            await self.save_event_log("admin_action", log_data)
+            
+        return results
 
     async def save_event_log(
         self,

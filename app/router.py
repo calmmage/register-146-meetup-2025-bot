@@ -32,6 +32,27 @@ date_of_event = {
     TargetCity.BELGRADE: "5 Апреля, Сб",
 }
 
+time_of_event = {
+    TargetCity.PERM: "17:00",
+    TargetCity.MOSCOW: "18:00",
+    TargetCity.SAINT_PETERSBURG: "17:00",
+    TargetCity.BELGRADE: "Уточняется",  # Предположительно
+}
+
+venue_of_event = {
+    TargetCity.PERM: "Пермское бистро",
+    TargetCity.MOSCOW: "People Loft",
+    TargetCity.SAINT_PETERSBURG: "Family Loft",
+    TargetCity.BELGRADE: "Уточняется",
+}
+
+address_of_event = {
+    TargetCity.PERM: "ул. Сибирская, 8",
+    TargetCity.MOSCOW: "1-я ул. Энтузиастов, 12, метро Авиамоторная",
+    TargetCity.SAINT_PETERSBURG: "Кожевенная линия, 34, Метро горный институт",
+    TargetCity.BELGRADE: "Уточняется",
+}
+
 padezhi = {
     TargetCity.PERM: "Перми",
     TargetCity.MOSCOW: "Москве",
@@ -226,7 +247,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         else:  # "nothing"
             await send_safe(
                 message.chat.id,
-                "Отлично! Ваша регистрация в силе. До встречи!",
+                "Отлично! Ваша регистрация в силе. До встречи!\n\nИспользуйте команду /info для получения подробной информации о встречах (дата, время, адрес).",
                 reply_markup=ReplyKeyboardRemove(),
             )
 
@@ -446,7 +467,7 @@ async def register_user(
         available_cities = {
             city.value: f"{city.value} ({date_of_event[city]})"
             for city in TargetCity
-            if city.value not in existing_cities
+            if city.value not in existing_cities and city.value != TargetCity.PERM.value
         }
 
         # If no cities left, inform the user
@@ -482,7 +503,7 @@ async def register_user(
             state=state,
             timeout=None,
         )
-        
+
         # Handle timeout/None response
         if response is None:
             await send_safe(
@@ -491,7 +512,7 @@ async def register_user(
                 reply_markup=ReplyKeyboardRemove(),
             )
             return
-            
+
         location = TargetCity(response)
 
         # Log city selection
@@ -572,7 +593,7 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
-            
+
             # Handle timeout/None response
             if response is None:
                 await send_safe(
@@ -624,7 +645,7 @@ async def register_user(
                 state=state,
                 timeout=None,
             )
-            
+
             # Handle timeout/None response
             if response is None:
                 await send_safe(
@@ -823,12 +844,12 @@ async def register_user(
         await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow for everyone else who needs to pay
-        
+
         # Calculate payment amounts first
         regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
             location.value, graduation_year, graduate_type.value
         )
-        
+
         # Save payment info with "not paid" status - different from "pending" which is used after "pay later" click
         await app.save_payment_info(
             user_id=user_id,
@@ -839,7 +860,7 @@ async def register_user(
             username=username,
             payment_status="not paid",
         )
-        
+
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 
@@ -1032,6 +1053,69 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
             )
 
 
+@commands_menu.add_command("info", "Информация о встречах")
+@router.message(Command("info"))
+async def info_handler(message: Message, state: FSMContext):
+    """
+    Show detailed information about events in all cities
+    """
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
+
+    # Log the info command
+    await app.save_event_log(
+        "command",
+        {"command": "/info", "content": message.text, "chat_type": message.chat.type},
+        message.from_user.id,
+        message.from_user.username,
+    )
+
+    # Create info text with details for each city
+    info_text = "📅 <b>Информация о встречах выпускников 146</b>\n\n"
+
+    for city in TargetCity:
+        if city == TargetCity.PERM:
+            continue
+        info_text += f"<b>🏙️ {city.value}</b>\n"
+        info_text += f"📆 Дата: {date_of_event[city]}\n"
+        info_text += f"⏰ Время: {time_of_event[city]}\n"
+        info_text += f"🏢 Место: {venue_of_event[city]}\n"
+        info_text += f"📍 Адрес: {address_of_event[city]}\n"
+
+        # # Add payment information
+        # if city == TargetCity.SAINT_PETERSBURG or city == TargetCity.BELGRADE:
+        #     info_text += "💰 Оплата: За свой счет\n"
+        # else:
+        #     from datetime import datetime
+        #     from app.routers.payment import EARLY_REGISTRATION_DATE
+        #
+        #     # Check if we're in early registration period
+        #     today = datetime.now()
+        #     is_early_registration = today < EARLY_REGISTRATION_DATE
+        #
+        #     if city == TargetCity.PERM:
+        #         if is_early_registration:
+        #             info_text += "💰 Рекомендованный взнос: от 1500₽ до 15 марта, далее от 2000₽\n"
+        #         else:
+        #             info_text += "💰 Рекомендованный взнос: от 2000₽\n"
+        #     elif city == TargetCity.MOSCOW:
+        #         if is_early_registration:
+        #             info_text += "💰 Рекомендованный взнос: от 3000₽ до 15 марта, далее от 4000₽\n"
+        #         else:
+        #             info_text += "💰 Рекомендованный взнос: от 4000₽\n"
+
+        info_text += "\n"
+
+    # Add registration command info
+    info_text += "Используйте /start для регистрации на встречу.\n"
+
+    # Add payment command info
+    info_text += "Используйте /pay для оплаты участия после регистрации.\n"
+
+    await send_safe(message.chat.id, info_text, parse_mode="HTML")
+
+
 @commands_menu.add_command("status", "Статус регистрации")
 @router.message(Command("status"))
 async def status_handler(message: Message, state: FSMContext):
@@ -1111,6 +1195,7 @@ async def status_handler(message: Message, state: FSMContext):
 
     # Add available commands information
     status_text += "Доступные команды:\n"
+    status_text += "- /info - подробная информация о встречах (дата, время, адрес)\n"
     status_text += "- /start - управление регистрациями\n"
     status_text += "- /pay - оплатить участие\n"
     status_text += "- /cancel_registration - отменить регистрацию\n"

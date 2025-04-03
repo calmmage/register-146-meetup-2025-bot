@@ -11,7 +11,7 @@ from botspot.core.bot_manager import BotManager
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from .routers.admin import router as admin_router
+from .routers.crm import router as admin_router
 from .routers.payment import router as payment_router
 from .router import app, router as main_router
 
@@ -34,6 +34,9 @@ def main(debug=False) -> None:
 
     # Initialize bot manager
     bm = BotManager(bot=bot)
+
+    # Run database fix on startup
+    dp.startup.register(app.startup)
 
     # Setup dispatcher with our components
     bm.setup_dispatcher(dp)
