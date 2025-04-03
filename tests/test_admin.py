@@ -96,7 +96,7 @@ async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_
     mock_ask_user_choice.return_value = "view_stats"
 
     # Mock the show_stats function
-    with patch("app.routers.admin.show_stats") as mock_stats:
+    with patch("app.routers.stats.show_stats") as mock_stats:
         mock_stats.return_value = AsyncMock()
 
         # Call the handler

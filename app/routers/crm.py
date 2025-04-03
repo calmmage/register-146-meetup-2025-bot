@@ -24,7 +24,7 @@ def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
     Returns:
         Personalized message with replaced placeholders
     """
-    from app.router import time_of_event, venue_of_event, address_of_event, padezhi
+    from app.router import time_of_event, venue_of_event, address_of_event, padezhi, date_of_event
     
     # Extract user data
     user_name = user_data.get("full_name", "")
@@ -44,6 +44,7 @@ def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
     user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
     user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
     user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
+    user_date = date_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
     
     # Apply substitutions
     result = template
@@ -52,6 +53,7 @@ def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
     result = result.replace("{city_padezh}", user_city_padezh)
     result = result.replace("{address}", user_address)
     result = result.replace("{venue}", user_venue)
+    result = result.replace("{date}", user_date)
     result = result.replace("{time}", user_time)
     result = result.replace("{year}", str(user_year))
     result = result.replace("{class}", str(user_class))

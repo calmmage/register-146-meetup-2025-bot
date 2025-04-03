@@ -11,7 +11,7 @@ from botspot.core.bot_manager import BotManager
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from .routers.crm import router as admin_router
+from .routers.stats import router as admin_router
 from .routers.payment import router as payment_router
 from .router import app, router as main_router
 
