@@ -45,7 +45,19 @@ async def process_payment(
     # This happens when the function is called from a callback handler
     state_data = await state.get_data()
     user_id = state_data.get("original_user_id")
-    username = state_data.get("original_username")
+    username = state_data.get("original_username", "")
+    
+    # Ensure user_id is an integer
+    if user_id is not None:
+        user_id = int(user_id)
+    else:
+        # Use message.from_user.id as fallback
+        user_id = message.from_user.id if message.from_user else None
+        
+    # Ensure username is a string
+    if username is None:
+        username = message.from_user.username or "" if message.from_user else ""
+        
     logger.info(f"Using original user information: ID={user_id}, username={username}")
 
     # Get user registration to get graduate_type
@@ -146,6 +158,7 @@ async def process_payment(
 
     # Create choices for the user
     choices = {"pay_later": "Оплачу позже"}
+    choices["too_expensive"] = "Ой, нет, что-то слишком дорого, я передумал"
 
     # Wait for response using ask_user_choice_raw (either screenshot or choice)
     # Log payment proof request
@@ -167,7 +180,7 @@ async def process_payment(
         "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или выберите опцию ниже:",
         choices=choices,
         state=state,
-        timeout=1200,
+        timeout=3600,
     )
 
     if response is None:
@@ -180,38 +193,93 @@ async def process_payment(
         return
 
     # Check if response is a string (meaning it's a choice selection)
-    if isinstance(response, str) and response == "pay_later":
-        # User clicked "Pay Later"
-        await send_safe(
-            message.chat.id,
-            "Хорошо! Вы можете оплатить позже, используя команду /pay",
-            reply_markup=ReplyKeyboardRemove(),
-        )
+    if isinstance(response, str):
+        if response == "pay_later":
+            # User clicked "Pay Later"
+            await send_safe(
+                message.chat.id,
+                "Хорошо! Вы можете оплатить позже, используя команду /pay",
+                reply_markup=ReplyKeyboardRemove(),
+            )
 
-        # Log to chat log
-        await app.log_registration_step(
-            user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
-        )
-        
-        # Log to event logs
-        await app.save_event_log(
-            "payment_action", 
-            {
-                "action": "pay_later_selected",
-                "city": city,
-                "amount": discounted_amount,
-                "regular_amount": regular_amount,
-                "graduate_type": graduate_type
-            }, 
-            user_id, 
-            username
-        )
+            # Log to chat log
+            await app.log_registration_step(
+                user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
+            )
+            
+            # Log to event logs
+            await app.save_event_log(
+                "payment_action", 
+                {
+                    "action": "pay_later_selected",
+                    "city": city,
+                    "amount": discounted_amount,
+                    "regular_amount": regular_amount,
+                    "graduate_type": graduate_type
+                }, 
+                user_id, 
+                username
+            )
 
-        # Save payment info with pending status
-        await app.save_payment_info(
-            user_id, city, discounted_amount, regular_amount, formula_amount=formula_amount
-        )
-        return False
+            # Save payment info with pending status
+            await app.save_payment_info(
+                user_id, city, discounted_amount, regular_amount, formula_amount=formula_amount
+            )
+            return False
+        elif response == "too_expensive":
+            # User clicked "Too expensive, changed my mind"
+            # Log to chat log
+            assert user_id is not None, "User ID cannot be None for payment cancellation"
+            
+            await app.log_registration_step(
+                user_id=user_id, username=username, step="Отказ от оплаты: слишком дорого"
+            )
+            
+            # Log to event logs
+            await app.save_event_log(
+                "payment_action", 
+                {
+                    "action": "too_expensive_selected",
+                    "city": city,
+                    "amount": discounted_amount,
+                    "regular_amount": regular_amount,
+                    "graduate_type": graduate_type
+                }, 
+                user_id, 
+                username
+            )
+            
+            # Get all user registrations
+            registrations = await app.get_user_registrations(user_id)
+            # Find the registration for this city
+            registration = next((reg for reg in registrations if reg["target_city"] == city), None)
+            
+            if registration:
+                full_name = registration.get("full_name", "Unknown")
+                # Delete the registration for this city
+                await app.delete_user_registration(user_id, city)
+                
+                # Log cancellation
+                await app.log_registration_canceled(
+                    user_id,
+                    username,
+                    full_name,
+                    city,
+                )
+                
+                await send_safe(
+                    message.chat.id,
+                    "Понимаем! Ваша регистрация отменена. Если передумаете, вы всегда можете зарегистрироваться снова с помощью команды /start",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+            else:
+                await send_safe(
+                    message.chat.id,
+                    "Что-то пошло не так. Пожалуйста, используйте команду /cancel_registration для отмены регистрации.",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+            
+            return False
 
     # Otherwise, it's a message with photo or document
     # Check if response has photo or document (PDF)
