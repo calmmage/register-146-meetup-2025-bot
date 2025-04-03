@@ -2,13 +2,61 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
+from typing import Dict, Any
 
 from app.routers.admin import router
+from app.app import TargetCity
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
+
+
+def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
+    """
+    Apply template substitutions to a message based on user data.
+    
+    Args:
+        template: The message template containing placeholders
+        user_data: Dictionary with user information
+        
+    Returns:
+        Personalized message with replaced placeholders
+    """
+    from app.router import time_of_event, venue_of_event, address_of_event, padezhi
+    
+    # Extract user data
+    user_name = user_data.get("full_name", "")
+    user_city_value = user_data.get("target_city", "")
+    user_year = user_data.get("graduation_year", "")
+    user_class = user_data.get("class_letter", "")
+    
+    # Convert city string to enum for dictionary lookups
+    city_enum = None
+    for city_enum_value in TargetCity:
+        if city_enum_value.value == user_city_value:
+            city_enum = city_enum_value
+            break
+    
+    # Get city-specific details
+    user_city_padezh = padezhi.get(city_enum, user_city_value) if city_enum else "городе"
+    user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
+    user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
+    user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
+    
+    # Apply substitutions
+    result = template
+    result = result.replace("{name}", user_name)
+    result = result.replace("{city}", user_city_value)
+    result = result.replace("{city_padezh}", user_city_padezh)
+    result = result.replace("{address}", user_address)
+    result = result.replace("{venue}", user_venue)
+    result = result.replace("{time}", user_time)
+    result = result.replace("{year}", str(user_year))
+    result = result.replace("{class}", str(user_class))
+    
+    return result
 
 
 @commands_menu.add_command(
@@ -126,52 +174,22 @@ async def notify_users_handler(message: Message, state: FSMContext):
     if len(users) > 10:
         preview += f"\n... и еще {len(users) - 10} пользователей"
 
-    # Get event details from router
-    from app.router import time_of_event, venue_of_event, address_of_event, padezhi
-    from app.app import TargetCity
-    
     # Message preview with personalization example
     preview += "\n\n<b>Предварительный просмотр сообщения:</b>\n\n"
     preview += notification_text
     
-    # If we have users and there are templates in the message, show a personalized example
+    # Define all available template markers
     template_markers = ["{name}", "{city}", "{city_padezh}", "{address}", "{venue}", "{time}", "{year}", "{class}"]
+    
+    # If we have users and there are templates in the message, show a personalized example
     if users and any(marker in notification_text for marker in template_markers):
         example_user = users[0]  # Take the first user for the example
         
-        # Create a personalized example
-        personalized_example = notification_text
-        user_name = example_user.get("full_name", "")
-        user_city_value = example_user.get("target_city", "")
-        
-        # Convert city string to enum for dictionary lookups
-        city_enum = None
-        for city_enum_value in TargetCity:
-            if city_enum_value.value == user_city_value:
-                city_enum = city_enum_value
-                break
-        
-        # Get city-specific details
-        user_city_padezh = padezhi.get(city_enum, user_city_value) if city_enum else "городе"
-        user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-        user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-        user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-        
-        user_year = example_user.get("graduation_year", "")
-        user_class = example_user.get("class_letter", "")
-        
-        # Apply substitutions
-        personalized_example = personalized_example.replace("{name}", user_name)
-        personalized_example = personalized_example.replace("{city}", user_city_value)
-        personalized_example = personalized_example.replace("{city_padezh}", user_city_padezh)
-        personalized_example = personalized_example.replace("{address}", user_address)
-        personalized_example = personalized_example.replace("{venue}", user_venue)
-        personalized_example = personalized_example.replace("{time}", user_time)
-        personalized_example = personalized_example.replace("{year}", str(user_year))
-        personalized_example = personalized_example.replace("{class}", str(user_class))
+        # Create a personalized example using our utility function
+        personalized_example = apply_message_templates(notification_text, example_user)
         
         preview += "\n\n<b>Пример персонализированного сообщения для пользователя:</b>\n"
-        preview += f"<i>{user_name}</i>\n\n"
+        preview += f"<i>{example_user.get('full_name', '')}</i>\n\n"
         preview += personalized_example
 
     # Update status message with preview
@@ -194,10 +212,6 @@ async def notify_users_handler(message: Message, state: FSMContext):
 
     status_msg = await send_safe(message.chat.id, "⏳ Отправка уведомлений...")
 
-    # Get event details from router
-    from app.router import time_of_event, venue_of_event, address_of_event, padezhi
-    from app.app import TargetCity
-    
     for user in users:
         user_id = user.get("user_id")
         if not user_id:
@@ -205,38 +219,8 @@ async def notify_users_handler(message: Message, state: FSMContext):
             continue
 
         try:
-            # Process templates for this user
-            personalized_text = notification_text
-            
-            # Replace templates with user data
-            user_name = user.get("full_name", "")
-            user_city_value = user.get("target_city", "")
-            
-            # Convert city string to enum for dictionary lookups
-            city_enum = None
-            for city_enum_value in TargetCity:
-                if city_enum_value.value == user_city_value:
-                    city_enum = city_enum_value
-                    break
-            
-            # Get city-specific details
-            user_city_padezh = padezhi.get(city_enum, user_city_value) if city_enum else "городе"
-            user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            
-            user_year = user.get("graduation_year", "")
-            user_class = user.get("class_letter", "")
-            
-            # Apply substitutions
-            personalized_text = personalized_text.replace("{name}", user_name)
-            personalized_text = personalized_text.replace("{city}", user_city_value)
-            personalized_text = personalized_text.replace("{city_padezh}", user_city_padezh)
-            personalized_text = personalized_text.replace("{address}", user_address)
-            personalized_text = personalized_text.replace("{venue}", user_venue)
-            personalized_text = personalized_text.replace("{time}", user_time)
-            personalized_text = personalized_text.replace("{year}", str(user_year))
-            personalized_text = personalized_text.replace("{class}", str(user_class))
+            # Process templates for this user using our utility function
+            personalized_text = apply_message_templates(notification_text, user)
             
             await send_safe(user_id, personalized_text)
             sent_count += 1
@@ -404,10 +388,6 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 
     status_msg = await send_safe(message.chat.id, "⏳ Отправка уведомлений...")
     
-    # Get event details from router
-    from app.router import time_of_event, venue_of_event, address_of_event, padezhi
-    from app.app import TargetCity
-
     for user in unpaid_users:
         user_id = user.get("user_id")
         if not user_id:
@@ -415,33 +395,8 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
             continue
 
         try:
-            # Process templates for this user
-            personalized_text = notification_text
-            
-            # Replace templates with user data
-            user_name = user.get("full_name", "")
-            user_city_value = user.get("target_city", "")
-            
-            # Convert city string to enum for dictionary lookups
-            city_enum = None
-            for city_enum_value in TargetCity:
-                if city_enum_value.value == user_city_value:
-                    city_enum = city_enum_value
-                    break
-            
-            # Get city-specific details
-            user_city_padezh = padezhi.get(city_enum, user_city_value) if city_enum else "городе"
-            user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-            
-            # Apply substitutions
-            personalized_text = personalized_text.replace("{name}", user_name)
-            personalized_text = personalized_text.replace("{city}", user_city_value)
-            personalized_text = personalized_text.replace("{city_padezh}", user_city_padezh)
-            personalized_text = personalized_text.replace("{address}", user_address)
-            personalized_text = personalized_text.replace("{venue}", user_venue)
-            personalized_text = personalized_text.replace("{time}", user_time)
+            # Process templates for this user using our utility function
+            personalized_text = apply_message_templates(notification_text, user)
             
             await send_safe(user_id, personalized_text)
             sent_count += 1
