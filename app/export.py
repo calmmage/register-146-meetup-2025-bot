@@ -10,6 +10,7 @@ from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 # Define the scopes for Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
+
 class SheetExporter:
     def __init__(self, spreadsheet_id: str, app: App):
         """
@@ -64,96 +65,150 @@ class SheetExporter:
 
     async def export_registered_users(self, silent=False):
         """Export all registered users to the Google Sheet
-        
+
         Args:
             silent: If True, suppresses any return messages for background operation
         """
-        try:
-            # Get all registered users from MongoDB
-            cursor = self.app.collection.find({})
-            users = await cursor.to_list(length=None)
+        # Get all registered users from MongoDB
+        cursor = self.app.collection.find({})
+        users = await cursor.to_list(length=None)
 
-            if not users:
-                logger.info("Нет пользователей для экспорта")
-                if not silent:
-                    return "Нет пользователей для экспорта"
-                return None
+        if not users:
+            logger.info("Нет пользователей для экспорта")
+            if not silent:
+                return "Нет пользователей для экспорта"
+            return None
 
-            # Connect to Google Sheets
-            client = self._get_client()
-            sheet = client.open_by_key(self.spreadsheet_id).sheet1
-            
-            # Clear the entire sheet first
-            sheet.clear()
-            logger.info("Cleared all existing data from the sheet")
-            
-            # Prepare headers and data
-            headers = [
-                "ФИО", 
-                "Год выпуска", 
-                "Класс", 
-                "Город участия во встрече",
-                "Статус участника",  # graduate_type
-                "Telegram Username", 
-                "Статус оплаты", 
-                "Сумма оплаты (факт)", 
-                "Мин. сумма со скидкой",
-                "Регулярная сумма",
-                "Формула",
-                "Дата оплаты"
-            ]
+        # Connect to Google Sheets
+        client = self._get_client()
+        # Get spreadsheet
+        spreadsheet = client.open_by_key(self.spreadsheet_id)
+
+        # Ensure we have worksheets for each category
+        worksheet_titles = [ws.title for ws in spreadsheet.worksheets()]
+
+        # Main sheet
+        if "Все города" not in worksheet_titles:
+            spreadsheet.add_worksheet(title="Все города", rows=1000, cols=20)
+        main_sheet = spreadsheet.worksheet("Все города")
+        main_sheet.clear()
+
+        # City-specific sheets
+        city_sheets = {}
+        for city in ["Москва", "Санкт-Петербург", "Пермь", "Белград"]:
+            if city not in worksheet_titles:
+                spreadsheet.add_worksheet(title=city, rows=1000, cols=20)
+            city_sheets[city] = spreadsheet.worksheet(city)
+            city_sheets[city].clear()
+
+        # Graduate type sheets
+        type_sheets = {}
+        for graduate_type in ["Выпускники", "Учителя", "Друзья", "Организаторы"]:
+            if graduate_type not in worksheet_titles:
+                spreadsheet.add_worksheet(title=graduate_type, rows=1000, cols=20)
+            type_sheets[graduate_type] = spreadsheet.worksheet(graduate_type)
+            type_sheets[graduate_type].clear()
+
+        # Prepare headers and data
+        headers = [
+            "ФИО",
+            "Год выпуска",
+            "Класс",
+            "Город участия во встрече",
+            "Статус участника",  # graduate_type
+            "Telegram Username",
+            "Статус оплаты",
+            "Сумма оплаты (факт)",
+            "Мин. сумма со скидкой",
+            "Регулярная сумма",
+            "Формула",
+            "Дата оплаты",
+        ]
+
+        # Update all sheets with headers
+        main_sheet.update([headers])
+        for sheet in city_sheets.values():
+            sheet.update([headers])
+        for sheet in type_sheets.values():
             sheet.update([headers])
 
-            # Prepare user data
-            rows = []
-            for user in users:
-                # Get payment status and all payment amounts
-                raw_status = user.get("payment_status", None)
-                payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
-                payment_amount = user.get("payment_amount", 0)  # Actual payment amount
-                discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
-                regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
-                formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
-                payment_timestamp = user.get("payment_timestamp", "")
-                
-                # Get graduate type and convert to human-readable format
-                graduate_type = user.get("graduate_type", "GRADUATE")
-                graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
-                
-                rows.append(
-                    [
-                        user["full_name"],
-                        user["graduation_year"],
-                        user["class_letter"],
-                        user["target_city"],
-                        graduate_type_display,  # Add graduate type
-                        user.get("username", ""),
-                        payment_status,
-                        payment_amount,
-                        discounted_amount,
-                        regular_amount,
-                        formula_amount,
-                        payment_timestamp
-                    ]
-                )
+        # Prepare user data for each sheet
+        main_rows = []
+        city_rows = {city: [] for city in city_sheets.keys()}
+        type_rows = {graduate_type: [] for graduate_type in type_sheets.keys()}
+        for user in users:
+            # Get payment status and all payment amounts
+            raw_status = user.get("payment_status", None)
+            payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
+            payment_amount = user.get("payment_amount", 0)  # Actual payment amount
+            discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
+            regular_amount = user.get(
+                "regular_payment_amount", 0
+            )  # Regular amount without discount
+            formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
+            payment_timestamp = user.get("payment_timestamp", "")
 
-            # Update the sheet with user data
+            # Get graduate type and convert to human-readable format
+            graduate_type = user.get("graduate_type", "GRADUATE")
+            graduate_type_display = GRADUATE_TYPE_MAP.get(
+                graduate_type, "Выпускник"
+            )  # Default to "Выпускник" if type is unknown
+
+            # Create a row of user data
+            user_row = [
+                user["full_name"],
+                user["graduation_year"],
+                user["class_letter"],
+                user["target_city"],
+                graduate_type_display,  # Add graduate type
+                user.get("username", ""),
+                payment_status,
+                payment_amount,
+                discounted_amount,
+                regular_amount,
+                formula_amount,
+                payment_timestamp,
+            ]
+
+            # Add to main sheet
+            main_rows.append(user_row)
+
+            # Add to city sheet
+            city = user["target_city"]
+            if city in city_rows:
+                city_rows[city].append(user_row)
+
+            # Add to graduate type sheet
+            if graduate_type_display == "Выпускник":
+                type_rows["Выпускники"].append(user_row)
+            elif graduate_type_display == "Учитель":
+                type_rows["Учителя"].append(user_row)
+            elif graduate_type_display == "Друг":
+                type_rows["Друзья"].append(user_row)
+            elif graduate_type_display == "Организатор":
+                type_rows["Организаторы"].append(user_row)
+
+        # Update all sheets with user data
+        if main_rows:
+            main_sheet.update("A2", main_rows)
+
+        # Update city sheets
+        for city, rows in city_rows.items():
             if rows:
-                sheet.update("A2", rows)
+                city_sheets[city].update("A2", rows)
 
-            message = f"Успешно экспортировано {len(rows)} пользователей в Google Таблицы\n"
-            message += "Доступно по ссылке: " + sheet.url
-            logger.success(message)
+        # Update graduate type sheets
+        for graduate_type, rows in type_rows.items():
+            if rows:
+                type_sheets[graduate_type].update("A2", rows)
 
-            if not silent:
-                return message
-            return None
+        message = f"Успешно экспортировано {len(main_rows)} пользователей в Google Таблицы\n"
+        message += "Доступно по ссылке: " + main_sheet.url
+        logger.success(message)
 
-        except Exception as e:
-            logger.error(f"Ошибка при экспорте данных: {e}")
-            if not silent:
-                return f"Ошибка при экспорте данных: {e}"
-            return None
+        if not silent:
+            return message
+        return None
 
     async def export_to_csv(self):
         """Export all registered users to a CSV file"""
@@ -175,18 +230,18 @@ class SheetExporter:
 
             # Write headers
             headers = [
-                "ФИО", 
-                "Год выпуска", 
-                "Класс", 
+                "ФИО",
+                "Год выпуска",
+                "Класс",
                 "Город участия во встрече",
                 "Статус участника",  # graduate_type
-                "Telegram Username", 
-                "Статус оплаты", 
-                "Сумма оплаты (факт)", 
+                "Telegram Username",
+                "Статус оплаты",
+                "Сумма оплаты (факт)",
                 "Мин. сумма со скидкой",
                 "Регулярная сумма",
                 "Формула",
-                "Дата оплаты"
+                "Дата оплаты",
             ]
             writer.writerow(headers)
 
@@ -196,15 +251,21 @@ class SheetExporter:
                 raw_status = user.get("payment_status", None)
                 payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
                 payment_amount = user.get("payment_amount", 0)  # Actual payment amount
-                discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
-                regular_amount = user.get("regular_payment_amount", 0)  # Regular amount without discount
+                discounted_amount = user.get(
+                    "discounted_payment_amount", 0
+                )  # Min amount with discount
+                regular_amount = user.get(
+                    "regular_payment_amount", 0
+                )  # Regular amount without discount
                 formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
-                
+
                 # Get graduate type and convert to human-readable format
                 graduate_type = user.get("graduate_type", "GRADUATE")
-                graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
-                
+                graduate_type_display = GRADUATE_TYPE_MAP.get(
+                    graduate_type, "Выпускник"
+                )  # Default to "Выпускник" if type is unknown
+
                 writer.writerow(
                     [
                         user["full_name"],
@@ -218,7 +279,7 @@ class SheetExporter:
                         discounted_amount,
                         regular_amount,
                         formula_amount,
-                        payment_timestamp
+                        payment_timestamp,
                     ]
                 )
 
@@ -231,7 +292,7 @@ class SheetExporter:
         except Exception as e:
             logger.error(f"Ошибка при экспорте данных в CSV: {e}")
             return None, f"Ошибка при экспорте данных в CSV: {e}"
-            
+
     async def export_deleted_users_to_csv(self):
         """Export all deleted users to a CSV file"""
         # Get all deleted users from MongoDB
@@ -251,16 +312,16 @@ class SheetExporter:
 
         # Write headers
         headers = [
-            "ФИО", 
-            "Год выпуска", 
-            "Класс", 
+            "ФИО",
+            "Год выпуска",
+            "Класс",
             "Город участия во встрече",
             "Статус участника",  # graduate_type
-            "Telegram Username", 
-            "Статус оплаты", 
-            "Сумма оплаты (факт)", 
+            "Telegram Username",
+            "Статус оплаты",
+            "Сумма оплаты (факт)",
             "Дата удаления",
-            "Причина удаления"
+            "Причина удаления",
         ]
         writer.writerow(headers)
 
@@ -270,15 +331,17 @@ class SheetExporter:
             raw_status = user.get("payment_status", None)
             payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
             payment_amount = user.get("payment_amount", 0)  # Actual payment amount
-            
+
             # Get graduate type and convert to human-readable format
             graduate_type = user.get("graduate_type", "GRADUATE")
-            graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
-            
+            graduate_type_display = GRADUATE_TYPE_MAP.get(
+                graduate_type, "Выпускник"
+            )  # Default to "Выпускник" if type is unknown
+
             # Get deletion info
             deletion_timestamp = user.get("deletion_timestamp", "")
             deletion_reason = user.get("deletion_reason", "")
-            
+
             writer.writerow(
                 [
                     user["full_name"],
@@ -290,7 +353,7 @@ class SheetExporter:
                     payment_status,
                     payment_amount,
                     deletion_timestamp,
-                    deletion_reason
+                    deletion_reason,
                 ]
             )
 
