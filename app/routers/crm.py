@@ -207,6 +207,32 @@ async def notify_users_handler(message: Message, state: FSMContext):
     if not confirm:
         await send_safe(message.chat.id, "Операция отменена")
         return
+        
+    # First send a detailed report to the validation chat
+    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    validation_report += f"🎯 Целевая аудитория: {len(users)} пользователей\n"
+    validation_report += f"🏙️ Город: {city_name}\n"
+    validation_report += f"💰 Категория: {audience_name}\n\n"
+    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+    
+    # Add a list of users (limited to avoid oversized message)
+    for i, user in enumerate(users[:20], 1):
+        username = user.get("username", "без имени")
+        user_id = user.get("user_id", "??")
+        full_name = user.get("full_name", "Имя не указано")
+        city = user.get("target_city", "Город не указан")
+        validation_report += f"{i}. {full_name} (@{username or user_id}) - {city}\n"
+    
+    if len(users) > 20:
+        validation_report += f"...и еще {len(users) - 20} пользователей\n"
+    
+    # Add template text to the report
+    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    validation_report += notification_text
+    
+    # Send report to validation chat before starting the actual notifications
+    await app.log_to_chat(validation_report, "events")
 
     # Send notifications
     sent_count = 0
@@ -226,6 +252,10 @@ async def notify_users_handler(message: Message, state: FSMContext):
             
             await send_safe(user_id, personalized_text)
             sent_count += 1
+            
+            # Notify validation chat about sent message
+            validation_message = f"✅ Уведомление отправлено пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
+            await app.log_to_chat(validation_message, "events")
         except Exception as e:
             logger.error(f"Failed to send notification to user {user_id}: {e}")
             failed_count += 1
@@ -371,8 +401,26 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
         await send_safe(message.chat.id, "Операция отменена")
         return
 
-    # Send notifications with templating
-    notification_text = (
+    # First send a detailed report to the validation chat
+    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
+    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+    
+    # Add a list of users (limited to avoid oversized message)
+    for i, user in enumerate(unpaid_users[:20], 1):
+        username = user.get("username", "без имени")
+        user_id = user.get("user_id", "??")
+        full_name = user.get("full_name", "Имя не указано")
+        city = user.get("target_city", "Город не указан")
+        validation_report += f"{i}. {full_name} (@{username or user_id}) - {city}\n"
+    
+    if len(unpaid_users) > 20:
+        validation_report += f"...и еще {len(unpaid_users) - 20} пользователей\n"
+    
+    # Add template text to the report
+    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    template_text = (
         "🔔 <b>Напоминание о раннем платеже</b>\n\n"
         "Привет, {name}! Напоминаем, что до окончания периода ранней оплаты "
         "осталось совсем немного времени (до 15 марта 2025).\n\n"
@@ -384,6 +432,13 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
         "Время начала: {time}\n\n"
         "Чтобы оплатить, используй команду /pay"
     )
+    validation_report += template_text
+    
+    # Send report to validation chat before starting the actual notifications
+    await app.log_to_chat(validation_report, "events")
+    
+    # Then use the same template for the actual notifications
+    notification_text = template_text
 
     sent_count = 0
     failed_count = 0
@@ -402,6 +457,10 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
             
             await send_safe(user_id, personalized_text)
             sent_count += 1
+            
+            # Notify validation chat about sent message
+            validation_message = f"✅ Уведомление отправлено пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
+            await app.log_to_chat(validation_message, "events")
         except Exception as e:
             logger.error(f"Failed to send notification to user {user_id}: {e}")
             failed_count += 1
