@@ -117,7 +117,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         else:  # "nothing"
             await send_safe(
                 message.chat.id,
-                "Отлично! Ваши регистрации в силе. До встречи!",
+                "Отлично! Ваши регистрации в силе. До встречи!\n\nИспользуйте команду /info для получения подробной информации о встречах (дата, время, адрес).",
                 reply_markup=ReplyKeyboardRemove(),
             )
     else:
@@ -135,6 +135,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             city != TargetCity.SAINT_PETERSBURG.value
             and city != TargetCity.BELGRADE.value
             and graduate_type != GraduateType.TEACHER.value
+            and graduate_type != GraduateType.ORGANIZER.value
             and reg.get("payment_status") != "confirmed"
         ):
             needs_payment = True
@@ -145,6 +146,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             city != TargetCity.SAINT_PETERSBURG.value
             and city != TargetCity.BELGRADE.value
             and graduate_type != GraduateType.TEACHER.value
+            and graduate_type != GraduateType.ORGANIZER.value
         ):
             status = reg.get("payment_status", "не оплачено")
             status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
@@ -163,6 +165,8 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             info_text += "Статус: Учитель\n"
         elif graduate_type == GraduateType.NON_GRADUATE.value:
             info_text += "Статус: Не выпускник\n"
+        elif graduate_type == GraduateType.ORGANIZER.value:
+            info_text += "Статус: Организатор\n"
         else:
             info_text += f"Год выпуска: {reg['graduation_year']}\n"
             info_text += f"Класс: {reg['class_letter']}\n"
@@ -635,7 +639,8 @@ async def register_user(
                     Например, "2003 Б".
                     
                     <tg-spoiler>Если вы учитель школы 146 (нынешний или бывший), нажмите: /i_am_a_teacher
-                    Если вы не выпускник, но друг школы 146 - нажмите: /i_am_a_friend</tg-spoiler>
+                    Если вы не выпускник, но друг школы 146 - нажмите: /i_am_a_friend
+                    Если вы организатор встречи - нажмите: /i_am_an_organizer</tg-spoiler>
                     """
                 )
 
@@ -695,6 +700,25 @@ async def register_user(
                     log_messages[user_id].append(log_msg)
 
                 await send_safe(message.chat.id, "Вы зарегистрированы как друг школы 146!")
+                break
+                
+            elif response == "/i_am_an_organizer":
+                # User is an organizer
+                graduation_year = 1000  # Special value for organizers
+                class_letter = "О"  # "О" for "Организатор"
+                graduate_type = GraduateType.ORGANIZER
+
+                # Log organizer status
+                log_msg = await app.log_registration_step(
+                    user_id,
+                    username,
+                    "Статус участника",
+                    "Организатор",
+                )
+                if log_msg:
+                    log_messages[user_id].append(log_msg)
+
+                await send_safe(message.chat.id, "Вы зарегистрированы как организатор встречи!")
                 break
 
             # If we already have a year and just need the letter
@@ -785,7 +809,7 @@ async def register_user(
         f"в {padezhi[location]} {date_of_event[location]}. "
     )
 
-    # Skip payment flow for St. Petersburg, Belgrade and teachers
+    # Skip payment flow for St. Petersburg, Belgrade, teachers, and organizers
     if location.value == TargetCity.SAINT_PETERSBURG.value:
         # Mark Saint Petersburg registrations as paid automatically
         await app.update_payment_status(
@@ -834,6 +858,25 @@ async def register_user(
         )
 
         confirmation_msg += "\nДля учителей участие бесплатное. Спасибо за вашу работу!"
+        await send_safe(
+            message.chat.id,
+            confirmation_msg,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+        # Auto-export to sheets after registration with confirmed payment
+        await app.export_registered_users_to_google_sheets()
+    elif graduate_type == GraduateType.ORGANIZER:
+        # Mark organizers as paid automatically
+        await app.update_payment_status(
+            user_id=user_id,
+            city=location.value,
+            status="confirmed",
+            admin_comment="Автоматически подтверждено (организатор)",
+            payment_amount=0,
+        )
+
+        confirmation_msg += "\nДля организаторов участие бесплатное. Спасибо за вашу помощь!"
         await send_safe(
             message.chat.id,
             confirmation_msg,
@@ -1167,6 +1210,8 @@ async def status_handler(message: Message, state: FSMContext):
             status_text += "👨‍🏫 Статус: Учитель\n"
         elif graduate_type == GraduateType.NON_GRADUATE.value:
             status_text += "👥 Статус: Не выпускник\n"
+        elif graduate_type == GraduateType.ORGANIZER.value:
+            status_text += "🛠️ Статус: Организатор\n"
         else:
             status_text += f"🎓 Выпуск: {reg['graduation_year']} {reg['class_letter']}\n"
 
@@ -1175,6 +1220,8 @@ async def status_handler(message: Message, state: FSMContext):
             status_text += "💰 Оплата: За свой счет\n"
         elif graduate_type == GraduateType.TEACHER.value:
             status_text += "💰 Оплата: Бесплатно (учитель)\n"
+        elif graduate_type == GraduateType.ORGANIZER.value:
+            status_text += "💰 Оплата: Бесплатно (организатор)\n"
         else:
             payment_status = reg.get("payment_status", "не оплачено")
             status_emoji = (

@@ -22,6 +22,7 @@ class GraduateType(str, Enum):
     GRADUATE = "GRADUATE"
     TEACHER = "TEACHER"
     NON_GRADUATE = "NON_GRADUATE"
+    ORGANIZER = "ORGANIZER"
 
 
 # Mapping for human-readable graduate types
@@ -29,11 +30,13 @@ GRADUATE_TYPE_MAP = {
     GraduateType.GRADUATE.value: "Выпускник",
     GraduateType.TEACHER.value: "Учитель",
     GraduateType.NON_GRADUATE.value: "Друг",
+    GraduateType.ORGANIZER.value: "Организатор",
 }
 GRADUATE_TYPE_MAP_PLURAL = {
     GraduateType.GRADUATE.value: "Выпускники",
     GraduateType.TEACHER.value: "Учителя",
     GraduateType.NON_GRADUATE.value: "Друзья",
+    GraduateType.ORGANIZER.value: "Организаторы",
 }
 
 # Mapping for payment statuses
@@ -436,6 +439,8 @@ class App:
             message += f"👨‍🏫 Статус: Учитель\n"
         elif graduate_type == GraduateType.NON_GRADUATE.value:
             message += f"👥 Статус: Не выпускник\n"
+        elif graduate_type == GraduateType.ORGANIZER.value:
+            message += f"🛠️ Статус: Организатор\n"
         else:
             message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
 
@@ -444,6 +449,8 @@ class App:
         # Add payment status for different participant types
         if graduate_type == GraduateType.TEACHER.value:
             message += f"💰 Оплата: Бесплатно (учитель)\n"
+        elif graduate_type == GraduateType.ORGANIZER.value:
+            message += f"💰 Оплата: Бесплатно (организатор)\n"
         elif city == TargetCity.SAINT_PETERSBURG.value:
             message += f"💰 Оплата: За свой счет (Санкт-Петербург)\n"
         elif city == TargetCity.BELGRADE.value:
@@ -804,6 +811,7 @@ class App:
         1. All users in Saint Petersburg (free event)
         2. All users in Belgrade (free event)
         3. All users with graduate_type=TEACHER (free for teachers)
+        4. All users with graduate_type=ORGANIZER (free for organizers)
         
         Returns:
             Dictionary with counts of fixed records for each category
@@ -812,6 +820,7 @@ class App:
             "spb_fixed": 0,
             "belgrade_fixed": 0,
             "teachers_fixed": 0,
+            "organizers_fixed": 0,
             "total_fixed": 0
         }
         
@@ -845,11 +854,22 @@ class App:
         )
         results["teachers_fixed"] = teachers_result.modified_count
         
+        # Fix organizer registrations
+        organizers_result = await self.collection.update_many(
+            {
+                "graduate_type": GraduateType.ORGANIZER.value,
+                "payment_status": {"$ne": "confirmed"}
+            },
+            {"$set": {"payment_status": "confirmed"}}
+        )
+        results["organizers_fixed"] = organizers_result.modified_count
+        
         # Calculate total fixed
         results["total_fixed"] = (
             results["spb_fixed"] + 
             results["belgrade_fixed"] + 
-            results["teachers_fixed"]
+            results["teachers_fixed"] +
+            results["organizers_fixed"]
         )
         
         # Log the fix operation if any records were updated
@@ -860,6 +880,7 @@ class App:
                 "spb_fixed": results["spb_fixed"],
                 "belgrade_fixed": results["belgrade_fixed"],
                 "teachers_fixed": results["teachers_fixed"],
+                "organizers_fixed": results["organizers_fixed"],
             }
             await self.save_event_log("admin_action", log_data)
             

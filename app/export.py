@@ -81,11 +81,33 @@ class SheetExporter:
 
             # Connect to Google Sheets
             client = self._get_client()
-            sheet = client.open_by_key(self.spreadsheet_id).sheet1
+            # Get spreadsheet
+            spreadsheet = client.open_by_key(self.spreadsheet_id)
             
-            # Clear the entire sheet first
-            sheet.clear()
-            logger.info("Cleared all existing data from the sheet")
+            # Ensure we have worksheets for each category
+            worksheet_titles = [ws.title for ws in spreadsheet.worksheets()]
+            
+            # Main sheet
+            if "Все города" not in worksheet_titles:
+                spreadsheet.add_worksheet(title="Все города", rows=1000, cols=20)
+            main_sheet = spreadsheet.worksheet("Все города")
+            main_sheet.clear()
+                
+            # City-specific sheets
+            city_sheets = {}
+            for city in ["Москва", "Санкт-Петербург", "Пермь", "Белград"]:
+                if city not in worksheet_titles:
+                    spreadsheet.add_worksheet(title=city, rows=1000, cols=20)
+                city_sheets[city] = spreadsheet.worksheet(city)
+                city_sheets[city].clear()
+                
+            # Graduate type sheets
+            type_sheets = {}
+            for graduate_type in ["Выпускники", "Учителя", "Друзья", "Организаторы"]:
+                if graduate_type not in worksheet_titles:
+                    spreadsheet.add_worksheet(title=graduate_type, rows=1000, cols=20)
+                type_sheets[graduate_type] = spreadsheet.worksheet(graduate_type)
+                type_sheets[graduate_type].clear()
             
             # Prepare headers and data
             headers = [
@@ -102,10 +124,18 @@ class SheetExporter:
                 "Формула",
                 "Дата оплаты"
             ]
-            sheet.update([headers])
+            
+            # Update all sheets with headers
+            main_sheet.update([headers])
+            for sheet in city_sheets.values():
+                sheet.update([headers])
+            for sheet in type_sheets.values():
+                sheet.update([headers])
 
-            # Prepare user data
-            rows = []
+            # Prepare user data for each sheet
+            main_rows = []
+            city_rows = {city: [] for city in city_sheets.keys()}
+            type_rows = {graduate_type: [] for graduate_type in type_sheets.keys()}
             for user in users:
                 # Get payment status and all payment amounts
                 raw_status = user.get("payment_status", None)
@@ -120,29 +150,56 @@ class SheetExporter:
                 graduate_type = user.get("graduate_type", "GRADUATE")
                 graduate_type_display = GRADUATE_TYPE_MAP.get(graduate_type, "Выпускник")  # Default to "Выпускник" if type is unknown
                 
-                rows.append(
-                    [
-                        user["full_name"],
-                        user["graduation_year"],
-                        user["class_letter"],
-                        user["target_city"],
-                        graduate_type_display,  # Add graduate type
-                        user.get("username", ""),
-                        payment_status,
-                        payment_amount,
-                        discounted_amount,
-                        regular_amount,
-                        formula_amount,
-                        payment_timestamp
-                    ]
-                )
+                # Create a row of user data
+                user_row = [
+                    user["full_name"],
+                    user["graduation_year"],
+                    user["class_letter"],
+                    user["target_city"],
+                    graduate_type_display,  # Add graduate type
+                    user.get("username", ""),
+                    payment_status,
+                    payment_amount,
+                    discounted_amount,
+                    regular_amount,
+                    formula_amount,
+                    payment_timestamp
+                ]
+                
+                # Add to main sheet
+                main_rows.append(user_row)
+                
+                # Add to city sheet
+                city = user["target_city"]
+                if city in city_rows:
+                    city_rows[city].append(user_row)
+                
+                # Add to graduate type sheet
+                if graduate_type_display == "Выпускник":
+                    type_rows["Выпускники"].append(user_row)
+                elif graduate_type_display == "Учитель":
+                    type_rows["Учителя"].append(user_row)
+                elif graduate_type_display == "Друг":
+                    type_rows["Друзья"].append(user_row)
+                elif graduate_type_display == "Организатор":
+                    type_rows["Организаторы"].append(user_row)
 
-            # Update the sheet with user data
-            if rows:
-                sheet.update("A2", rows)
+            # Update all sheets with user data
+            if main_rows:
+                main_sheet.update("A2", main_rows)
+                
+            # Update city sheets
+            for city, rows in city_rows.items():
+                if rows:
+                    city_sheets[city].update("A2", rows)
+            
+            # Update graduate type sheets
+            for graduate_type, rows in type_rows.items():
+                if rows:
+                    type_sheets[graduate_type].update("A2", rows)
 
-            message = f"Успешно экспортировано {len(rows)} пользователей в Google Таблицы\n"
-            message += "Доступно по ссылке: " + sheet.url
+            message = f"Успешно экспортировано {len(main_rows)} пользователей в Google Таблицы\n"
+            message += "Доступно по ссылке: " + main_sheet.url
             logger.success(message)
 
             if not silent:
