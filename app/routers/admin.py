@@ -46,16 +46,15 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "notify_users": "Рассылка пользователям",
+            "send_feedback_request": "Отправить запрос на обратную связь",
             # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
             # not finished
             # "mark_payment": "Отметить оплату пользователя вручную",
+            "other": "Другие действия",
             # testing
             "register": "Протестировать бота (обычный сценарий)",
-            # other
-            "other": "Другие действия",
         },
         state=state,
         timeout=None,
@@ -67,6 +66,7 @@ async def admin_handler(message: Message, state: FSMContext):
             message.chat.id,
             "Другие команды:",
             choices={
+                "notify_users": "Рассылка пользователям",
                 "view_year_stats": "Посмотреть статистику по годам выпуска",
                 "five_year_stats": "График по пятилеткам выпуска",
                 "payment_stats": "Круговая диаграмма оплат",
@@ -96,6 +96,10 @@ async def admin_handler(message: Message, state: FSMContext):
         from app.routers.crm import test_user_selection_handler
 
         await test_user_selection_handler(message, state)
+    elif response == "send_feedback_request":
+        from app.routers.crm import send_feedback_request_handler
+
+        await send_feedback_request_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":
