@@ -39,6 +39,7 @@ async def feedback_handler(message: Message, state: FSMContext):
         state=state,
         timeout=None,
         columns=2,
+        highlight_default=False,
     )
 
     # if attendance == "cancel":
@@ -114,6 +115,7 @@ async def feedback_handler(message: Message, state: FSMContext):
             "saint_petersburg": "Питер, в субботу 05 апреля",
             "belgrade": "Белград, в субботу 05 апреля",
         },
+        highlight_default=False,
         state=state,
         timeout=None,
         # columns=2,
@@ -149,6 +151,7 @@ async def feedback_handler(message: Message, state: FSMContext):
             "5": "5",
         },
         state=state,
+        default_choice="3",
         timeout=None,
         columns=5,
     )
@@ -180,7 +183,7 @@ async def feedback_handler(message: Message, state: FSMContext):
         },
         state=state,
         timeout=None,
-        default_choice=None,
+        default_choice="3",
         columns=5,
     )
 
@@ -209,6 +212,7 @@ async def feedback_handler(message: Message, state: FSMContext):
             "4": "4",
             "5": "5",
         },
+        default_choice="3",
         state=state,
         timeout=None,
         columns=5,
@@ -239,6 +243,7 @@ async def feedback_handler(message: Message, state: FSMContext):
             "4": "4",
             "5": "5",
         },
+        default_choice="3",
         state=state,
         timeout=None,
         columns=5,
@@ -271,6 +276,8 @@ async def feedback_handler(message: Message, state: FSMContext):
         state=state,
         timeout=None,
         columns=3,
+        default_choice="no",
+        highlight_default=False,
     )
 
     # Log willingness to help
