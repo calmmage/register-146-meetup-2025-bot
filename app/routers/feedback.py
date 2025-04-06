@@ -34,19 +34,20 @@ async def feedback_handler(message: Message, state: FSMContext):
         choices={
             "yes": "Да",
             "no": "Нет",
-            "cancel": "Не хочу отвечать, закончить сеанс обратной связи",
+            # "cancel": "Не хочу отвечать, закончить сеанс обратной связи",
         },
         state=state,
         timeout=None,
+        columns=2,
     )
 
-    if attendance == "cancel":
-        await send_safe(
-            message.chat.id,
-            "Принято! До связи с Клубом. Если хочешь с нами связаться проактивно, "
-            "всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-        )
-        return
+    # if attendance == "cancel":
+    #     await send_safe(
+    #         message.chat.id,
+    #         "Принято! До связи с Клубом. Если хочешь с нами связаться проактивно, "
+    #         "всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+    #     )
+    #     return
 
     if attendance == "no":
         await send_safe(
@@ -58,24 +59,13 @@ async def feedback_handler(message: Message, state: FSMContext):
         )
 
         # Ask if user wants to participate in other Club projects
-        await send_safe(
-            message.chat.id,
-            "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
-        )
-
-        # Wait for response with a timeout
-        wait_message = await message.answer("Ожидаю ответ...")
-
         try:
             response = await ask_user_raw(
                 message.chat.id,
-                "",  # Empty prompt since we already asked the question
+                "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
                 state=state,
                 timeout=1200,  # 20 minutes timeout
             )
-
-            # Delete the wait message
-            await wait_message.delete()
 
             if response:
                 # User responded
@@ -119,13 +109,14 @@ async def feedback_handler(message: Message, state: FSMContext):
         message.chat.id,
         "В каком городе?",
         choices={
-            "perm": "Пермь, в субботу 29 марта 2025",
-            "moscow": "Москва, в субботу 05 апреля 2025",
-            "saint_petersburg": "Питер, в субботу 05 апреля 2025",
-            "belgrade": "Белград, в субботу 05 апреля 2025",
+            "perm": "Пермь, в субботу 29 марта",
+            "moscow": "Москва, в субботу 05 апреля",
+            "saint_petersburg": "Питер, в субботу 05 апреля",
+            "belgrade": "Белград, в субботу 05 апреля",
         },
         state=state,
         timeout=None,
+        # columns=2,
     )
 
     # Log city selection
@@ -144,16 +135,22 @@ async def feedback_handler(message: Message, state: FSMContext):
     # Step 3: Ask recommendation level
     recommendation = await ask_user_choice(
         message.chat.id,
-        "Круто! Насколько ты бы порекомендовал своим одноклассникам участвовать в следующем году?",
+        "Круто! Насколько ты бы порекомендовал своим одноклассникам участвовать в следующем году?\n\n"
+        "1 - лучше заняться чем-то другим\n"
+        "2 - зайти на полчаса\n"
+        "3 - посидеть пару часов с одноклассниками поговорить\n"
+        "4 - посидеть до закрытия - познакомиться с другими поколениями выпускников\n"
+        "5 - моя бы воля - сделали бы afterparty до последнего танцующего!",
         choices={
-            "1": "1 - лучше заняться чем-то другим",
-            "2": "2 - зайти на полчаса",
-            "3": "3 - посидеть пару часов с одноклассниками поговорить",
-            "4": "4 - посидеть до закрытия - познакомиться с другими поколениями выпускников",
-            "5": "5 - моя бы воля - сделали бы afterparty до последнего танцующего!",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
         },
         state=state,
         timeout=None,
+        columns=5,
     )
 
     # Log recommendation level
@@ -171,16 +168,20 @@ async def feedback_handler(message: Message, state: FSMContext):
     # Step 4: Ask venue rating
     venue_rating = await ask_user_choice(
         message.chat.id,
-        "Насколько тебе понравилась площадка?",
+        "Насколько тебе понравилась площадка?\n\n"
+        "1 - совсем не понравилась\n"
+        "5 - супер, обязательно в этом же месте в следующем году!",
         choices={
-            "1": "1 - совсем не понравилась",
+            "1": "1",
             "2": "2",
             "3": "3",
             "4": "4",
-            "5": "5 - супер, обязательно в этом же месте в следующем году!",
+            "5": "5",
         },
         state=state,
         timeout=None,
+        default_choice=None,
+        columns=5,
     )
 
     # Log venue rating
@@ -198,16 +199,19 @@ async def feedback_handler(message: Message, state: FSMContext):
     # Step 5: Ask food and drinks rating
     food_rating = await ask_user_choice(
         message.chat.id,
-        "Насколько понравилась еда и напитки?",
+        "Насколько понравилась еда и напитки?\n\n"
+        "1 - несъедобно\n"
+        "5 - каждый бы день так есть и пить!",
         choices={
-            "1": "1 - несъедобно",
+            "1": "1",
             "2": "2",
             "3": "3",
             "4": "4",
-            "5": "5 - каждый бы день так есть и пить!",
+            "5": "5",
         },
         state=state,
         timeout=None,
+        columns=5,
     )
 
     # Log food rating
@@ -225,16 +229,19 @@ async def feedback_handler(message: Message, state: FSMContext):
     # Step 6: Ask entertainment rating
     entertainment_rating = await ask_user_choice(
         message.chat.id,
-        "Насколько понравились развлекательные мероприятия?",
+        "Насколько понравились развлекательные мероприятия?\n\n"
+        "1 - в следующей раз не буду участвовать ни за какие коврижки\n"
+        "5 - только ради них можно было приходить!",
         choices={
-            "1": "1 - в следующей раз не буду участвовать ни за какие коврижки",
+            "1": "1",
             "2": "2",
             "3": "3",
             "4": "4",
-            "5": "5 - только ради них можно было приходить!",
+            "5": "5",
         },
         state=state,
         timeout=None,
+        columns=5,
     )
 
     # Log entertainment rating
@@ -252,14 +259,18 @@ async def feedback_handler(message: Message, state: FSMContext):
     # Step 7: Ask if willing to help organize next year
     willing_to_help = await ask_user_choice(
         message.chat.id,
-        "Ты готов был бы помогать в организации встрече в твоем городе весной 2026?",
+        "Ты готов был бы помогать в организации встрече в твоем городе весной 2026?\n\n"
+        "1 - да, запишите меня!\n"
+        "2 - нет, пока что нет пропускной способности, а прийти буду рад!\n"
+        "3 - пока что сложно сказать так заранее",
         choices={
-            "yes": "1 - да, запишите меня!",
-            "no": "2 - нет, пока что нет пропускной способности, а прийти буду рад!",
-            "maybe": "3 - пока что сложно сказать так заранее",
+            "yes": "1",
+            "no": "2",
+            "maybe": "3",
         },
         state=state,
         timeout=None,
+        columns=3,
     )
 
     # Log willingness to help
@@ -274,6 +285,7 @@ async def feedback_handler(message: Message, state: FSMContext):
         message.from_user.username,
     )
 
+    # Step 8: Ask for specific comments
     comments = await ask_user_raw(
         message.chat.id,
         "Есть ли у тебя конкретные комментарии? Напиши пожалуйста сюда ответным сообщением.",
@@ -304,24 +316,13 @@ async def feedback_handler(message: Message, state: FSMContext):
     )
 
     # Ask if user wants to participate in other Club projects
-    await send_safe(
-        message.chat.id,
-        "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
-    )
-
-    # Wait for response with a timeout
-    wait_message = await message.answer("Ожидаю ответ...")
-
     try:
         response = await ask_user_raw(
             message.chat.id,
-            "",  # Empty prompt since we already asked the question
+            "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
             state=state,
             timeout=1200,  # 20 minutes timeout
         )
-
-        # Delete the wait message
-        await wait_message.delete()
 
         if response:
             # User responded
