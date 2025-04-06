@@ -1,10 +1,11 @@
+from pathlib import Path
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from calmlib.utils import setup_logger, heartbeat_for_sync
 from dotenv import load_dotenv
 from loguru import logger
-from pathlib import Path
 
 from botspot.core.bot_manager import BotManager
 
@@ -14,11 +15,13 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 from .routers.stats import router as admin_router
 from .routers.payment import router as payment_router
 from .router import app, router as main_router
+from .routers.feedback import router as feedback_router
 
 # Initialize bot and dispatcher
 dp = Dispatcher()
 dp.include_router(admin_router)
 dp.include_router(payment_router)
+dp.include_router(feedback_router)
 dp.include_router(main_router)
 
 
