@@ -41,12 +41,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         choices={
             "yes": "Да",
             "no": "Нет",
+            "cancel": "Отмена",
         },
         state=state,
         timeout=None,
         columns=2,
+        default_choice="cancel",
         highlight_default=False,
     )
+
+    if attendance == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     attended = attendance == "yes"
 
@@ -120,12 +126,17 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "moscow": "Москва, в субботу 05 апреля",
             "saint_petersburg": "Питер, в субботу 05 апреля",
             "belgrade": "Белград, в субботу 05 апреля",
+            "cancel": "Отмена",
         },
         highlight_default=False,
         state=state,
         timeout=None,
-        # columns=2,
+        default_choice="cancel",
     )
+
+    if city == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     await app.save_event_log(
         "feedback",
@@ -152,12 +163,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "cancel": "Отмена",
         },
         state=state,
-        default_choice="3",
+        default_choice="cancel",
+        highlight_default=False,
         timeout=None,
         columns=5,
     )
+
+    if recommendation == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     # Log recommendation level
     await app.save_event_log(
@@ -183,12 +200,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "cancel": "Отмена",
         },
         state=state,
+        highlight_default=False,
         timeout=None,
-        default_choice="3",
+        default_choice="cancel",
         columns=5,
     )
+
+    if venue_rating == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     # Log venue rating
     await app.save_event_log(
@@ -214,12 +237,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "cancel": "Отмена",
         },
-        default_choice="3",
+        default_choice="cancel",
+        highlight_default=False,
         state=state,
         timeout=None,
         columns=5,
     )
+
+    if food_rating == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     # Log food rating
     await app.save_event_log(
@@ -245,12 +274,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "cancel": "Отмена",
         },
-        default_choice="3",
+        default_choice="cancel",
         state=state,
         timeout=None,
+        highlight_default=False,
         columns=5,
     )
+
+    if entertainment_rating == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     # Log entertainment rating
     await app.save_event_log(
@@ -275,20 +310,25 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "yes": "1",
             "no": "2",
             "maybe": "3",
+            "cancel": "Отмена",
         },
         state=state,
         timeout=None,
         columns=3,
-        default_choice="no",
-        highlight_default=False,
+        default_choice="cancel",
+        highlight_default=True,
     )
+
+    if help_interest == "cancel":
+        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        return
 
     # Log willingness to help
     await app.save_event_log(
         "feedback",
         {
             "type": "willing_to_help",
-            "response": willing_to_help,
+            "response": help_interest,
             "city": city,
         },
         message.from_user.id,
