@@ -122,7 +122,11 @@ async def export_handler(message: Message, state: FSMContext):
     export_type_response = await ask_user_choice(
         message.chat.id,
         "Что вы хотите экспортировать?",
-        choices={"registered": "Зарегистрированные участники", "deleted": "Удаленные участники"},
+        choices={
+            "registered": "Зарегистрированные участники",
+            "deleted": "Удаленные участники",
+            "feedback": "Отзывы пользователей",
+        },
         state=state,
         timeout=None,
     )
@@ -156,7 +160,7 @@ async def export_handler(message: Message, state: FSMContext):
                 await send_safe(message.chat.id, result_message)
 
     # Handle deleted users export
-    else:  # export_type_response == "deleted"
+    elif export_type_response == "deleted":
         if export_format_response == "sheets":
             await notif.edit_text("Экспорт удаленных участников в Google Таблицы...")
             await send_safe(
@@ -171,6 +175,23 @@ async def export_handler(message: Message, state: FSMContext):
             if csv_content:
                 # Send the CSV content as a file using send_safe
                 await send_safe(message.chat.id, csv_content, filename="удаленные_участники.csv")
+            else:
+                await send_safe(message.chat.id, result_message)
+
+    # Handle feedback export
+    elif export_type_response == "feedback":
+        if export_format_response == "sheets":
+            await notif.edit_text("Экспорт отзывов в Google Таблицы...")
+            result = await app.export_feedback_to_sheets()
+            await send_safe(message.chat.id, result)
+        else:
+            # Export to CSV
+            await notif.edit_text("Экспорт отзывов в CSV файл...")
+            csv_content, result_message = await app.export_feedback_to_csv()
+
+            if csv_content:
+                # Send the CSV content as a file using send_safe
+                await send_safe(message.chat.id, csv_content, filename="отзывы_пользователей.csv")
             else:
                 await send_safe(message.chat.id, result_message)
 

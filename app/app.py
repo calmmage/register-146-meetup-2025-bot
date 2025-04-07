@@ -354,6 +354,14 @@ class App:
     async def export_deleted_users_to_csv(self):
         """Export deleted users to CSV"""
         return await self.sheet_exporter.export_deleted_users_to_csv()
+        
+    async def export_feedback_to_sheets(self):
+        """Export feedback to Google Sheets"""
+        return await self.sheet_exporter.export_feedback_to_sheets()
+        
+    async def export_feedback_to_csv(self):
+        """Export feedback to CSV"""
+        return await self.sheet_exporter.export_feedback_to_csv()
 
     async def log_to_chat(self, message: str, chat_type: str = "logs") -> Optional[Message]:
         """
@@ -915,6 +923,101 @@ class App:
 
         await self.event_logs.insert_one(log_entry)
 
+    async def save_feedback(
+        self,
+        user_id: int,
+        username: str = None,
+        full_name: str = None,
+        city: str = None,
+        attended: bool = None,
+        recommendation_level: str = None,
+        venue_rating: str = None,
+        food_rating: str = None,
+        entertainment_rating: str = None,
+        help_interest: str = None,
+        comments: str = None,
+    ) -> str:
+        """
+        Save a user's feedback to the database
+
+        Args:
+            user_id: User's Telegram ID
+            username: User's Telegram username
+            full_name: User's full name
+            city: City the user attended
+            attended: Whether the user attended the event
+            recommendation_level: Rating for overall recommendation (1-5)
+            venue_rating: Rating for the venue (1-5)
+            food_rating: Rating for the food and drinks (1-5)
+            entertainment_rating: Rating for entertainment (1-5)
+            help_interest: Interest in helping with future events
+            comments: Additional comments from the user
+
+        Returns:
+            ID of the inserted feedback document
+        """
+        user_info = await self.collection.find_one({"user_id": user_id})
+        
+        # Create the feedback document
+        feedback = {
+            "user_id": user_id,
+            "timestamp": datetime.now().isoformat(),
+            "attended": attended,
+        }
+        
+        # Add optional fields if provided
+        if username:
+            feedback["username"] = username
+        
+        if full_name:
+            feedback["full_name"] = full_name
+        elif user_info and "full_name" in user_info:
+            feedback["full_name"] = user_info.get("full_name")
+            
+        if city:
+            feedback["city"] = city
+            
+        if recommendation_level:
+            feedback["recommendation_level"] = recommendation_level
+            
+        if venue_rating:
+            feedback["venue_rating"] = venue_rating
+            
+        if food_rating:
+            feedback["food_rating"] = food_rating
+            
+        if entertainment_rating:
+            feedback["entertainment_rating"] = entertainment_rating
+            
+        if help_interest:
+            feedback["help_interest"] = help_interest
+            
+        if comments:
+            feedback["comments"] = comments
+            
+        # Create or get feedback collection
+        if not hasattr(self, '_feedback_collection'):
+            self._feedback_collection = get_database().get_collection('feedback')
+            
+        # Insert the feedback document
+        result = await self._feedback_collection.insert_one(feedback)
+        
+        # Also log this event
+        await self.save_event_log(
+            "feedback_submitted",
+            {
+                "user_id": user_id,
+                "username": username,
+                "feedback_id": str(result.inserted_id),
+                "attended": attended,
+                "city": city,
+            },
+            user_id,
+            username
+        )
+        
+        return str(result.inserted_id)
+        
     async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
         """
         Move a user from registered_users to deleted_users collection

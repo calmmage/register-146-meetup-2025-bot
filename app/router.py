@@ -17,7 +17,6 @@ from botspot.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 
 router = Router()
-app = App()
 
 # Load environment variables
 load_dotenv()
@@ -61,7 +60,7 @@ padezhi = {
 }
 
 
-async def handle_registered_user(message: Message, state: FSMContext, registration):
+async def handle_registered_user(message: Message, state: FSMContext, registration, app: App):
     """Handle interaction with already registered user"""
     if message.from_user is None:
         logger.error("Message from_user is None")
@@ -111,9 +110,9 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         )
 
         if response == "register_another":
-            await register_user(message, state, reuse_info=registration)
+            await register_user(message, state, app, reuse_info=registration)
         elif response == "manage":
-            await manage_registrations(message, state, registrations)
+            await manage_registrations(message, state, registrations, app)
         else:  # "nothing"
             await send_safe(
                 message.chat.id,
@@ -246,7 +245,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         elif response == "register_another":
             # Keep existing registration and start new one with reused info
             await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
-            await register_user(message, state, reuse_info=registration)
+            await register_user(message, state, app, reuse_info=registration)
 
         else:  # "nothing"
             await send_safe(
@@ -256,7 +255,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
 
 
-async def manage_registrations(message: Message, state: FSMContext, registrations):
+async def manage_registrations(message: Message, state: FSMContext, registrations, app: App):
     """Allow user to manage multiple registrations"""
 
     # Create choices for each city
@@ -340,11 +339,11 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             )
         else:
             # Go back to registration management
-            await manage_registrations(message, state, registrations)
+            await manage_registrations(message, state, registrations, app)
 
     elif response == "back":
         # Go back to main menu
-        await handle_registered_user(message, state, registrations[0])
+        await handle_registered_user(message, state, registrations[0], app)
 
     else:
         # Manage specific city registration
@@ -406,7 +405,7 @@ async def manage_registrations(message: Message, state: FSMContext, registration
                     message.chat.id,
                     f"Регистрация в городе {city} отменена. У вас остались другие регистрации.",
                 )
-                await handle_registered_user(message, state, remaining[0])
+                await handle_registered_user(message, state, remaining[0], app)
             else:
                 await send_safe(
                     message.chat.id,
@@ -416,11 +415,11 @@ async def manage_registrations(message: Message, state: FSMContext, registration
 
         else:  # "back"
             # Go back to registration management
-            await manage_registrations(message, state, registrations)
+            await manage_registrations(message, state, registrations, app=app)
 
 
 async def register_user(
-    message: Message, state: FSMContext, preselected_city=None, reuse_info=None
+    message: Message, state: FSMContext, app: App, preselected_city=None, reuse_info=None
 ):
     """Register a user for an event"""
     user_id = message.from_user.id
@@ -701,7 +700,7 @@ async def register_user(
 
                 await send_safe(message.chat.id, "Вы зарегистрированы как друг школы 146!")
                 break
-                
+
             elif response == "/i_am_an_organizer":
                 # User is an organizer
                 graduation_year = 1000  # Special value for organizers
@@ -942,7 +941,7 @@ async def delete_log_messages(user_id: int) -> None:
 
 @commands_menu.add_command("cancel_registration", "Отменить регистрацию")
 @router.message(Command("cancel_registration"))
-async def cancel_registration_handler(message: Message, state: FSMContext):
+async def cancel_registration_handler(message: Message, state: FSMContext, app: App):
     """
     Cancel user registration command handler.
     """
@@ -1098,7 +1097,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext):
 
 @commands_menu.add_command("info", "Информация о встречах")
 @router.message(Command("info"))
-async def info_handler(message: Message, state: FSMContext):
+async def info_handler(message: Message, state: FSMContext, app: App):
     """
     Show detailed information about events in all cities
     """
@@ -1161,7 +1160,7 @@ async def info_handler(message: Message, state: FSMContext):
 
 @commands_menu.add_command("status", "Статус регистрации")
 @router.message(Command("status"))
-async def status_handler(message: Message, state: FSMContext):
+async def status_handler(message: Message, state: FSMContext, app: App):
     """
     Show user registration status
     """
@@ -1253,7 +1252,7 @@ async def status_handler(message: Message, state: FSMContext):
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
 @router.message(F.text, F.chat.type == "private")  # only handle private messages
-async def start_handler(message: Message, state: FSMContext):
+async def start_handler(message: Message, state: FSMContext, app: App):
     """
     Main scenario flow.
     """
@@ -1276,7 +1275,7 @@ async def start_handler(message: Message, state: FSMContext):
 
     if existing_registration:
         # User is already registered, show options
-        await handle_registered_user(message, state, existing_registration)
+        await handle_registered_user(message, state, existing_registration, app)
     else:
         # New user, start registration
-        await register_user(message, state)
+        await register_user(message, state, app)

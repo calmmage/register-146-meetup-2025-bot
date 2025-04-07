@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
+from app.app import App
 
 from botspot import commands_menu
 from botspot.user_interactions import ask_user_choice, ask_user_raw
@@ -13,11 +14,17 @@ router = Router()
 
 @commands_menu.add_command("feedback", "Оставить отзыв о встрече выпускников")
 @router.message(Command("feedback"))
-async def feedback_handler(message: Message, state: FSMContext):
+async def feedback_handler(message: Message, state: FSMContext, app: App):
     """Handle user feedback for alumni meetup"""
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
+
+    # from app.router import app
+
+    # Get existing user data if available
+    user_data = await app.collection.find_one({"user_id": message.from_user.id})
+    full_name = user_data.get("full_name") if user_data else None
 
     # Start feedback flow
     await send_safe(
@@ -34,7 +41,6 @@ async def feedback_handler(message: Message, state: FSMContext):
         choices={
             "yes": "Да",
             "no": "Нет",
-            # "cancel": "Не хочу отвечать, закончить сеанс обратной связи",
         },
         state=state,
         timeout=None,
@@ -42,21 +48,24 @@ async def feedback_handler(message: Message, state: FSMContext):
         highlight_default=False,
     )
 
-    # if attendance == "cancel":
-    #     await send_safe(
-    #         message.chat.id,
-    #         "Принято! До связи с Клубом. Если хочешь с нами связаться проактивно, "
-    #         "всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-    #     )
-    #     return
+    attended = attendance == "yes"
 
-    if attendance == "no":
+    # If they didn't attend, save feedback and finish
+    if not attended:
         await send_safe(
             message.chat.id,
             "Жаль что не получилось присоединиться! Мы будем ждать новых возможностей "
             "чтобы увидеться с тобой в ближайшее время. Смотри на канал @school146club "
             "и общий чат на 685 выпускников 146 (вход модерируется по ссылке "
             "https://t.me/+_wm7MlaGhCExOTg6) чтобы узнать о наших следующих мероприятиях.",
+        )
+
+        # Save feedback data
+        await app.save_feedback(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            full_name=full_name,
+            attended=False,
         )
 
         # Ask if user wants to participate in other Club projects
@@ -69,9 +78,6 @@ async def feedback_handler(message: Message, state: FSMContext):
             )
 
             if response:
-                # User responded
-                from app.router import app
-
                 # Log the response
                 await app.save_event_log(
                     "feedback",
@@ -120,9 +126,6 @@ async def feedback_handler(message: Message, state: FSMContext):
         timeout=None,
         # columns=2,
     )
-
-    # Log city selection
-    from app.router import app
 
     await app.save_event_log(
         "feedback",
@@ -262,7 +265,7 @@ async def feedback_handler(message: Message, state: FSMContext):
     )
 
     # Step 7: Ask if willing to help organize next year
-    willing_to_help = await ask_user_choice(
+    help_interest = await ask_user_choice(
         message.chat.id,
         "Ты готов был бы помогать в организации встрече в твоем городе весной 2026?\n\n"
         "1 - да, запишите меня!\n"
@@ -293,25 +296,30 @@ async def feedback_handler(message: Message, state: FSMContext):
     )
 
     # Step 8: Ask for specific comments
+    comments_text = None
     comments = await ask_user_raw(
         message.chat.id,
         "Есть ли у тебя конкретные комментарии? Напиши пожалуйста сюда ответным сообщением.",
         state=state,
         timeout=None,
     )
-
-    # Log comments
     if comments and comments.text:
-        await app.save_event_log(
-            "feedback",
-            {
-                "type": "specific_comments",
-                "comments": comments.text,
-                "city": city,
-            },
-            message.from_user.id,
-            message.from_user.username,
-        )
+        comments_text = comments.text
+
+    # Save all feedback data to the database
+    await app.save_feedback(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        full_name=full_name,
+        city=city,
+        attended=True,
+        recommendation_level=recommendation,
+        venue_rating=venue_rating,
+        food_rating=food_rating,
+        entertainment_rating=entertainment_rating,
+        help_interest=help_interest,
+        comments=comments_text,
+    )
 
     # Thank the user for feedback
     await send_safe(
