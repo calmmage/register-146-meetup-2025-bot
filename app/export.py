@@ -1,11 +1,13 @@
 import base64
-import gspread
 import json
 import os
+
+import gspread
 from google.oauth2.service_account import Credentials
 from loguru import logger
 
 from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+from botspot import get_database
 
 # Define the scopes for Google Sheets API
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -362,3 +364,182 @@ class SheetExporter:
 
         logger.success(f"Успешно экспортировано {len(users)} удаленных пользователей в CSV")
         return csv_content, f"Успешно экспортировано {len(users)} удаленных пользователей в CSV"
+
+    async def export_feedback_to_sheets(self, silent=False):
+        """Export all feedback to a dedicated sheet in the Google Spreadsheet
+
+        Args:
+            silent: If True, suppresses any return messages for background operation
+        """
+        # Create feedback collection if it doesn't exist
+        if not hasattr(self.app, "_feedback_collection"):
+            self.app._feedback_collection = get_database().get_collection("feedback")
+
+        # Get all feedback from MongoDB
+        cursor = self.app._feedback_collection.find({})
+        feedback_items = await cursor.to_list(length=None)
+
+        if not feedback_items:
+            logger.info("Нет отзывов для экспорта")
+            if not silent:
+                return "Нет отзывов для экспорта"
+            return None
+
+        # Connect to Google Sheets
+        client = self._get_client()
+
+        # Get spreadsheet
+        spreadsheet = client.open_by_key(self.spreadsheet_id)
+
+        # Ensure we have a worksheet for feedback
+        worksheet_titles = [ws.title for ws in spreadsheet.worksheets()]
+
+        if "Отзывы" not in worksheet_titles:
+            spreadsheet.add_worksheet(title="Отзывы", rows=1000, cols=20)
+        feedback_sheet = spreadsheet.worksheet("Отзывы")
+        feedback_sheet.clear()
+
+        # Prepare headers
+        headers = [
+            "Имя",
+            "Username",
+            "ID пользователя",
+            "Был на встрече",
+            "Город",
+            "Рекомендация (1-5)",
+            "Площадка (1-5)",
+            "Еда (1-5)",
+            "Развлечения (1-5)",
+            "Будет помогать",
+            "Комментарии",
+            "Дата отзыва",
+        ]
+
+        # Update sheet with headers
+        feedback_sheet.update([headers])
+
+        # Prepare feedback data rows
+        feedback_rows = []
+
+        for item in feedback_items:
+            # Format attended status
+            attended = "Да" if item.get("attended") else "Нет"
+
+            # Format help interest
+            help_interest = item.get("help_interest", "")
+            if help_interest == "yes":
+                help_interest = "Да"
+            elif help_interest == "no":
+                help_interest = "Нет"
+            elif help_interest == "maybe":
+                help_interest = "Возможно"
+
+            # Create a row of feedback data
+            feedback_row = [
+                item.get("full_name", ""),
+                item.get("username", ""),
+                item.get("user_id", ""),
+                attended,
+                item.get("city", ""),
+                item.get("recommendation_level", ""),
+                item.get("venue_rating", ""),
+                item.get("food_rating", ""),
+                item.get("entertainment_rating", ""),
+                help_interest,
+                item.get("comments", ""),
+                item.get("timestamp", ""),
+            ]
+
+            feedback_rows.append(feedback_row)
+
+        # Update sheet with feedback data
+        if feedback_rows:
+            feedback_sheet.update("A2", feedback_rows)
+
+        message = f"Успешно экспортировано {len(feedback_rows)} отзывов в Google Таблицы\n"
+        message += "Доступно по ссылке: " + feedback_sheet.url
+        logger.success(message)
+
+        if not silent:
+            return message
+        return None
+
+    async def export_feedback_to_csv(self):
+        """Export all feedback to a CSV file"""
+        try:
+            # Create feedback collection if it doesn't exist
+            if not hasattr(self.app, "_feedback_collection"):
+                self.app._feedback_collection = get_database().get_collection("feedback")
+
+            # Get all feedback from MongoDB
+            cursor = self.app._feedback_collection.find({})
+            feedback_items = await cursor.to_list(length=None)
+
+            if not feedback_items:
+                logger.info("Нет отзывов для экспорта")
+                return None, "Нет отзывов для экспорта"
+
+            # Create CSV content
+            import csv
+            from io import StringIO
+
+            output = StringIO()
+            writer = csv.writer(output)
+
+            # Write headers
+            headers = [
+                "Имя",
+                "Username",
+                "ID пользователя",
+                "Был на встрече",
+                "Город",
+                "Рекомендация (1-5)",
+                "Площадка (1-5)",
+                "Еда (1-5)",
+                "Развлечения (1-5)",
+                "Будет помогать",
+                "Комментарии",
+                "Дата отзыва",
+            ]
+            writer.writerow(headers)
+
+            # Write feedback data
+            for item in feedback_items:
+                # Format attended status
+                attended = "Да" if item.get("attended") else "Нет"
+
+                # Format help interest
+                help_interest = item.get("help_interest", "")
+                if help_interest == "yes":
+                    help_interest = "Да"
+                elif help_interest == "no":
+                    help_interest = "Нет"
+                elif help_interest == "maybe":
+                    help_interest = "Возможно"
+
+                writer.writerow(
+                    [
+                        item.get("full_name", ""),
+                        item.get("username", ""),
+                        item.get("user_id", ""),
+                        attended,
+                        item.get("city", ""),
+                        item.get("recommendation_level", ""),
+                        item.get("venue_rating", ""),
+                        item.get("food_rating", ""),
+                        item.get("entertainment_rating", ""),
+                        help_interest,
+                        item.get("comments", ""),
+                        item.get("timestamp", ""),
+                    ]
+                )
+
+            csv_content = output.getvalue()
+            output.close()
+
+            logger.success(f"Успешно экспортировано {len(feedback_items)} отзывов в CSV")
+            return csv_content, f"Успешно экспортировано {len(feedback_items)} отзывов в CSV"
+
+        except Exception as e:
+            logger.error(f"Ошибка при экспорте отзывов в CSV: {e}")
+            return None, f"Ошибка при экспорте отзывов в CSV: {e}"

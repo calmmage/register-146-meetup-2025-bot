@@ -46,16 +46,15 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "notify_users": "Рассылка пользователям",
+            "send_feedback_request": "Отправить запрос на обратную связь",
             # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
             # not finished
             # "mark_payment": "Отметить оплату пользователя вручную",
+            "other": "Другие действия",
             # testing
             "register": "Протестировать бота (обычный сценарий)",
-            # other
-            "other": "Другие действия",
         },
         state=state,
         timeout=None,
@@ -67,6 +66,7 @@ async def admin_handler(message: Message, state: FSMContext):
             message.chat.id,
             "Другие команды:",
             choices={
+                "notify_users": "Рассылка пользователям",
                 "view_year_stats": "Посмотреть статистику по годам выпуска",
                 "five_year_stats": "График по пятилеткам выпуска",
                 "payment_stats": "Круговая диаграмма оплат",
@@ -96,6 +96,10 @@ async def admin_handler(message: Message, state: FSMContext):
         from app.routers.crm import test_user_selection_handler
 
         await test_user_selection_handler(message, state)
+    elif response == "send_feedback_request":
+        from app.routers.crm import send_feedback_request_handler
+
+        await send_feedback_request_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":
@@ -118,7 +122,11 @@ async def export_handler(message: Message, state: FSMContext):
     export_type_response = await ask_user_choice(
         message.chat.id,
         "Что вы хотите экспортировать?",
-        choices={"registered": "Зарегистрированные участники", "deleted": "Удаленные участники"},
+        choices={
+            "registered": "Зарегистрированные участники",
+            "deleted": "Удаленные участники",
+            "feedback": "Отзывы пользователей",
+        },
         state=state,
         timeout=None,
     )
@@ -152,7 +160,7 @@ async def export_handler(message: Message, state: FSMContext):
                 await send_safe(message.chat.id, result_message)
 
     # Handle deleted users export
-    else:  # export_type_response == "deleted"
+    elif export_type_response == "deleted":
         if export_format_response == "sheets":
             await notif.edit_text("Экспорт удаленных участников в Google Таблицы...")
             await send_safe(
@@ -167,6 +175,23 @@ async def export_handler(message: Message, state: FSMContext):
             if csv_content:
                 # Send the CSV content as a file using send_safe
                 await send_safe(message.chat.id, csv_content, filename="удаленные_участники.csv")
+            else:
+                await send_safe(message.chat.id, result_message)
+
+    # Handle feedback export
+    elif export_type_response == "feedback":
+        if export_format_response == "sheets":
+            await notif.edit_text("Экспорт отзывов в Google Таблицы...")
+            result = await app.export_feedback_to_sheets()
+            await send_safe(message.chat.id, result)
+        else:
+            # Export to CSV
+            await notif.edit_text("Экспорт отзывов в CSV файл...")
+            csv_content, result_message = await app.export_feedback_to_csv()
+
+            if csv_content:
+                # Send the CSV content as a file using send_safe
+                await send_safe(message.chat.id, csv_content, filename="отзывы_пользователей.csv")
             else:
                 await send_safe(message.chat.id, result_message)
 

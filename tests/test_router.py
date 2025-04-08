@@ -22,18 +22,18 @@ def mock_state():
 
 @pytest.fixture
 def mock_app():
-    with patch("app.router.app") as mock_app:
-        # Configure async app mocks with AsyncMock
-        mock_app.get_user_registration = AsyncMock(return_value=None)
-        mock_app.get_user_registrations = AsyncMock(return_value=[])
-        mock_app.log_registration_step = AsyncMock(return_value=None)
-        mock_app.save_registered_user = AsyncMock()
-        mock_app.export_registered_users_to_google_sheets = AsyncMock()
-        mock_app.delete_user_registration = AsyncMock()
-        mock_app.log_registration_canceled = AsyncMock()
-        mock_app.log_registration_completed = AsyncMock()
-        mock_app.save_event_log = AsyncMock()
-        yield mock_app
+    mock_app = MagicMock()
+    # Configure async app mocks with AsyncMock
+    mock_app.get_user_registration = AsyncMock(return_value=None)
+    mock_app.get_user_registrations = AsyncMock(return_value=[])
+    mock_app.log_registration_step = AsyncMock(return_value=None)
+    mock_app.save_registered_user = AsyncMock()
+    mock_app.export_registered_users_to_google_sheets = AsyncMock()
+    mock_app.delete_user_registration = AsyncMock()
+    mock_app.log_registration_canceled = AsyncMock()
+    mock_app.log_registration_completed = AsyncMock()
+    mock_app.save_event_log = AsyncMock()
+    yield mock_app
 
 
 @pytest.fixture
@@ -82,10 +82,10 @@ async def test_start_handler_new_user(
         mock_register.return_value = AsyncMock()
 
         # Call the handler
-        await start_handler(mock_message, mock_state)
+        await start_handler(mock_message, mock_state, mock_app)
 
         # Verify register_user was called
-        mock_register.assert_called_once_with(mock_message, mock_state)
+        mock_register.assert_called_once_with(mock_message, mock_state, mock_app)
 
 
 @pytest.mark.asyncio
@@ -111,10 +111,10 @@ async def test_start_handler_existing_user(
         mock_handler.return_value = AsyncMock()
 
         # Call the handler
-        await start_handler(mock_message, mock_state)
+        await start_handler(mock_message, mock_state, mock_app)
 
         # Verify handle_registered_user was called with correct args
-        mock_handler.assert_called_once_with(mock_message, mock_state, mock_user)
+        mock_handler.assert_called_once_with(mock_message, mock_state, mock_user, mock_app)
 
 
 # TODO: Fix deep call chain issues with register_user flow
@@ -147,7 +147,7 @@ async def test_cancel_registration_handler_no_registrations(
     mock_app.get_user_registrations.return_value = []
 
     # Call the handler
-    await cancel_registration_handler(mock_message, mock_state)
+    await cancel_registration_handler(mock_message, mock_state, mock_app)
 
     # Verify send_safe was called with the correct message
     mock_send_safe.assert_called_once()
