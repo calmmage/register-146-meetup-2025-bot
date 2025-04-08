@@ -12,6 +12,97 @@ from botspot.utils import send_safe
 router = Router()
 
 
+async def save_feedback_and_thank(
+    message,
+    state,
+    app: App,
+    user_id,
+    username,
+    full_name,
+    city=None,
+    attended=None,
+    recommendation=None,
+    venue_rating=None,
+    food_rating=None,
+    entertainment_rating=None,
+    help_interest=None,
+    comments=None,
+    is_cancel=False,
+):
+    """Helper function to save feedback and send thank you message"""
+    # Save all feedback data to the database
+    await app.save_feedback(
+        user_id=user_id,
+        username=username,
+        full_name=full_name,
+        city=city,
+        attended=attended,
+        recommendation_level=recommendation,
+        venue_rating=venue_rating,
+        food_rating=food_rating,
+        entertainment_rating=entertainment_rating,
+        help_interest=help_interest,
+        comments=comments,
+    )
+
+    if is_cancel:
+        # Shorter message for cancel
+        await send_safe(
+            message.chat.id,
+            "Спасибо! Ваш отзыв сохранен. Если захотите дополнить его позже, используйте команду /feedback.",
+        )
+        return True
+
+    # Standard thank you message
+    await send_safe(
+        message.chat.id,
+        "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
+        "Смотри на канал @school146club и общий чат на 685 выпускников 146 "
+        "(вход модерируется по ссылке https://t.me/+_wm7MlaGhCExOTg6) "
+        "чтобы узнать о наших следующих мероприятиях.",
+    )
+
+    # Ask about club projects
+    try:
+        response = await ask_user_raw(
+            message.chat.id,
+            "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
+            state=state,
+            timeout=1200,  # 20 minutes timeout
+        )
+
+        if response:
+            # Log the response
+            await app.save_event_log(
+                "feedback",
+                {
+                    "type": "club_participation_interest",
+                    "response": response.text,
+                },
+                user_id,
+                username,
+            )
+
+            await send_safe(
+                message.chat.id,
+                "Спасибо, мы обязательно к тебе вернемся в ближайшие дни - будет интересно обсудить. "
+                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+            )
+        else:
+            await send_safe(
+                message.chat.id,
+                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+            )
+    except Exception as e:
+        logger.error(f"Error waiting for club participation response: {e}")
+        await send_safe(
+            message.chat.id,
+            "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+        )
+
+    return True
+
+
 @commands_menu.add_command("feedback", "Оставить отзыв о встрече выпускников")
 @router.message(Command("feedback"))
 async def feedback_handler(message: Message, state: FSMContext, app: App):
@@ -51,68 +142,32 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if attendance == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save minimal feedback before exiting
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            is_cancel=True,
+        )
         return
 
     attended = attendance == "yes"
 
     # If they didn't attend, save feedback and finish
     if not attended:
-        await send_safe(
-            message.chat.id,
-            "Жаль что не получилось присоединиться! Мы будем ждать новых возможностей "
-            "чтобы увидеться с тобой в ближайшее время. Смотри на канал @school146club "
-            "и общий чат на 685 выпускников 146 (вход модерируется по ссылке "
-            "https://t.me/+_wm7MlaGhCExOTg6) чтобы узнать о наших следующих мероприятиях.",
-        )
-
-        # Save feedback data
-        await app.save_feedback(
-            user_id=message.from_user.id,
-            username=message.from_user.username,
-            full_name=full_name,
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
             attended=False,
         )
-
-        # Ask if user wants to participate in other Club projects
-        try:
-            response = await ask_user_raw(
-                message.chat.id,
-                "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
-                state=state,
-                timeout=1200,  # 20 minutes timeout
-            )
-
-            if response:
-                # Log the response
-                await app.save_event_log(
-                    "feedback",
-                    {
-                        "type": "club_participation_interest",
-                        "response": response.text,
-                    },
-                    message.from_user.id,
-                    message.from_user.username,
-                )
-
-                await send_safe(
-                    message.chat.id,
-                    "Спасибо, мы обязательно к тебе вернемся в ближайшие дни - будет интересно обсудить. "
-                    "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-                )
-            else:
-                # Timeout or user cancelled
-                await send_safe(
-                    message.chat.id,
-                    "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-                )
-        except Exception as e:
-            logger.error(f"Error waiting for club participation response: {e}")
-            await send_safe(
-                message.chat.id,
-                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-            )
-
         return
 
     # User attended, continue with feedback questions
@@ -136,7 +191,17 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if city == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            is_cancel=True,
+        )
         return
 
     if city == "skip":
@@ -179,7 +244,18 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if recommendation == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            is_cancel=True,
+        )
         return
 
     if recommendation == "skip":
@@ -221,7 +297,19 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if venue_rating == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            is_cancel=True,
+        )
         return
 
     if venue_rating == "skip":
@@ -263,7 +351,20 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if food_rating == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            venue_rating=venue_rating,
+            is_cancel=True,
+        )
         return
 
     if food_rating == "skip":
@@ -305,7 +406,21 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if entertainment_rating == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            venue_rating=venue_rating,
+            food_rating=food_rating,
+            is_cancel=True,
+        )
         return
 
     if entertainment_rating == "skip":
@@ -346,7 +461,22 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     )
 
     if help_interest == "cancel":
-        await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            venue_rating=venue_rating,
+            food_rating=food_rating,
+            entertainment_rating=entertainment_rating,
+            is_cancel=True,
+        )
         return
 
     if help_interest == "skip":
@@ -376,66 +506,20 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if comments and comments.text:
         comments_text = comments.text
 
-    # Save all feedback data to the database
-    await app.save_feedback(
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        full_name=full_name,
+    # Save all feedback and thank the user using the helper function
+    await save_feedback_and_thank(
+        message,
+        state,
+        app,
+        message.from_user.id,
+        message.from_user.username,
+        full_name,
         city=city,
         attended=True,
-        recommendation_level=recommendation,
+        recommendation=recommendation,
         venue_rating=venue_rating,
         food_rating=food_rating,
         entertainment_rating=entertainment_rating,
         help_interest=help_interest,
         comments=comments_text,
     )
-
-    # Thank the user for feedback
-    await send_safe(
-        message.chat.id,
-        "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
-        "Смотри на канал @school146club и общий чат на 685 выпускников 146 "
-        "(вход модерируется по ссылке https://t.me/+_wm7MlaGhCExOTg6) "
-        "чтобы узнать о наших следующих мероприятиях.",
-    )
-
-    # Ask if user wants to participate in other Club projects
-    try:
-        response = await ask_user_raw(
-            message.chat.id,
-            "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
-            state=state,
-            timeout=1200,  # 20 minutes timeout
-        )
-
-        if response:
-            # User responded
-            # Log the response
-            await app.save_event_log(
-                "feedback",
-                {
-                    "type": "club_participation_interest",
-                    "response": response.text,
-                },
-                message.from_user.id,
-                message.from_user.username,
-            )
-
-            await send_safe(
-                message.chat.id,
-                "Спасибо, мы обязательно к тебе вернемся в ближайшие дни - будет интересно обсудить. "
-                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-            )
-        else:
-            # Timeout or user cancelled
-            await send_safe(
-                message.chat.id,
-                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-            )
-    except Exception as e:
-        logger.error(f"Error waiting for club participation response: {e}")
-        await send_safe(
-            message.chat.id,
-            "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-        )

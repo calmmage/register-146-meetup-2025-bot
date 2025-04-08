@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "register-146-meetup-2025-bot"
-version = "0.2.0"
+version = "0.2.1"
 description = ""
 authors = ["Petr Lavrov <calmmage@gmail.com>"]
 readme = "README.md"
