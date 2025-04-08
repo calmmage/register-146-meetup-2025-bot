@@ -41,7 +41,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         choices={
             "yes": "Да",
             "no": "Нет",
-            "cancel": "Отмена",
+            "cancel": "Отмена опроса",
         },
         state=state,
         timeout=None,
@@ -126,6 +126,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "moscow": "Москва, в субботу 05 апреля",
             "saint_petersburg": "Питер, в субботу 05 апреля",
             "belgrade": "Белград, в субботу 05 апреля",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         highlight_default=False,
@@ -137,6 +138,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if city == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if city == "skip":
+        city = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     await app.save_event_log(
         "feedback",
@@ -163,6 +168,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         state=state,
@@ -175,6 +181,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if recommendation == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if recommendation == "skip":
+        recommendation = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     # Log recommendation level
     await app.save_event_log(
@@ -200,6 +210,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         state=state,
@@ -212,6 +223,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if venue_rating == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if venue_rating == "skip":
+        venue_rating = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     # Log venue rating
     await app.save_event_log(
@@ -237,6 +252,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         default_choice="cancel",
@@ -249,6 +265,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if food_rating == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if food_rating == "skip":
+        food_rating = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     # Log food rating
     await app.save_event_log(
@@ -274,6 +294,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "3": "3",
             "4": "4",
             "5": "5",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         default_choice="cancel",
@@ -286,6 +307,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if entertainment_rating == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if entertainment_rating == "skip":
+        entertainment_rating = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     # Log entertainment rating
     await app.save_event_log(
@@ -310,6 +335,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             "yes": "1",
             "no": "2",
             "maybe": "3",
+            "skip": "Пропустить вопрос",
             "cancel": "Отмена",
         },
         state=state,
@@ -322,6 +348,10 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if help_interest == "cancel":
         await send_safe(message.chat.id, "Процесс сбора отзывов отменен.")
         return
+
+    if help_interest == "skip":
+        help_interest = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
 
     # Log willingness to help
     await app.save_event_log(
