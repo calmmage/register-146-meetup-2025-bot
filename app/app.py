@@ -59,6 +59,8 @@ class AppSettings(BaseSettings):
     payment_phone_number: str
     payment_name: str
 
+    delay_messages: bool = True
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
@@ -91,18 +93,18 @@ class App:
         self._collection = None
         self._event_logs = None
         self._deleted_users = None
-        
+
     async def startup(self):
         """
         Run startup tasks like fixing the database and initializing collections
         """
         logger.info("Running app startup tasks...")
-        
+
         # Initialize collections
         _ = self.collection
         _ = self.event_logs
         _ = self.deleted_users
-        
+
         # Fix database (SPb, Belgrade, teachers should have 'confirmed' payment status)
         fix_results = await self._fix_database()
         if fix_results["total_fixed"] > 0:
@@ -354,11 +356,11 @@ class App:
     async def export_deleted_users_to_csv(self):
         """Export deleted users to CSV"""
         return await self.sheet_exporter.export_deleted_users_to_csv()
-        
+
     async def export_feedback_to_sheets(self):
         """Export feedback to Google Sheets"""
         return await self.sheet_exporter.export_feedback_to_sheets()
-        
+
     async def export_feedback_to_csv(self):
         """Export feedback to CSV"""
         return await self.sheet_exporter.export_feedback_to_csv()
@@ -739,25 +741,25 @@ class App:
     ) -> List[Dict]:
         """
         Base method to get users with various filters
-        
+
         Args:
             payment_status: Filter by payment status ("confirmed", "pending", "declined", None for any)
             city: Filter by city (None for all cities)
-            
+
         Returns:
             List of user registrations matching the criteria
         """
         query = {}
-        
+
         # Build the query conditions
         and_conditions = []
-        
+
         # Filter by payment status
         if payment_status == "unpaid":
             and_conditions.append({"payment_status": {"$ne": "confirmed"}})
         elif payment_status == "paid":
             and_conditions.append({"payment_status": "confirmed"})
-            
+
         # Filter by city if specified
         if city and city != "all":
             # Map city key to actual value
@@ -765,54 +767,54 @@ class App:
                 "MOSCOW": TargetCity.MOSCOW.value,
                 "PERM": TargetCity.PERM.value,
                 "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
-                "BELGRADE": TargetCity.BELGRADE.value
+                "BELGRADE": TargetCity.BELGRADE.value,
             }
             if city in city_mapping:
                 and_conditions.append({"target_city": city_mapping[city]})
-        
+
         # Add the conditions to the query if we have any
         if and_conditions:
             query["$and"] = and_conditions
-            
+
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
-        
+
     async def get_unpaid_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
-        
+
         Args:
             city: Optional city to filter by
-            
+
         Returns:
             List of user registrations with unpaid status
         """
         return await self._get_users_base(payment_status="unpaid", city=city)
-        
+
     async def get_paid_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users who have paid (payment_status is "confirmed")
-        
+
         Args:
             city: Optional city to filter by
-            
+
         Returns:
             List of user registrations with paid status
         """
         return await self._get_users_base(payment_status="paid", city=city)
-        
+
     async def get_all_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users regardless of payment status
-        
+
         Args:
             city: Optional city to filter by
-            
+
         Returns:
             List of all user registrations
         """
         return await self._get_users_base(city=city)
-        
+
     async def _fix_database(self) -> Dict[str, int]:
         """
         Fix the database by setting payment_status to "confirmed" for:
@@ -820,7 +822,7 @@ class App:
         2. All users in Belgrade (free event)
         3. All users with graduate_type=TEACHER (free for teachers)
         4. All users with graduate_type=ORGANIZER (free for organizers)
-        
+
         Returns:
             Dictionary with counts of fixed records for each category
         """
@@ -829,57 +831,48 @@ class App:
             "belgrade_fixed": 0,
             "teachers_fixed": 0,
             "organizers_fixed": 0,
-            "total_fixed": 0
+            "total_fixed": 0,
         }
-        
+
         # Fix Saint Petersburg registrations
         spb_result = await self.collection.update_many(
             {
                 "target_city": TargetCity.SAINT_PETERSBURG.value,
-                "payment_status": {"$ne": "confirmed"}
+                "payment_status": {"$ne": "confirmed"},
             },
-            {"$set": {"payment_status": "confirmed"}}
+            {"$set": {"payment_status": "confirmed"}},
         )
         results["spb_fixed"] = spb_result.modified_count
-        
+
         # Fix Belgrade registrations
         belgrade_result = await self.collection.update_many(
-            {
-                "target_city": TargetCity.BELGRADE.value,
-                "payment_status": {"$ne": "confirmed"}
-            },
-            {"$set": {"payment_status": "confirmed"}}
+            {"target_city": TargetCity.BELGRADE.value, "payment_status": {"$ne": "confirmed"}},
+            {"$set": {"payment_status": "confirmed"}},
         )
         results["belgrade_fixed"] = belgrade_result.modified_count
-        
+
         # Fix teacher registrations
         teachers_result = await self.collection.update_many(
-            {
-                "graduate_type": GraduateType.TEACHER.value,
-                "payment_status": {"$ne": "confirmed"}
-            },
-            {"$set": {"payment_status": "confirmed"}}
+            {"graduate_type": GraduateType.TEACHER.value, "payment_status": {"$ne": "confirmed"}},
+            {"$set": {"payment_status": "confirmed"}},
         )
         results["teachers_fixed"] = teachers_result.modified_count
-        
+
         # Fix organizer registrations
         organizers_result = await self.collection.update_many(
-            {
-                "graduate_type": GraduateType.ORGANIZER.value,
-                "payment_status": {"$ne": "confirmed"}
-            },
-            {"$set": {"payment_status": "confirmed"}}
+            {"graduate_type": GraduateType.ORGANIZER.value, "payment_status": {"$ne": "confirmed"}},
+            {"$set": {"payment_status": "confirmed"}},
         )
         results["organizers_fixed"] = organizers_result.modified_count
-        
+
         # Calculate total fixed
         results["total_fixed"] = (
-            results["spb_fixed"] + 
-            results["belgrade_fixed"] + 
-            results["teachers_fixed"] +
-            results["organizers_fixed"]
+            results["spb_fixed"]
+            + results["belgrade_fixed"]
+            + results["teachers_fixed"]
+            + results["organizers_fixed"]
         )
-        
+
         # Log the fix operation if any records were updated
         if results["total_fixed"] > 0:
             log_data = {
@@ -891,7 +884,7 @@ class App:
                 "organizers_fixed": results["organizers_fixed"],
             }
             await self.save_event_log("admin_action", log_data)
-            
+
         return results
 
     async def save_event_log(
@@ -957,51 +950,51 @@ class App:
             ID of the inserted feedback document
         """
         user_info = await self.collection.find_one({"user_id": user_id})
-        
+
         # Create the feedback document
         feedback = {
             "user_id": user_id,
             "timestamp": datetime.now().isoformat(),
             "attended": attended,
         }
-        
+
         # Add optional fields if provided
         if username:
             feedback["username"] = username
-        
+
         if full_name:
             feedback["full_name"] = full_name
         elif user_info and "full_name" in user_info:
             feedback["full_name"] = user_info.get("full_name")
-            
+
         if city:
             feedback["city"] = city
-            
+
         if recommendation_level:
             feedback["recommendation_level"] = recommendation_level
-            
+
         if venue_rating:
             feedback["venue_rating"] = venue_rating
-            
+
         if food_rating:
             feedback["food_rating"] = food_rating
-            
+
         if entertainment_rating:
             feedback["entertainment_rating"] = entertainment_rating
-            
+
         if help_interest:
             feedback["help_interest"] = help_interest
-            
+
         if comments:
             feedback["comments"] = comments
-            
+
         # Create or get feedback collection
-        if not hasattr(self, '_feedback_collection'):
-            self._feedback_collection = get_database().get_collection('feedback')
-            
+        if not hasattr(self, "_feedback_collection"):
+            self._feedback_collection = get_database().get_collection("feedback")
+
         # Insert the feedback document
         result = await self._feedback_collection.insert_one(feedback)
-        
+
         # Also log this event
         await self.save_event_log(
             "feedback_submitted",
@@ -1013,11 +1006,11 @@ class App:
                 "city": city,
             },
             user_id,
-            username
+            username,
         )
-        
+
         return str(result.inserted_id)
-        
+
     async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
         """
         Move a user from registered_users to deleted_users collection

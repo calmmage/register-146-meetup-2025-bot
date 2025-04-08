@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -45,14 +47,6 @@ async def save_feedback_and_thank(
         comments=comments,
     )
 
-    if is_cancel:
-        # Shorter message for cancel
-        await send_safe(
-            message.chat.id,
-            "Спасибо! Ваш отзыв сохранен. Если захотите дополнить его позже, используйте команду /feedback.",
-        )
-        return True
-
     # Standard thank you message
     await send_safe(
         message.chat.id,
@@ -62,44 +56,47 @@ async def save_feedback_and_thank(
         "чтобы узнать о наших следующих мероприятиях.",
     )
 
+    if is_cancel:
+        return True
+
+    if app.settings.delay_messages:
+        await asyncio.sleep(5)
+
     # Ask about club projects
-    try:
-        response = await ask_user_raw(
-            message.chat.id,
-            "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
-            state=state,
-            timeout=1200,  # 20 minutes timeout
+    response = await ask_user_raw(
+        message.chat.id,
+        "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
+        state=state,
+        timeout=1200,  # 20 minutes timeout
+    )
+
+    if response:
+        # Log the response
+        await app.save_event_log(
+            "feedback",
+            {
+                "type": "club_participation_interest",
+                "response": response.text,
+            },
+            user_id,
+            username,
         )
 
-        if response:
-            # Log the response
-            await app.save_event_log(
-                "feedback",
-                {
-                    "type": "club_participation_interest",
-                    "response": response.text,
-                },
-                user_id,
-                username,
-            )
+        await send_safe(
+            message.chat.id,
+            "Спасибо, мы обязательно к тебе вернемся в ближайшие дни - будет интересно обсудить. "
+            "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+        )
 
-            await send_safe(
-                message.chat.id,
-                "Спасибо, мы обязательно к тебе вернемся в ближайшие дни - будет интересно обсудить. "
-                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-            )
-        else:
-            await send_safe(
-                message.chat.id,
-                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
-            )
-    except Exception as e:
-        logger.error(f"Error waiting for club participation response: {e}")
+        await send_safe(
+            app.settings.events_chat_id,
+            f"Пользователь {full_name} ({user_id}) заинтересован быть активистомх. Ответ: {response.text}",
+        )
+    else:
         await send_safe(
             message.chat.id,
             "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
         )
-
     return True
 
 
@@ -120,10 +117,14 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     # Start feedback flow
     await send_safe(
         message.chat.id,
-        "Я чат-бот, собираю обратную связь по встрече выпускников. "
-        "Благодаря в том числе и твоей обратной связи мы продолжаем улучшать наши мероприятия, "
-        "помоги нам пожалуйста, потрать 4 минуты.",
+        "Привет! \n"
+        "Я чат-бот, собираю обратную связь по встрече выпускников. \n"
+        "Благодаря в том числе и твоей обратной связи мы продолжаем улучшать наши мероприятия, \n"
+        "помоги нам пожалуйста, потрать 4 минуты :)",
     )
+
+    if app.settings.delay_messages:
+        await asyncio.sleep(5)
 
     # Step 1: Ask if user attended the meetup
     attendance = await ask_user_choice(
