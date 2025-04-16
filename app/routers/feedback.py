@@ -55,7 +55,7 @@ async def save_feedback_and_thank(
 
     # Add photo album links
     thank_you_msg += "📸 Фотоальбомы с встреч:\n\n"
-    
+
     if city == "perm":
         thank_you_msg += "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
@@ -67,7 +67,9 @@ async def save_feedback_and_thank(
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
 
     if is_cancel:
-        thank_you_msg += "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
+        thank_you_msg += (
+            "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
+        )
 
     await send_safe(
         message.chat.id,
@@ -129,8 +131,6 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
-
-    # from app.router import app
 
     # Get existing user data if available
     user_data = await app.collection.find_one({"user_id": message.from_user.id})
