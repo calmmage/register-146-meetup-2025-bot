@@ -66,6 +66,9 @@ async def save_feedback_and_thank(
         thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
 
+    if is_cancel:
+        thank_you_msg += "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
+
     await send_safe(
         message.chat.id,
         thank_you_msg,
@@ -112,6 +115,10 @@ async def save_feedback_and_thank(
             message.chat.id,
             "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
         )
+    await send_safe(
+        message.chat.id,
+        "На этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉",
+    )
     return True
 
 
