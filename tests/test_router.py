@@ -66,9 +66,24 @@ def mock_botspot_dependencies():
         yield mock_deps
 
 
+@pytest.fixture
+def mock_is_admin():
+    with patch("app.router.is_admin") as mock:
+        mock.return_value = False
+        yield mock
+
+
+@pytest.fixture
+def mock_is_event_passed():
+    with patch("app.router.is_event_passed") as mock:
+        mock.return_value = False
+        yield mock
+
+
 @pytest.mark.asyncio
 async def test_start_handler_new_user(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
+    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies,
+    mock_is_admin, mock_is_event_passed
 ):
     from app.router import (
         start_handler,
@@ -90,7 +105,8 @@ async def test_start_handler_new_user(
 
 @pytest.mark.asyncio
 async def test_start_handler_existing_user(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
+    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies,
+    mock_is_admin, mock_is_event_passed
 ):
     from app.app import TargetCity
     from app.router import (
