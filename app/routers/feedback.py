@@ -8,7 +8,7 @@ from loguru import logger
 from app.app import App
 
 from botspot import commands_menu
-from botspot.user_interactions import ask_user_choice, ask_user_raw
+from botspot.user_interactions import ask_user_choice, ask_user_raw, ask_user_choice_raw
 from botspot.utils import send_safe
 
 router = Router()
@@ -520,13 +520,22 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
 
     # Step 8: Ask for specific comments
     comments_text = None
-    comments = await ask_user_raw(
+    comments = await ask_user_choice_raw(
         message.chat.id,
-        "Есть ли у тебя конкретные комментарии? Напиши пожалуйста сюда ответным сообщением.",
+        "Если хочешь написать что-то, что мы не включили в опрос, напиши ниже",
+        choices={
+            "skip": "Пропустить вопрос",
+        },
         state=state,
         timeout=None,
     )
-    if comments and comments.text:
+
+    if comments and isinstance(comments, str):
+        # Button was clicked
+        if comments == "skip":
+            await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
+    elif comments and comments.text:
+        # User sent a text message
         comments_text = comments.text
 
     # Save all feedback and thank the user using the helper function

@@ -157,8 +157,10 @@ async def process_payment(
         await asyncio.sleep(3)
 
     # Create choices for the user
-    choices = {"pay_later": "Оплачу позже"}
-    choices["too_expensive"] = "Ой, нет, что-то слишком дорого, я передумал"
+    choices = {
+        "pay_later": "Оплачу позже",
+        "too_expensive": "Ой, нет, что-то слишком дорого, я передумал",
+    }
 
     # Wait for response using ask_user_choice_raw (either screenshot or choice)
     # Log payment proof request
