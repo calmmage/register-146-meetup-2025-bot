@@ -396,7 +396,7 @@ class App:
             return None
 
     async def log_registration_step(
-        self, user_id: int, username: str, step: str, data: str = ""
+        self, user_id: int, username: str | None, step: str, data: str = ""
     ) -> Optional[Message]:
         """
         Log a registration step to the logs chat

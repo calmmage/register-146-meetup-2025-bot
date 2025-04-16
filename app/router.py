@@ -40,10 +40,12 @@ event_dates = {
     TargetCity.BELGRADE: datetime(2025, 4, 5),
 }
 
+
 def is_event_passed(city: TargetCity) -> bool:
     """Check if the event for a given city has already passed"""
     today = datetime.now()
     return today > event_dates[city]
+
 
 time_of_event = {
     TargetCity.PERM: "17:00",
@@ -130,7 +132,8 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         else:  # "nothing"
             await send_safe(
                 message.chat.id,
-                "Отлично! Ваши регистрации в силе. До встречи!\n\nИспользуйте команду /info для получения подробной информации о встречах (дата, время, адрес).",
+                "Отлично! Ваши регистрации в силе. До встречи!\n\n"
+                "Используйте команду /info для получения подробной информации о встречах (дата, время, адрес).",
                 reply_markup=ReplyKeyboardRemove(),
             )
     else:
@@ -271,6 +274,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
 async def manage_registrations(message: Message, state: FSMContext, registrations, app: App):
     """Allow user to manage multiple registrations"""
+    assert message.from_user is not None
 
     # Create choices for each city
     choices = {}
@@ -362,6 +366,7 @@ async def manage_registrations(message: Message, state: FSMContext, registration
     else:
         # Manage specific city registration
         city = response
+        assert city is not None
         reg = next(r for r in registrations if r["target_city"] == city)
 
         city_enum = next((c for c in TargetCity if c.value == city), None)
@@ -432,10 +437,23 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             await manage_registrations(message, state, registrations, app=app)
 
 
+async def handle_cancel_option(response, message: Message, state: FSMContext) -> bool:
+    """Helper function to handle cancel option in user interactions"""
+    if response == "cancel":
+        await send_safe(
+            message.chat.id,
+            "Регистрация отменена. Если передумаете, используйте /start чтобы начать заново.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return True
+    return False
+
+
 async def register_user(
     message: Message, state: FSMContext, app: App, preselected_city=None, reuse_info=None
 ):
     """Register a user for an event"""
+    assert message.from_user is not None
     user_id = message.from_user.id
     username = message.from_user.username
 
@@ -496,10 +514,11 @@ async def register_user(
         available_cities = {
             city.value: f"{city.value} ({date_of_event[city]})"
             for city in TargetCity
-            if city.value not in existing_cities 
+            if city.value not in existing_cities
             and city.value != TargetCity.PERM.value
             and not is_event_passed(city)
         }
+        available_cities["cancel"] = "Отменить регистрацию"  # Add cancel option
 
         # If no cities left, inform the user
         if not available_cities:
@@ -535,6 +554,10 @@ async def register_user(
             state=state,
             timeout=None,
         )
+
+        # Handle cancel
+        if await handle_cancel_option(response, message, state):
+            return
 
         # Handle timeout/None response
         if response is None:
@@ -588,10 +611,18 @@ async def register_user(
         confirm = await ask_user_choice(
             message.chat.id,
             confirm_text,
-            choices={"yes": "Да, использовать эти данные", "no": "Нет, ввести новые данные"},
+            choices={
+                "yes": "Да, использовать эти данные",
+                "no": "Нет, ввести новые данные",
+                "cancel": "Отменить регистрацию",
+            },
             state=state,
             timeout=None,
         )
+
+        # Handle cancel
+        if await handle_cancel_option(confirm, message, state):
+            return
 
         # Log reuse decision
         log_msg = await app.log_registration_step(
@@ -1158,7 +1189,7 @@ async def info_handler(message: Message, state: FSMContext, app: App):
             continue
 
         info_text += f"<b>🏙️ {city.value}</b>\n"
-        
+
         if is_event_passed(city):
             info_text += f"📆 Дата: {date_of_event[city]} (встреча уже прошла)\n"
         else:
@@ -1288,7 +1319,9 @@ async def status_handler(message: Message, state: FSMContext, app: App):
 
 @commands_menu.add_command("start", "Start the bot")
 @router.message(CommandStart())
-@router.message(F.text, F.chat.type == "private")  # only handle private messages
+@router.message(
+    F.text, F.chat.type == "private", ~F.text.startswith("/")
+)  # only handle private messages that are not commands
 async def start_handler(message: Message, state: FSMContext, app: App):
     """
     Main scenario flow.
