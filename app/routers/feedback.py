@@ -29,6 +29,7 @@ async def save_feedback_and_thank(
     entertainment_rating=None,
     help_interest=None,
     comments=None,
+    feedback_format_preference=None,
     is_cancel=False,
 ):
     """Helper function to save feedback and send thank you message"""
@@ -45,6 +46,7 @@ async def save_feedback_and_thank(
         entertainment_rating=entertainment_rating,
         help_interest=help_interest,
         comments=comments,
+        feedback_format_preference=feedback_format_preference,
     )
 
     # Standard thank you message
@@ -538,6 +540,59 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         # User sent a text message
         comments_text = comments.text
 
+    # Step 9: Ask about feedback format preference
+    feedback_format = await ask_user_choice(
+        message.chat.id,
+        "Как удобнее заполнять обратную связь?",
+        choices={
+            "bot": "Вот так через бота",
+            "google_forms": "Гугл формы",
+            "skip": "Пропустить вопрос",
+            "cancel": "Отмена",
+        },
+        state=state,
+        timeout=None,
+        columns=2,
+        default_choice="cancel",
+        highlight_default=False,
+    )
+
+    if feedback_format == "cancel":
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            venue_rating=venue_rating,
+            food_rating=food_rating,
+            entertainment_rating=entertainment_rating,
+            help_interest=help_interest,
+            comments=comments_text,
+            is_cancel=True,
+        )
+        return
+
+    if feedback_format == "skip":
+        feedback_format = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
+
+    # Log feedback format preference
+    await app.save_event_log(
+        "feedback",
+        {
+            "type": "feedback_format_preference",
+            "preference": feedback_format,
+        },
+        message.from_user.id,
+        message.from_user.username,
+    )
+
     # Save all feedback and thank the user using the helper function
     await save_feedback_and_thank(
         message,
@@ -554,4 +609,5 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         entertainment_rating=entertainment_rating,
         help_interest=help_interest,
         comments=comments_text,
+        feedback_format_preference=feedback_format,
     )

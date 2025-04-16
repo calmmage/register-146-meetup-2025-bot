@@ -929,6 +929,7 @@ class App:
         entertainment_rating: str = None,
         help_interest: str = None,
         comments: str = None,
+        feedback_format_preference: str = None,
     ) -> str:
         """
         Save a user's feedback to the database
@@ -945,6 +946,7 @@ class App:
             entertainment_rating: Rating for entertainment (1-5)
             help_interest: Interest in helping with future events
             comments: Additional comments from the user
+            feedback_format_preference: User's preference for feedback format (bot or google_forms)
 
         Returns:
             ID of the inserted feedback document
@@ -988,6 +990,9 @@ class App:
         if comments:
             feedback["comments"] = comments
 
+        if feedback_format_preference:
+            feedback["feedback_format_preference"] = feedback_format_preference
+
         # Create or get feedback collection
         if not hasattr(self, "_feedback_collection"):
             self._feedback_collection = get_database().get_collection("feedback")
@@ -1004,6 +1009,7 @@ class App:
                 "feedback_id": str(result.inserted_id),
                 "attended": attended,
                 "city": city,
+                "feedback_format_preference": feedback_format_preference,
             },
             user_id,
             username,
