@@ -2,11 +2,10 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
-from typing import Dict, Any, Optional, List
-import asyncio
+from typing import Dict, Any
 
 from app.routers.admin import router
-from app.app import TargetCity
+from app.app import TargetCity, App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
@@ -66,8 +65,11 @@ def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
     "notify", "Отправить уведомление пользователям", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("notify"), AdminFilter())
-async def notify_users_handler(message: Message, state: FSMContext):
+async def notify_users_handler(message: Message, state: FSMContext, app: App):
     """Notify users with a custom message using a step-by-step flow without state management"""
+    if not message.from_user:
+        await send_safe(message.chat.id, "❌ Ошибка: не удалось определить отправителя")
+        return
 
     # Step 1: Select audience (unpaid, paid, or everybody)
     audience = await ask_user_choice(
@@ -124,14 +126,16 @@ async def notify_users_handler(message: Message, state: FSMContext):
         state=state,
         timeout=None,
     )
-    notification_text = response.html_text
 
-    if not notification_text or notification_text.lower() == "отмена":
+    if not response or not response.html_text:
         await send_safe(message.chat.id, "Операция отменена")
         return
 
-    # Get user list based on audience and city
-    from app.router import app
+    notification_text = response.html_text
+
+    if notification_text.lower() == "отмена":
+        await send_safe(message.chat.id, "Операция отменена")
+        return
 
     # Show processing message
     status_msg = await send_safe(message.chat.id, "⏳ Получение списка пользователей...")
@@ -159,7 +163,7 @@ async def notify_users_handler(message: Message, state: FSMContext):
         "SAINT_PETERSBURG": "Санкт-Петербурге",
         "BELGRADE": "Белграде",
         "all": "всех городах",
-    }.get(city, city)
+    }.get(city or "", city or "")
 
     # Generate preview report
     preview = f"📊 Найдено {len(users)} {audience_name} в {city_name}:\n\n"
@@ -264,7 +268,11 @@ async def notify_users_handler(message: Message, state: FSMContext):
             sent_count += 1
 
             # Notify validation chat about sent message
-            validation_message = f"✅ Уведомление отправлено пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
+            validation_message = (
+                f"✅ Уведомление отправлено пользователю {user.get('full_name')} "
+                f"(@{user.get('username') or user_id})\n🏙️ "
+                f"{user.get('target_city', 'Город не указан')}"
+            )
             await app.log_to_chat(validation_message, "events")
         except Exception as e:
             logger.error(f"Failed to send notification to user {user_id}: {e}")
@@ -285,9 +293,8 @@ async def notify_users_handler(message: Message, state: FSMContext):
     "test_user_selection", "Тест выборки пользователей", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("test_user_selection"), AdminFilter())
-async def test_user_selection_handler(message: Message, state: FSMContext):
+async def test_user_selection_handler(message: Message, state: FSMContext, app: App):
     """Test the user selection methods by reporting counts for each city and payment status"""
-    from app.router import app
 
     # Show processing message
     status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
@@ -338,7 +345,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext):
     "notify_early_payment", "Уведомить о раннем платеже", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("notify_early_payment"), AdminFilter())
-async def notify_early_payment_handler(message: Message, state: FSMContext):
+async def notify_early_payment_handler(message: Message, state: FSMContext, app: App):
     """Notify users who haven't paid yet about the early payment deadline"""
 
     # Ask user for action choice
@@ -357,8 +364,6 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
     if response == "cancel":
         await send_safe(message.chat.id, "Операция отменена")
         return
-
-    from app.router import app
 
     # Show processing message
     status_msg = await send_safe(message.chat.id, "⏳ Получение списка не оплативших...")
@@ -469,7 +474,11 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
             sent_count += 1
 
             # Notify validation chat about sent message
-            validation_message = f"✅ Уведомление отправлено пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
+            validation_message = (
+                f"✅ Уведомление отправлено пользователю {user.get('full_name')} "
+                f"(@{user.get('username') or user_id})\n🏙️ "
+                f"{user.get('target_city', 'Город не указан')}"
+            )
             await app.log_to_chat(validation_message, "events")
         except Exception as e:
             logger.error(f"Failed to send notification to user {user_id}: {e}")
@@ -486,16 +495,16 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
     await status_msg.edit_text(result_text)
 
 
-# todo: this should reuse the existing feedback.py handler, wtf
-#  also: only sent to people who didn't respond yet
-
 # @commands_menu.add_command(
 #     "send_feedback_request", "Отправить запрос на обратную связь", visibility=Visibility.ADMIN_ONLY
 # )
 # @router.message(Command("send_feedback_request"), AdminFilter())
 # async def send_feedback_request_handler(message: Message, state: FSMContext):
 #     """Send feedback request messages to users"""
-#
+#     if not message.from_user:
+#         await send_safe(message.chat.id, "❌ Ошибка: не удалось определить отправителя")
+#         return
+
 #     # Step 1: Select city
 #     city = await ask_user_choice(
 #         message.chat.id,
@@ -511,11 +520,11 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         state=state,
 #         timeout=None,
 #     )
-#
+
 #     if city == "cancel":
 #         await send_safe(message.chat.id, "Операция отменена")
 #         return
-#
+
 #     # Step 2: Ask if this is a test or production run
 #     run_type = await ask_user_choice(
 #         message.chat.id,
@@ -528,17 +537,14 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         state=state,
 #         timeout=None,
 #     )
-#
+
 #     if run_type == "cancel":
 #         await send_safe(message.chat.id, "Операция отменена")
 #         return
-#
-#     # Get users
-#     from app.router import app, padezhi, date_of_event, TargetCity
-#
+
 #     # Show processing message
 #     status_msg = await send_safe(message.chat.id, "⏳ Получение списка пользователей...")
-#
+
 #     # Get city-specific details and dates for messages
 #     city_display_name = {
 #         "MOSCOW": "Москве",
@@ -546,10 +552,10 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         "SAINT_PETERSBURG": "Санкт-Петербурге",
 #         "BELGRADE": "Белграде",
 #         "all": "разных городах",
-#     }.get(city, city)
-#
+#     }.get(city or "", city or "")
+
 #     target_users = []
-#
+
 #     if run_type == "test":
 #         # Just the admin for test run
 #         admin_data = {
@@ -561,50 +567,50 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         target_users = [admin_data]
 #     else:
 #         # Real users for production run
-#         target_users = await app.get_all_users(city if city != "all" else None)
-#
+#         target_users = await app.get_users_without_feedback(city if city != "all" else None)
+
 #     # Check if we have users matching criteria
 #     if not target_users:
 #         await status_msg.edit_text("❌ Пользователи, соответствующие критериям, не найдены!")
 #         return
-#
+
 #     # Generate preview report
 #     preview = f"📊 Найдено {len(target_users)} пользователей для отправки запроса обратной связи по {city_display_name}:\n\n"
-#
+
 #     # Show a preview of up to 10 users
 #     for i, user in enumerate(target_users[:10], 1):
 #         username = user.get("username", "без имени")
 #         user_id = user.get("user_id", "??")
 #         full_name = user.get("full_name", "Имя не указано")
 #         user_city = user.get("target_city", "Город не указан")
-#
+
 #         preview += f"{i}. {full_name} (@{username or user_id})\n"
 #         preview += f"   🏙️ {user_city}\n"
-#
+
 #     if len(target_users) > 10:
 #         preview += f"\n... и еще {len(target_users) - 10} пользователей"
-#
+
 #     # Update status message with preview
 #     await status_msg.edit_text(preview)
-#
+
 #     # Step 3: Ask for confirmation
 #     confirm = await ask_user_confirmation(
 #         message.chat.id,
 #         f"Шаг 3: ⚠️ Вы собираетесь отправить запрос обратной связи {len(target_users)} пользователям. Продолжить?",
 #         state=state,
 #     )
-#
+
 #     if not confirm:
 #         await send_safe(message.chat.id, "Операция отменена")
 #         return
-#
+
 #     # First send a detailed report to the validation chat
 #     validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПРОСОВ ОБРАТНОЙ СВЯЗИ ЗАПУЩЕНА</b>\n\n"
 #     validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
 #     validation_report += f"🎯 Целевая аудитория: {len(target_users)} пользователей в {city_display_name}\n"
 #     validation_report += f"🚀 Режим запуска: {'Тестовый' if run_type == 'test' else 'Боевой'}\n\n"
 #     validation_report += f"🗒️ <b>Список получателей:</b>\n"
-#
+
 #     # Add a list of users (limited to avoid oversized message)
 #     for i, user in enumerate(target_users[:20], 1):
 #         username = user.get("username", "без имени")
@@ -612,29 +618,29 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         full_name = user.get("full_name", "Имя не указано")
 #         user_city = user.get("target_city", "Город не указан")
 #         validation_report += f"{i}. {full_name} (@{username or user_id}) - {user_city}\n"
-#
+
 #     if len(target_users) > 20:
 #         validation_report += f"...и еще {len(target_users) - 20} пользователей\n"
-#
+
 #     # Send report to validation chat before starting the actual messages
 #     await app.log_to_chat(validation_report, "events")
-#
+
 #     # Start sending the messages
 #     sent_count = 0
 #     failed_count = 0
-#
+
 #     status_msg = await send_safe(message.chat.id, "⏳ Отправка запросов обратной связи...")
-#
+
 #     from botspot.core.dependency_manager import get_dependency_manager
 #     deps = get_dependency_manager()
 #     bot = deps.bot
-#
+
 #     for user in target_users:
 #         user_id = user.get("user_id")
 #         if not user_id:
 #             failed_count += 1
 #             continue
-#
+
 #         try:
 #             # Get city-specific information
 #             user_city = user.get("target_city")
@@ -643,28 +649,28 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #                 if city_enum_value.value == user_city:
 #                     user_city_enum = city_enum_value
 #                     break
-#
+
 #             city_name = user_city if user_city else "вашем городе"
 #             city_date = date_of_event.get(user_city_enum, "недавно") if user_city_enum else "недавно"
 #             day_of_week = ""
-#
+
 #             if "Марта" in city_date:
 #                 day_of_week = "субботу"
 #             elif "Апреля" in city_date:
 #                 day_of_week = "субботу"
-#
+
 #             # Personalize the initial message (from Petr Lavrov)
 #             initial_message = (
 #                 f"Привет! Как тебе встреча выпускников в {city_name}? Было классно что получилось добраться. "
 #                 f"У меня к сожалению не получилось приехать, но очень радостно на сердце что такие встречи реальны."
 #             )
-#
+
 #             # Send the initial message as if from Petr
 #             await send_safe(user_id, initial_message, parse_mode="HTML")
-#
+
 #             # Wait 30 seconds to simulate natural delay
 #             await asyncio.sleep(30)
-#
+
 #             # Send photo link message
 #             photo_links_message = (
 #                 "Вот кстати ссылки на альбомы встреч в каждой локации:\n"
@@ -672,23 +678,23 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #                 "Москва: ХХХ\n"
 #                 "Питер: ХХХ"
 #             )
-#
+
 #             await send_safe(user_id, photo_links_message)
-#
+
 #             # Wait 2 minutes (120 seconds)
 #             await asyncio.sleep(120)
-#
+
 #             # Send the request for feedback message
 #             feedback_request = (
 #                 "Как думаешь, удобно ли бы тебе было нам дать обратную связь по тому как прошло, "
 #                 "чтобы мы в следующий раз еще лучше сделали? Я тебе сейчас через чат-бот сделаю запрос, если удобно - ответь пожалуйста."
 #             )
-#
+
 #             await send_safe(user_id, feedback_request)
-#
+
 #             # Wait 3 minutes (180 seconds) before the bot sends its message
 #             await asyncio.sleep(180)
-#
+
 #             # Final feedback bot message with correct city and date
 #             feedback_bot_message = (
 #                 f"Я чат-бот, собираю обратную связь по встрече в {city_name} в {day_of_week}, {city_date}. "
@@ -696,23 +702,23 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #                 f"помоги нам пожалуйста, потрать 4 минуты.\n\n"
 #                 f"Пожалуйста, используй команду /feedback чтобы оставить обратную связь."
 #             )
-#
+
 #             await send_safe(user_id, feedback_bot_message)
-#
+
 #             sent_count += 1
-#
+
 #             # Notify validation chat about sent message sequence
 #             validation_message = f"✅ Запрос обратной связи отправлен пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
 #             await app.log_to_chat(validation_message, "events")
-#
+
 #         except Exception as e:
 #             logger.error(f"Failed to send feedback request to user {user_id}: {e}")
 #             failed_count += 1
-#
+
 #             # Log error to validation chat
 #             error_message = f"❌ Ошибка отправки запроса обратной связи пользователю {user.get('full_name')} (@{user.get('username') or user_id}): {str(e)}"
 #             await app.log_to_chat(error_message, "errors")
-#
+
 #     # Update status message with results
 #     result_text = (
 #         f"✅ Запросы обратной связи отправлены!\n\n"
@@ -720,5 +726,5 @@ async def notify_early_payment_handler(message: Message, state: FSMContext):
 #         f"- Успешно отправлено: {sent_count}\n"
 #         f"- Ошибок: {failed_count}"
 #     )
-#
+
 #     await status_msg.edit_text(result_text)

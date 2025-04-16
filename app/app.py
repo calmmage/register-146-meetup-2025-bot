@@ -791,6 +791,44 @@ class App:
         """
         return await self._get_users_base(payment_status="unpaid", city=city)
 
+    async def get_users_without_feedback(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users who have not provided feedback yet
+
+        Args:
+            city: Optional city to filter by
+
+        Returns:
+            List of user registrations without feedback
+        """
+        all_users = await self._get_users_base(city=city)
+        users_without_feedback = []
+        
+        for user in all_users:
+            if not await self.has_provided_feedback(user["user_id"]):
+                users_without_feedback.append(user)
+                
+        return users_without_feedback
+
+    async def get_users_with_feedback(self, city: Optional[str] = None) -> List[Dict]:
+        """
+        Get all users who have provided feedback
+
+        Args:
+            city: Optional city to filter by
+
+        Returns:
+            List of user registrations with feedback
+        """
+        all_users = await self._get_users_base(city=city)
+        users_with_feedback = []
+        
+        for user in all_users:
+            if await self.has_provided_feedback(user["user_id"]):
+                users_with_feedback.append(user)
+                
+        return users_with_feedback
+
     async def get_paid_users(self, city: Optional[str] = None) -> List[Dict]:
         """
         Get all users who have paid (payment_status is "confirmed")
@@ -1061,3 +1099,19 @@ class App:
             result = await self.collection.delete_many(query)
 
         return result.deleted_count > 0
+
+    async def has_provided_feedback(self, user_id: int) -> bool:
+        """
+        Check if a user has already provided feedback
+
+        Args:
+            user_id: The user's Telegram ID
+
+        Returns:
+            True if user has provided feedback, False otherwise
+        """
+        if not hasattr(self, "_feedback_collection"):
+            self._feedback_collection = get_database().get_collection("feedback")
+            
+        feedback = await self._feedback_collection.find_one({"user_id": user_id})
+        return feedback is not None
