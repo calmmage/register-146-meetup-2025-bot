@@ -2,6 +2,7 @@ import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import User
 from unittest.mock import AsyncMock, MagicMock, patch
+from app.app import App
 
 from app.routers.admin import (
     admin_handler,
@@ -26,23 +27,9 @@ def mock_state():
 
 @pytest.fixture
 def mock_app():
-    with patch("app.router.app") as mock_app:
-        # Configure app specific mocks
-        aggregation_cursor = AsyncMock()
-        aggregation_cursor.to_list.return_value = [
-            {"_id": "MOSCOW", "count": 15},
-            {"_id": "PERM", "count": 10},
-            {"_id": "SAINT_PETERSBURG", "count": 5},
-        ]
-        mock_app.collection.aggregate = AsyncMock(return_value=aggregation_cursor)
-
-        # Add async methods
-        mock_app.export_registered_users_to_google_sheets = AsyncMock(
-            return_value="Export completed successfully!"
-        )
-        mock_app.export_to_csv = AsyncMock(return_value=("CSV content", "Export message"))
-
-        yield mock_app
+    # Configure app specific mocks
+    app = AsyncMock(spec=App)
+    return app
 
 
 @pytest.fixture
@@ -60,7 +47,9 @@ def mock_ask_user_choice():
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_export(mock_message, mock_state, mock_ask_user_choice, mock_send_safe):
+async def test_admin_handler_export(
+    mock_message, mock_state, mock_ask_user_choice, mock_send_safe, mock_app
+):
     # Configure mock for "export" choice
     mock_ask_user_choice.return_value = "export"
 
@@ -69,29 +58,29 @@ async def test_admin_handler_export(mock_message, mock_state, mock_ask_user_choi
         mock_export.return_value = AsyncMock()
 
         # Call the handler
-        result = await admin_handler(mock_message, mock_state)
+        result = await admin_handler(mock_message, mock_state, app=mock_app)
 
         # Verify export_handler was called
-        mock_export.assert_called_once_with(mock_message, mock_state)
+        mock_export.assert_called_once_with(mock_message, mock_state, app=mock_app)
 
         # Verify result is the chosen option
         assert result == "export"
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_register(mock_message, mock_state, mock_ask_user_choice):
+async def test_admin_handler_register(mock_message, mock_state, mock_ask_user_choice, mock_app):
     # Configure mock for "register" choice
     mock_ask_user_choice.return_value = "register"
 
     # Call the handler
-    result = await admin_handler(mock_message, mock_state)
+    result = await admin_handler(mock_message, mock_state, app=mock_app)
 
     # Verify result is "register" to continue with normal flow
     assert result == "register"
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_choice):
+async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_choice, mock_app):
     # Configure mock for "view_stats" choice
     mock_ask_user_choice.return_value = "view_stats"
 
@@ -100,10 +89,10 @@ async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_
         mock_stats.return_value = AsyncMock()
 
         # Call the handler
-        result = await admin_handler(mock_message, mock_state)
+        result = await admin_handler(mock_message, mock_state, app=mock_app)
 
         # Verify show_stats was called
-        mock_stats.assert_called_once_with(mock_message)
+        mock_stats.assert_called_once_with(mock_message, app=mock_app)
 
         # Verify result is the chosen option
         assert result == "view_stats"
