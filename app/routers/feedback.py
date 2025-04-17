@@ -8,7 +8,7 @@ from loguru import logger
 from app.app import App
 
 from botspot import commands_menu
-from botspot.user_interactions import ask_user_choice, ask_user_raw
+from botspot.user_interactions import ask_user_choice, ask_user_raw, ask_user_choice_raw
 from botspot.utils import send_safe
 
 router = Router()
@@ -29,6 +29,7 @@ async def save_feedback_and_thank(
     entertainment_rating=None,
     help_interest=None,
     comments=None,
+    feedback_format_preference=None,
     is_cancel=False,
 ):
     """Helper function to save feedback and send thank you message"""
@@ -45,15 +46,36 @@ async def save_feedback_and_thank(
         entertainment_rating=entertainment_rating,
         help_interest=help_interest,
         comments=comments,
+        feedback_format_preference=feedback_format_preference,
     )
 
     # Standard thank you message
+    thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
+    thank_you_msg += "Смотри на канал @school146club и общий чат на 685 выпускников 146 "
+    thank_you_msg += "(вход модерируется по ссылке https://t.me/+_wm7MlaGhCExOTg6) "
+    thank_you_msg += "чтобы узнать о наших следующих мероприятиях.\n\n"
+
+    # Add photo album links
+    thank_you_msg += "📸 Фотоальбомы с встреч:\n\n"
+
+    if city == "perm":
+        thank_you_msg += "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+    elif city == "moscow":
+        thank_you_msg += "• Ваш город - Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+        thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+    else:
+        thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+
+    if is_cancel:
+        thank_you_msg += (
+            "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
+        )
+
     await send_safe(
         message.chat.id,
-        "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
-        "Смотри на канал @school146club и общий чат на 685 выпускников 146 "
-        "(вход модерируется по ссылке https://t.me/+_wm7MlaGhCExOTg6) "
-        "чтобы узнать о наших следующих мероприятиях.",
+        thank_you_msg,
     )
 
     if is_cancel:
@@ -97,6 +119,10 @@ async def save_feedback_and_thank(
             message.chat.id,
             "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
         )
+    await send_safe(
+        message.chat.id,
+        "На этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉",
+    )
     return True
 
 
@@ -108,8 +134,6 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         logger.error("Message from_user is None")
         return
 
-    # from app.router import app
-
     # Get existing user data if available
     user_data = await app.collection.find_one({"user_id": message.from_user.id})
     full_name = user_data.get("full_name") if user_data else None
@@ -118,8 +142,8 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     await send_safe(
         message.chat.id,
         "Привет! \n"
-        "Я чат-бот, собираю обратную связь по встрече выпускников. \n"
-        "Благодаря в том числе и твоей обратной связи мы продолжаем улучшать наши мероприятия, \n"
+        "Я чат-бот, собираю обратную связь по встрече выпускников. \n\n"
+        "Благодаря в том числе и твоей обратной связи мы продолжаем улучшать наши мероприятия, "
         "помоги нам пожалуйста, потрать 4 минуты :)",
     )
 
@@ -443,7 +467,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     # Step 7: Ask if willing to help organize next year
     help_interest = await ask_user_choice(
         message.chat.id,
-        "Ты готов был бы помогать в организации встрече в твоем городе весной 2026?\n\n"
+        "Ты готов был бы помогать в организации встречи в твоем городе весной 2026?\n\n"
         "1 - да, запишите меня!\n"
         "2 - нет, пока что нет пропускной способности, а прийти буду рад!\n"
         "3 - пока что сложно сказать так заранее",
@@ -498,14 +522,76 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
 
     # Step 8: Ask for specific comments
     comments_text = None
-    comments = await ask_user_raw(
+    comments = await ask_user_choice_raw(
         message.chat.id,
-        "Есть ли у тебя конкретные комментарии? Напиши пожалуйста сюда ответным сообщением.",
+        "Если хочешь написать что-то, что мы не включили в опрос, напиши ниже",
+        choices={
+            "skip": "Пропустить вопрос",
+        },
         state=state,
         timeout=None,
     )
-    if comments and comments.text:
+
+    if comments and isinstance(comments, str):
+        # Button was clicked
+        if comments == "skip":
+            await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
+    elif comments and comments.text:
+        # User sent a text message
         comments_text = comments.text
+
+    # Step 9: Ask about feedback format preference
+    feedback_format = await ask_user_choice(
+        message.chat.id,
+        "Как удобнее заполнять обратную связь?",
+        choices={
+            "bot": "Вот так через бота",
+            "google_forms": "Гугл формы",
+            "skip": "Пропустить вопрос",
+            "cancel": "Отмена",
+        },
+        state=state,
+        timeout=None,
+        columns=2,
+        default_choice="cancel",
+        highlight_default=False,
+    )
+
+    if feedback_format == "cancel":
+        # Save feedback data and thank the user
+        await save_feedback_and_thank(
+            message,
+            state,
+            app,
+            message.from_user.id,
+            message.from_user.username,
+            full_name,
+            attended=True,
+            city=city,
+            recommendation=recommendation,
+            venue_rating=venue_rating,
+            food_rating=food_rating,
+            entertainment_rating=entertainment_rating,
+            help_interest=help_interest,
+            comments=comments_text,
+            is_cancel=True,
+        )
+        return
+
+    if feedback_format == "skip":
+        feedback_format = None
+        await send_safe(message.chat.id, "Спасибо! Вопрос пропущен.")
+
+    # Log feedback format preference
+    await app.save_event_log(
+        "feedback",
+        {
+            "type": "feedback_format_preference",
+            "preference": feedback_format,
+        },
+        message.from_user.id,
+        message.from_user.username,
+    )
 
     # Save all feedback and thank the user using the helper function
     await save_feedback_and_thank(
@@ -523,4 +609,5 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         entertainment_rating=entertainment_rating,
         help_interest=help_interest,
         comments=comments_text,
+        feedback_format_preference=feedback_format,
     )

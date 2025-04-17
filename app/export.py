@@ -412,6 +412,7 @@ class SheetExporter:
             "Развлечения (1-5)",
             "Будет помогать",
             "Комментарии",
+            "Предпочитаемый формат обратной связи",
             "Дата отзыва",
         ]
 
@@ -434,6 +435,13 @@ class SheetExporter:
             elif help_interest == "maybe":
                 help_interest = "Возможно"
 
+            # Format feedback format preference
+            feedback_format = item.get("feedback_format_preference", "")
+            if feedback_format == "bot":
+                feedback_format = "Через бота"
+            elif feedback_format == "google_forms":
+                feedback_format = "Гугл формы"
+
             # Create a row of feedback data
             feedback_row = [
                 item.get("full_name", ""),
@@ -447,6 +455,7 @@ class SheetExporter:
                 item.get("entertainment_rating", ""),
                 help_interest,
                 item.get("comments", ""),
+                feedback_format,
                 item.get("timestamp", ""),
             ]
 
@@ -499,6 +508,7 @@ class SheetExporter:
                 "Развлечения (1-5)",
                 "Будет помогать",
                 "Комментарии",
+                "Предпочитаемый формат обратной связи",
                 "Дата отзыва",
             ]
             writer.writerow(headers)
@@ -517,6 +527,13 @@ class SheetExporter:
                 elif help_interest == "maybe":
                     help_interest = "Возможно"
 
+                # Format feedback format preference
+                feedback_format = item.get("feedback_format_preference", "")
+                if feedback_format == "bot":
+                    feedback_format = "Через бота"
+                elif feedback_format == "google_forms":
+                    feedback_format = "Гугл формы"
+
                 writer.writerow(
                     [
                         item.get("full_name", ""),
@@ -530,6 +547,7 @@ class SheetExporter:
                         item.get("entertainment_rating", ""),
                         help_interest,
                         item.get("comments", ""),
+                        feedback_format,
                         item.get("timestamp", ""),
                     ]
                 )
