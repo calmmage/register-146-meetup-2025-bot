@@ -1326,6 +1326,7 @@ async def start_handler(message: Message, state: FSMContext, app: App):
     """
     Main scenario flow.
     """
+    assert message.from_user is not None
     # Log the start command
     if message.from_user:
         await app.save_event_log(
@@ -1336,7 +1337,7 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         )
 
     if is_admin(message.from_user):
-        result = await admin_handler(message, state)
+        result = await admin_handler(message, state, app=app)
         if result != "register":
             return
 

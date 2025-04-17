@@ -77,6 +77,29 @@ class RegisteredUser(BaseModel):
     graduate_type: GraduateType = GraduateType.GRADUATE
 
 
+class FeedbackData(BaseModel):
+    """Model for feedback data"""
+    user_id: int
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    city: Optional[str] = None
+    attended: Optional[bool] = None
+    recommendation_level: Optional[str] = None
+    recommendation_feedback: Optional[str] = None
+    venue_rating: Optional[str] = None
+    venue_feedback: Optional[str] = None
+    food_rating: Optional[str] = None
+    food_feedback: Optional[str] = None
+    entertainment_rating: Optional[str] = None
+    entertainment_feedback: Optional[str] = None
+    help_interest: Optional[str] = None
+    comments: Optional[str] = None
+    feedback_format_preference: Optional[str] = None
+
+    class Config:
+        extra = "ignore"  # Ignore extra fields in the dict
+
+
 class App:
     name = "146 Meetup Register Bot"
 
@@ -132,7 +155,7 @@ class App:
         return self._deleted_users
 
     async def save_registered_user(
-        self, registered_user: RegisteredUser, user_id: int = None, username: str = None
+        self, registered_user: RegisteredUser, user_id: Optional[int] = None, username: Optional[str] = None
     ):
         """Save a user registration with optional user_id and username"""
         # Convert the model to a dict and extract the enum value before saving
@@ -191,7 +214,7 @@ class App:
         return registrations[0] if registrations else None
 
     async def delete_user_registration(
-        self, user_id: int, city: str = None, username: str = None, full_name: str = None
+        self, user_id: int, city: Optional[str] = None, username: Optional[str] = None, full_name: Optional[str] = None
     ):
         """
         Move a user's registration to deleted_users collection instead of permanent deletion
@@ -473,7 +496,7 @@ class App:
         user_id: int,
         username: str,
         full_name: str,
-        city: str,
+        city: Optional[str] = None,
     ) -> None:
         """
         Log a canceled registration to the events chat
@@ -560,13 +583,13 @@ class App:
     async def save_payment_info(
         self,
         user_id: int,
-        city: str,
-        discounted_amount: int,
-        regular_amount: int,
-        screenshot_message_id: int = None,
-        formula_amount: int = None,
-        username: str = None,
-        payment_status: str = "pending",
+        city: Optional[str] = None,
+        discounted_amount: Optional[int] = None,
+        regular_amount: Optional[int] = None,
+        screenshot_message_id: Optional[int] = None,
+        formula_amount: Optional[int] = None,
+        username: Optional[str] = None,
+        payment_status: Optional[str] = None,
     ):
         """
         Save payment information for a user
@@ -621,12 +644,12 @@ class App:
     async def update_payment_status(
         self,
         user_id: int,
-        city: str,
-        status: str,
-        admin_comment: str = None,
-        payment_amount: int = None,
-        admin_id: int = None,
-        admin_username: str = None,
+        city: Optional[str] = None,
+        status: Optional[str] = None,
+        admin_comment: Optional[str] = None,
+        payment_amount: Optional[int] = None,
+        admin_id: Optional[int] = None,
+        admin_username: Optional[str] = None,
     ):
         """
         Update the payment status for a user
@@ -956,80 +979,30 @@ class App:
 
     async def save_feedback(
         self,
-        user_id: int,
-        username: str = None,
-        full_name: str = None,
-        city: str = None,
-        attended: bool = None,
-        recommendation_level: str = None,
-        venue_rating: str = None,
-        food_rating: str = None,
-        entertainment_rating: str = None,
-        help_interest: str = None,
-        comments: str = None,
-        feedback_format_preference: str = None,
+        feedback_data: dict | FeedbackData,
     ) -> str:
         """
         Save a user's feedback to the database
 
         Args:
-            user_id: User's Telegram ID
-            username: User's Telegram username
-            full_name: User's full name
-            city: City the user attended
-            attended: Whether the user attended the event
-            recommendation_level: Rating for overall recommendation (1-5)
-            venue_rating: Rating for the venue (1-5)
-            food_rating: Rating for the food and drinks (1-5)
-            entertainment_rating: Rating for entertainment (1-5)
-            help_interest: Interest in helping with future events
-            comments: Additional comments from the user
-            feedback_format_preference: User's preference for feedback format (bot or google_forms)
+            feedback_data: Dictionary or FeedbackData model containing feedback information
 
         Returns:
             ID of the inserted feedback document
         """
-        user_info = await self.collection.find_one({"user_id": user_id})
+        # Convert dict to FeedbackData model if needed
+        if isinstance(feedback_data, dict):
+            feedback_data = FeedbackData(**feedback_data)
+
+        # Get user info if full_name is not provided
+        if not feedback_data.full_name:
+            user_info = await self.collection.find_one({"user_id": feedback_data.user_id})
+            if user_info and "full_name" in user_info:
+                feedback_data.full_name = user_info.get("full_name")
 
         # Create the feedback document
-        feedback = {
-            "user_id": user_id,
-            "timestamp": datetime.now().isoformat(),
-            "attended": attended,
-        }
-
-        # Add optional fields if provided
-        if username:
-            feedback["username"] = username
-
-        if full_name:
-            feedback["full_name"] = full_name
-        elif user_info and "full_name" in user_info:
-            feedback["full_name"] = user_info.get("full_name")
-
-        if city:
-            feedback["city"] = city
-
-        if recommendation_level:
-            feedback["recommendation_level"] = recommendation_level
-
-        if venue_rating:
-            feedback["venue_rating"] = venue_rating
-
-        if food_rating:
-            feedback["food_rating"] = food_rating
-
-        if entertainment_rating:
-            feedback["entertainment_rating"] = entertainment_rating
-
-        if help_interest:
-            feedback["help_interest"] = help_interest
-
-        if comments:
-            feedback["comments"] = comments
-
-        if feedback_format_preference:
-            feedback["feedback_format_preference"] = feedback_format_preference
+        feedback = feedback_data.model_dump(exclude_none=True)
+        feedback["timestamp"] = datetime.now().isoformat()
 
         # Create or get feedback collection
         if not hasattr(self, "_feedback_collection"):
@@ -1042,15 +1015,15 @@ class App:
         await self.save_event_log(
             "feedback_submitted",
             {
-                "user_id": user_id,
-                "username": username,
+                "user_id": feedback_data.user_id,
+                "username": feedback_data.username,
                 "feedback_id": str(result.inserted_id),
-                "attended": attended,
-                "city": city,
-                "feedback_format_preference": feedback_format_preference,
+                "attended": feedback_data.attended,
+                "city": feedback_data.city,
+                "feedback_format_preference": feedback_data.feedback_format_preference,
             },
-            user_id,
-            username,
+            feedback_data.user_id,
+            feedback_data.username,
         )
 
         return str(result.inserted_id)

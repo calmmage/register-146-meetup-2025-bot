@@ -31,7 +31,7 @@ router = Router()
 # Helper function for calculating median
 
 
-async def admin_handler(message: Message, state: FSMContext):
+async def admin_handler(message: Message, state: FSMContext, app: App):
     from app.routers.stats import (
         show_stats,
         show_simple_stats,
@@ -46,7 +46,8 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "send_feedback_request": "Отправить запрос на обратную связь",
+            "notify_users": "Рассылка пользователям",
+            # "send_feedback_request": "Отправить запрос на обратную связь",
             # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
@@ -66,7 +67,6 @@ async def admin_handler(message: Message, state: FSMContext):
             message.chat.id,
             "Другие команды:",
             choices={
-                "notify_users": "Рассылка пользователям",
                 "view_year_stats": "Посмотреть статистику по годам выпуска",
                 "five_year_stats": "График по пятилеткам выпуска",
                 "payment_stats": "Круговая диаграмма оплат",
@@ -81,31 +81,31 @@ async def admin_handler(message: Message, state: FSMContext):
         )
 
     if response == "export":
-        await export_handler(message, state)
+        await export_handler(message, state, app=app)
     elif response == "view_stats":
-        await show_stats(message)
+        await show_stats(message, app=app)
     elif response == "view_simple_stats":
-        await show_simple_stats(message)
+        await show_simple_stats(message, app=app)
     elif response == "view_year_stats":
-        await show_year_stats(message)
+        await show_year_stats(message, app=app)
     elif response == "five_year_stats":
-        await show_five_year_stats(message)
+        await show_five_year_stats(message, app=app)
     elif response == "payment_stats":
-        await show_payment_stats(message)
+        await show_payment_stats(message, app=app)
     elif response == "test_user_selection":
         from app.routers.crm import test_user_selection_handler
 
-        await test_user_selection_handler(message, state)
-    elif response == "send_feedback_request":
-        from app.routers.crm import send_feedback_request_handler
+        await test_user_selection_handler(message, state, app=app)
+    # elif response == "send_feedback_request":
+    #     from app.routers.crm import send_feedback_request_handler
 
-        await send_feedback_request_handler(message, state)
+    #     await send_feedback_request_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":
         from app.routers.crm import notify_users_handler
 
-        await notify_users_handler(message, state)
+        await notify_users_handler(message, state, app=app)
     # For "register", continue with normal flow
     return response
 
