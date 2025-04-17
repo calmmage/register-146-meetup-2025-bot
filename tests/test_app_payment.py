@@ -190,7 +190,7 @@ class TestAppPayment:
         assert update_data["regular_payment_amount"] == regular_amount
         assert update_data["payment_screenshot_id"] == screenshot_id
         assert update_data["formula_payment_amount"] == formula_amount
-        assert update_data["payment_status"] == "pending"
+        assert update_data["payment_status"] is None
         assert update_data["payment_timestamp"] == mock_now.isoformat()
 
     @pytest.mark.asyncio

@@ -6,7 +6,7 @@ import seaborn as sns
 from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from matplotlib import pyplot as plt
-
+from app.app import App
 from app.routers.admin import _format_graduate_type
 from app.routers.crm import router
 from botspot import commands_menu, send_safe
@@ -23,9 +23,9 @@ def get_median(ratios):
 
 @commands_menu.add_command("stats", "Статистика регистраций", visibility=Visibility.ADMIN_ONLY)
 @router.message(Command("stats"), AdminFilter())
-async def show_stats(message: Message):
+async def show_stats(message: Message, app: App):
     """Показать статистику регистраций"""
-    from app.router import app
+
     from app.app import PAYMENT_STATUS_MAP
 
     # Initialize stats text
@@ -426,9 +426,8 @@ async def show_stats(message: Message):
     "simple_stats", "Краткая статистика регистраций", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("simple_stats"), AdminFilter())
-async def show_simple_stats(message: Message):
+async def show_simple_stats(message: Message, app: App):
     """Показать краткую статистику регистраций"""
-    from app.router import app
     from app.app import PAYMENT_STATUS_MAP
 
     stats_text = "<b>📊 Краткая статистика регистраций</b> (включая удаленных)\n\n"
@@ -790,9 +789,8 @@ async def show_simple_stats(message: Message):
     "year_stats", "Статистика регистраций по годам выпуска", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("year_stats"), AdminFilter())
-async def show_year_stats(message: Message):
+async def show_year_stats(message: Message, app: App):
     """Show registration statistics by graduation year with matplotlib diagrams"""
-    from app.router import app
 
     # Send status message
     status_msg = await send_safe(message.chat.id, "⏳ Генерация статистики по годам выпуска...")
@@ -995,9 +993,8 @@ async def show_year_stats(message: Message):
     "five_year_stats", "График по пятилеткам выпуска", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("five_year_stats"), AdminFilter())
-async def show_five_year_stats(message: Message):
+async def show_five_year_stats(message: Message, app: App):
     """Показать график регистраций по пятилеткам выпуска и городам"""
-    from app.router import app
 
     # Send status message
     status_msg = await send_safe(message.chat.id, "⏳ Генерация графика по пятилеткам выпуска...")
@@ -1127,9 +1124,8 @@ async def show_five_year_stats(message: Message):
     "payment_stats", "Круговая диаграмма оплат", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("payment_stats"), AdminFilter())
-async def show_payment_stats(message: Message):
+async def show_payment_stats(message: Message, app: App):
     """Показать круговую диаграмму оплат по пятилеткам выпуска"""
-    from app.router import app
 
     # Send status message
     status_msg = await send_safe(message.chat.id, "⏳ Генерация круговой диаграммы оплат...")

@@ -11,7 +11,7 @@ from aiogram.types import (
 from litellm import acompletion
 from loguru import logger
 from pydantic import BaseModel
-
+from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.user_interactions import ask_user_choice, ask_user_raw
@@ -31,7 +31,7 @@ router = Router()
 # Helper function for calculating median
 
 
-async def admin_handler(message: Message, state: FSMContext):
+async def admin_handler(message: Message, state: FSMContext, app: App):
     from app.routers.stats import (
         show_stats,
         show_simple_stats,
@@ -46,7 +46,8 @@ async def admin_handler(message: Message, state: FSMContext):
         "Вы администратор бота. Что вы хотите сделать?",
         # todo: rework this?
         choices={
-            "send_feedback_request": "Отправить запрос на обратную связь",
+            "notify_users": "Рассылка пользователям",
+            # "send_feedback_request": "Отправить запрос на обратную связь",
             # stats
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
@@ -66,7 +67,6 @@ async def admin_handler(message: Message, state: FSMContext):
             message.chat.id,
             "Другие команды:",
             choices={
-                "notify_users": "Рассылка пользователям",
                 "view_year_stats": "Посмотреть статистику по годам выпуска",
                 "five_year_stats": "График по пятилеткам выпуска",
                 "payment_stats": "Круговая диаграмма оплат",
@@ -81,31 +81,31 @@ async def admin_handler(message: Message, state: FSMContext):
         )
 
     if response == "export":
-        await export_handler(message, state)
+        await export_handler(message, state, app=app)
     elif response == "view_stats":
-        await show_stats(message)
+        await show_stats(message, app=app)
     elif response == "view_simple_stats":
-        await show_simple_stats(message)
+        await show_simple_stats(message, app=app)
     elif response == "view_year_stats":
-        await show_year_stats(message)
+        await show_year_stats(message, app=app)
     elif response == "five_year_stats":
-        await show_five_year_stats(message)
+        await show_five_year_stats(message, app=app)
     elif response == "payment_stats":
-        await show_payment_stats(message)
+        await show_payment_stats(message, app=app)
     elif response == "test_user_selection":
         from app.routers.crm import test_user_selection_handler
 
-        await test_user_selection_handler(message, state)
-    elif response == "send_feedback_request":
-        from app.routers.crm import send_feedback_request_handler
+        await test_user_selection_handler(message, state, app=app)
+    # elif response == "send_feedback_request":
+    #     from app.routers.crm import send_feedback_request_handler
 
-        await send_feedback_request_handler(message, state)
+    #     await send_feedback_request_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":
         from app.routers.crm import notify_users_handler
 
-        await notify_users_handler(message, state)
+        await notify_users_handler(message, state, app=app)
     # For "register", continue with normal flow
     return response
 
@@ -114,7 +114,7 @@ async def admin_handler(message: Message, state: FSMContext):
     "export", "Экспорт списка участников (активных и удаленных)", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("export"), AdminFilter())
-async def export_handler(message: Message, state: FSMContext):
+async def export_handler(message: Message, state: FSMContext, app: App):
     """Экспорт списка зарегистрированных или удаленных участников в Google Sheets или CSV"""
     notif = await send_safe(message.chat.id, "Подготовка экспорта...")
 
@@ -139,8 +139,6 @@ async def export_handler(message: Message, state: FSMContext):
         state=state,
         timeout=None,
     )
-
-    from app.router import app
 
     # Handle registered users export
     if export_type_response == "registered":
@@ -210,9 +208,8 @@ def _format_graduate_type(grad_type: str, plural=False):
     "normalize_db", "Нормализовать типы выпускников в БД", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("normalize_db"), AdminFilter())
-async def normalize_db(message: Message):
+async def normalize_db(message: Message, app: App):
     """Normalize graduate types in the database"""
-    from app.router import app
 
     # Send initial message
     status_msg = await send_safe(message.chat.id, "Нормализация типов выпускников в базе данных...")
