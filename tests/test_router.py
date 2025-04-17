@@ -82,12 +82,15 @@ def mock_is_event_passed():
 
 @pytest.mark.asyncio
 async def test_start_handler_new_user(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies,
-    mock_is_admin, mock_is_event_passed
+    mock_message,
+    mock_state,
+    mock_app,
+    mock_send_safe,
+    mock_botspot_dependencies,
+    mock_is_admin,
+    mock_is_event_passed,
 ):
-    from app.router import (
-        start_handler,
-    )
+    from app.router import start_handler
 
     # Configure the mocks for a new user
     mock_app.get_user_registration.return_value = None
@@ -105,13 +108,16 @@ async def test_start_handler_new_user(
 
 @pytest.mark.asyncio
 async def test_start_handler_existing_user(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies,
-    mock_is_admin, mock_is_event_passed
+    mock_message,
+    mock_state,
+    mock_app,
+    mock_send_safe,
+    mock_botspot_dependencies,
+    mock_is_admin,
+    mock_is_event_passed,
 ):
     from app.app import TargetCity
-    from app.router import (
-        start_handler,
-    )
+    from app.router import start_handler
 
     # Configure the mocks for an existing user
     mock_user = {
@@ -155,9 +161,7 @@ async def test_start_handler_existing_user(
 async def test_cancel_registration_handler_no_registrations(
     mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
 ):
-    from app.router import (
-        cancel_registration_handler,
-    )
+    from app.router import cancel_registration_handler
 
     # Configure the mocks for a user with no registrations
     mock_app.get_user_registrations.return_value = []

@@ -11,7 +11,7 @@ from aiogram.types import (
 from litellm import acompletion
 from loguru import logger
 from pydantic import BaseModel
-
+from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.user_interactions import ask_user_choice, ask_user_raw
@@ -114,7 +114,7 @@ async def admin_handler(message: Message, state: FSMContext):
     "export", "Экспорт списка участников (активных и удаленных)", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("export"), AdminFilter())
-async def export_handler(message: Message, state: FSMContext):
+async def export_handler(message: Message, state: FSMContext, app: App):
     """Экспорт списка зарегистрированных или удаленных участников в Google Sheets или CSV"""
     notif = await send_safe(message.chat.id, "Подготовка экспорта...")
 
@@ -139,8 +139,6 @@ async def export_handler(message: Message, state: FSMContext):
         state=state,
         timeout=None,
     )
-
-    from app.router import app
 
     # Handle registered users export
     if export_type_response == "registered":
@@ -210,9 +208,8 @@ def _format_graduate_type(grad_type: str, plural=False):
     "normalize_db", "Нормализовать типы выпускников в БД", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("normalize_db"), AdminFilter())
-async def normalize_db(message: Message):
+async def normalize_db(message: Message, app: App):
     """Normalize graduate types in the database"""
-    from app.router import app
 
     # Send initial message
     status_msg = await send_safe(message.chat.id, "Нормализация типов выпускников в базе данных...")
