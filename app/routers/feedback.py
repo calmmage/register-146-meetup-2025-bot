@@ -58,22 +58,15 @@ async def ask_low_rating_feedback(
 
 
 async def save_feedback_and_thank(
-    message: Message,
+    message,
     state,
     app: App,
     feedback_data: dict,
     is_cancel: bool = False,
 ) -> bool:
     """Helper function to save feedback and send thank you message"""
-    # Ensure feedback_data has required fields
-    if message.from_user:
-        if "user_id" not in feedback_data:
-            feedback_data["user_id"] = message.from_user.id
-        if "username" not in feedback_data:
-            feedback_data["username"] = message.from_user.username
-
     # Save all feedback data to the database
-    await app.save_feedback(feedback_data)  # Pass the dict directly
+    await app.save_feedback(**feedback_data)
 
     # Standard thank you message
     thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
@@ -112,14 +105,30 @@ async def save_feedback_and_thank(
         await asyncio.sleep(5)
 
     # Ask about club projects
-    response = await ask_user_raw(
+    response = await ask_user_choice_raw(
         message.chat.id,
         "Хочешь еще в какие-то проекты Клуба Друзей 146 включаться? Если да, ответь сюда сообщением.",
+        choices={
+            "skip": "Пропустить вопрос",
+        },
         state=state,
         timeout=1200,  # 20 minutes timeout
     )
 
-    if response:
+    if response and isinstance(response, str):
+        # Button was clicked
+        if response == "skip":
+            await send_safe(
+                message.chat.id,
+                "Если хочешь с нами связаться проактивно, всегда рады, пиши: @marish_me, @petr_lavrov, @istominivan",
+            )
+            await send_safe(
+                message.chat.id,
+                "На этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉",
+            )
+            return True
+    elif response and response.text:
+        # User sent a text message
         # Log the response
         await app.save_event_log(
             "feedback",
@@ -221,7 +230,6 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
             state,
             app,
             feedback_data,
-            is_cancel=False,
         )
         return
 
@@ -654,5 +662,4 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
         state,
         app,
         feedback_data,
-        is_cancel=False,
     )
