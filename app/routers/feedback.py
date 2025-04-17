@@ -467,7 +467,7 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     # Step 7: Ask if willing to help organize next year
     help_interest = await ask_user_choice(
         message.chat.id,
-        "Ты готов был бы помогать в организации встрече в твоем городе весной 2026?\n\n"
+        "Ты готов был бы помогать в организации встречи в твоем городе весной 2026?\n\n"
         "1 - да, запишите меня!\n"
         "2 - нет, пока что нет пропускной способности, а прийти буду рад!\n"
         "3 - пока что сложно сказать так заранее",
