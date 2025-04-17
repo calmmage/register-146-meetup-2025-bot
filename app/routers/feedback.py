@@ -66,7 +66,7 @@ async def save_feedback_and_thank(
 ) -> bool:
     """Helper function to save feedback and send thank you message"""
     # Save all feedback data to the database
-    await app.save_feedback(**feedback_data)
+    await app.save_feedback(feedback_data)
 
     # Standard thank you message
     thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
