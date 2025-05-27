@@ -70,8 +70,8 @@ async def save_feedback_and_thank(
 
     # Standard thank you message
     thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
-    thank_you_msg += "Смотри на канал @school146club и общий чат на 685 выпускников 146 "
-    thank_you_msg += "(вход модерируется по ссылке https://t.me/+_wm7MlaGhCExOTg6) "
+    thank_you_msg += "Смотри на канал @school146club и общий чат на 713 выпускников 146 "
+    thank_you_msg += "(вход модерируется по ссылке https://t.me/+Y5AbalGQBktmOGFi) "
     thank_you_msg += "чтобы узнать о наших следующих мероприятиях.\n\n"
 
     # Add photo album links
