@@ -16,6 +16,7 @@ class TargetCity(Enum):
     MOSCOW = "Москва"
     SAINT_PETERSBURG = "Санкт-Петербург"
     BELGRADE = "Белград"
+    PERM_SUMMER_2025 = "Пермь (Летняя встреча 2025)"
 
 
 class GraduateType(str, Enum):
@@ -543,7 +544,7 @@ class App:
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
                 return 4000, 1000, 3000, 4000
-            elif city == TargetCity.PERM.value:
+            elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
                 return 2000, 500, 1500, 2000
             else:
                 return 0, 0, 0, 0
@@ -555,7 +556,7 @@ class App:
         formula_amount = 0
         if city == TargetCity.MOSCOW.value:
             formula_amount = 1000 + (200 * years_since_graduation)
-        elif city == TargetCity.PERM.value:
+        elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
             formula_amount = 500 + (100 * years_since_graduation)
 
         regular_amount = 0
@@ -564,7 +565,7 @@ class App:
         else:
             if city == TargetCity.MOSCOW.value:
                 regular_amount = 4000
-            elif city == TargetCity.PERM.value:
+            elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
                 regular_amount = 2000
 
         # Early registration discount
@@ -572,7 +573,7 @@ class App:
         # if early_registration:
         if city == TargetCity.MOSCOW.value:
             discount = 1000
-        elif city == TargetCity.PERM.value:
+        elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
             discount = 500
 
         # Final amount after discount

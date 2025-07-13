@@ -27,9 +27,10 @@ router = Router()
 app = App()
 
 
-# Check if it's an early registration (before March 15)
-EARLY_REGISTRATION_DATE = datetime.strptime("2025-03-15", "%Y-%m-%d")
-EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
+# Check if it's an early registration (before summer event)
+# TODO: Уточнить дату окончания скидки за предоплату для летней встречи
+EARLY_REGISTRATION_DATE = datetime.strptime("2025-07-15", "%Y-%m-%d")  # Временно: за 2 недели до встречи
+EARLY_REGISTRATION_DATE_HUMAN = "15 Июля"
 
 
 async def process_payment(
@@ -82,7 +83,7 @@ async def process_payment(
         # Prepare payment message - split into parts for better UX
         if city == TargetCity.MOSCOW.value:
             payment_formula = "1000р + 200 * (2025 - год выпуска)"
-        elif city == TargetCity.PERM.value:
+        elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
             payment_formula = "500р + 100 * (2025 - год выпуска)"
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
