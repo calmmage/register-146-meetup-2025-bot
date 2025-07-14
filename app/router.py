@@ -239,7 +239,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
 
         if response == "cancel":
-            await cancel_registration_handler(message, state)
+            await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
             # Process payment for this registration
@@ -1375,7 +1375,42 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         await handle_registered_user(message, state, existing_summer_registration, app)
     else:
         # New user or user not registered for summer event
-        # Use existing registration data if available (from other events)
+        # First, show information about the event
+        city = TargetCity.PERM_SUMMER_2025
+        event_info = f"""
+👋 Добро пожаловать!
+
+В ближайшее время клуб выпускников школы 146 проводит встречу:
+
+📅 Дата: {date_of_event[city]}
+⏰ Время: {time_of_event[city]}
+📍 Место: {venue_of_event[city]}
+🗺️ Адрес: {address_of_event[city]}
+
+Хотите зарегистрироваться на эту встречу?
+        """
+        
+        # Ask user if they want to register
+        response = await ask_user_choice(
+            message.chat.id,
+            event_info.strip(),
+            choices={
+                "yes": "Да, зарегистрироваться",
+                "cancel": "Отмена"
+            },
+            state=state,
+            timeout=None,
+        )
+        
+        if response == "cancel" or response is None:
+            await send_safe(
+                message.chat.id,
+                "Регистрация отменена. Если передумаете, просто напишите боту снова!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        
+        # User wants to register, proceed with registration
         reuse_info = existing_registration if existing_registration else None
         await register_user(message, state, app, 
                           preselected_city=TargetCity.PERM_SUMMER_2025.value, 
