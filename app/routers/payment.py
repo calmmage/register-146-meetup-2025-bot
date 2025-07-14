@@ -27,9 +27,9 @@ router = Router()
 app = App()
 
 
-# Check if it's an early registration (before March 15)
-EARLY_REGISTRATION_DATE = datetime.strptime("2025-03-15", "%Y-%m-%d")
-EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
+# Early registration for old events only (not applicable to summer 2025)
+EARLY_REGISTRATION_DATE = datetime.strptime("2025-07-15", "%Y-%m-%d")
+EARLY_REGISTRATION_DATE_HUMAN = "15 Июля"
 
 
 async def process_payment(
@@ -84,6 +84,8 @@ async def process_payment(
             payment_formula = "1000р + 200 * (2025 - год выпуска)"
         elif city == TargetCity.PERM.value:
             payment_formula = "500р + 100 * (2025 - год выпуска)"
+        elif city == TargetCity.PERM_SUMMER_2025.value:
+            payment_formula = "по таблице в зависимости от года выпуска"
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
 
@@ -105,34 +107,44 @@ async def process_payment(
             # Delay between messages
             await asyncio.sleep(5)
 
-        # Check if we're before the early registration deadline
-        today = datetime.now()
-        is_early_registration_period = today < EARLY_REGISTRATION_DATE
-
-        formula_message = ""
-        if formula_amount > regular_amount:
-            formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
-
-        if is_early_registration_period:
+        # For summer 2025 event, no early registration discount
+        if city == TargetCity.PERM_SUMMER_2025.value:
             payment_msg_part2 = dedent(
                 f"""
-                Для вас минимальный взнос: {regular_amount} руб. {formula_message}
+                Стоимость билета для вашего года выпуска: {regular_amount} руб.
                 
-                При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
-                Минимальный взнос при ранней оплате - {discounted_amount} руб.
-                
-                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                Приятно будет увидеть вас на летней встрече! 😊
                 """
             )
         else:
-            payment_msg_part2 = dedent(
-                f"""
-                Для вас минимальный взнос: {regular_amount} руб.
-                {formula_message}
-                
-                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
-                """
-            )
+            # Check if we're before the early registration deadline (for old events)
+            today = datetime.now()
+            is_early_registration_period = today < EARLY_REGISTRATION_DATE
+
+            formula_message = ""
+            if formula_amount > regular_amount:
+                formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
+
+            if is_early_registration_period:
+                payment_msg_part2 = dedent(
+                    f"""
+                    Для вас минимальный взнос: {regular_amount} руб. {formula_message}
+                    
+                    При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
+                    Минимальный взнос при ранней оплате - {discounted_amount} руб.
+                    
+                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    """
+                )
+            else:
+                payment_msg_part2 = dedent(
+                    f"""
+                    Для вас минимальный взнос: {regular_amount} руб.
+                    {formula_message}
+                    
+                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    """
+                )
 
         # Send part 2
         await send_safe(message.chat.id, payment_msg_part2)

@@ -30,6 +30,7 @@ date_of_event = {
     TargetCity.MOSCOW: "5 Апреля, Сб",
     TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
     TargetCity.BELGRADE: "5 Апреля, Сб",
+    TargetCity.PERM_SUMMER_2025: "2 Августа, Пт",
 }
 
 # Add event dates in datetime format for comparison
@@ -38,6 +39,7 @@ event_dates = {
     TargetCity.MOSCOW: datetime(2025, 4, 5),
     TargetCity.SAINT_PETERSBURG: datetime(2025, 4, 5),
     TargetCity.BELGRADE: datetime(2025, 4, 5),
+    TargetCity.PERM_SUMMER_2025: datetime(2025, 8, 2),
 }
 
 
@@ -52,6 +54,7 @@ time_of_event = {
     TargetCity.MOSCOW: "18:00",
     TargetCity.SAINT_PETERSBURG: "17:00",
     TargetCity.BELGRADE: "Уточняется",  # Предположительно
+    TargetCity.PERM_SUMMER_2025: "18:00-24:00",
 }
 
 venue_of_event = {
@@ -59,6 +62,7 @@ venue_of_event = {
     TargetCity.MOSCOW: "People Loft",
     TargetCity.SAINT_PETERSBURG: "Family Loft",
     TargetCity.BELGRADE: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "База \"Чайка\", Беседка 11",
 }
 
 address_of_event = {
@@ -66,6 +70,7 @@ address_of_event = {
     TargetCity.MOSCOW: "1-я ул. Энтузиастов, 12, метро Авиамоторная",
     TargetCity.SAINT_PETERSBURG: "Кожевенная линия, 34, Метро горный институт",
     TargetCity.BELGRADE: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "г. Пермь, ул. Встречная 33",
 }
 
 padezhi = {
@@ -73,6 +78,7 @@ padezhi = {
     TargetCity.MOSCOW: "Москве",
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
     TargetCity.BELGRADE: "Белграде",
+    TargetCity.PERM_SUMMER_2025: "Перми",
 }
 
 
@@ -1341,23 +1347,36 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         if result != "register":
             return
 
-    # Check if all events have passed
-    all_events_passed = all(is_event_passed(city) for city in TargetCity)
-    if all_events_passed:
+    # Check if the summer event has passed
+    summer_event_passed = is_event_passed(TargetCity.PERM_SUMMER_2025)
+    if summer_event_passed:
         await send_safe(
             message.chat.id,
-            "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
+            "Летняя встреча выпускников уже прошла. Спасибо, что были с нами! 🎓\n\n"
             "Следите за новостями в группе школы, чтобы не пропустить следующие встречи.",
             reply_markup=ReplyKeyboardRemove(),
         )
         return
 
-    # Check if user is already registered
+    # Check if user is already registered for summer event
     existing_registration = await app.get_user_registration(message.from_user.id)
-
+    existing_summer_registration = None
+    
     if existing_registration:
-        # User is already registered, show options
-        await handle_registered_user(message, state, existing_registration, app)
+        # Check if user has registration for summer event
+        existing_summer_registration = next(
+            (reg for reg in await app.get_user_registrations(message.from_user.id) 
+             if reg.get("target_city") == TargetCity.PERM_SUMMER_2025.value),
+            None
+        )
+
+    if existing_summer_registration:
+        # User is already registered for summer event, show options
+        await handle_registered_user(message, state, existing_summer_registration, app)
     else:
-        # New user, start registration
-        await register_user(message, state, app)
+        # New user or user not registered for summer event
+        # Use existing registration data if available (from other events)
+        reuse_info = existing_registration if existing_registration else None
+        await register_user(message, state, app, 
+                          preselected_city=TargetCity.PERM_SUMMER_2025.value, 
+                          reuse_info=reuse_info)
