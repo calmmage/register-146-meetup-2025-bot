@@ -157,8 +157,8 @@ async def process_payment(
             f"""
             Реквизиты для оплаты:
             В Тинькофф банк по номеру телефона
-            Номер телефона - {app.settings.payment_phone_number}
-            Получатель - {app.settings.payment_name}
+            Номер телефона - 89194888910
+            Получатель - Мария Корсунская
             """
         )
 
