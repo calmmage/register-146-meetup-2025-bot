@@ -54,7 +54,7 @@ time_of_event = {
     TargetCity.MOSCOW: "18:00",
     TargetCity.SAINT_PETERSBURG: "17:00",
     TargetCity.BELGRADE: "Уточняется",  # Предположительно
-    TargetCity.PERM_SUMMER_2025: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "18:00-24:00",
 }
 
 venue_of_event = {
@@ -62,7 +62,7 @@ venue_of_event = {
     TargetCity.MOSCOW: "People Loft",
     TargetCity.SAINT_PETERSBURG: "Family Loft",
     TargetCity.BELGRADE: "Уточняется",
-    TargetCity.PERM_SUMMER_2025: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "База \"Чайка\", Беседка 11",
 }
 
 address_of_event = {
@@ -70,7 +70,7 @@ address_of_event = {
     TargetCity.MOSCOW: "1-я ул. Энтузиастов, 12, метро Авиамоторная",
     TargetCity.SAINT_PETERSBURG: "Кожевенная линия, 34, Метро горный институт",
     TargetCity.BELGRADE: "Уточняется",
-    TargetCity.PERM_SUMMER_2025: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "г. Пермь, ул. Встречная 33",
 }
 
 padezhi = {

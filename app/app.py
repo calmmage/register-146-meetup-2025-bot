@@ -540,23 +540,45 @@ class App:
         ):
             return 0, 0, 0, 0
 
-        # For non-graduates, use fixed recommended amounts
+        # Special pricing for summer 2025 event in Perm
+        if city == TargetCity.PERM_SUMMER_2025.value:
+            # New formula: 2200 - 100 * (((graduation_year - 1999) // 3) + 1)
+            # But let's use the exact table provided by Maria
+            year_price_map = {
+                2025: 1300, 2024: 1300, 2023: 1300,
+                2022: 1400, 2021: 1400, 2020: 1400,
+                2019: 1500, 2018: 1500, 2017: 1500,
+                2016: 1600, 2015: 1600, 2014: 1600,
+                2013: 1700, 2012: 1700, 2011: 1700,
+                2010: 1800, 2009: 1800, 2008: 1800,
+                2007: 1900, 2006: 1900, 2005: 1900,
+                2004: 2000, 2003: 2000, 2002: 2000,
+                2001: 2100, 2000: 2100, 1999: 2100,
+            }
+            
+            # For years before 1999, use 2200
+            amount = year_price_map.get(graduation_year, 2200)
+            
+            # No early registration discount for summer event
+            return amount, 0, amount, amount
+
+        # For non-graduates, use fixed recommended amounts (old events)
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
                 return 4000, 1000, 3000, 4000
-            elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
+            elif city == TargetCity.PERM.value:
                 return 2000, 500, 1500, 2000
             else:
                 return 0, 0, 0, 0
 
-        # Regular payment calculation for graduates
+        # Regular payment calculation for graduates (old events)
         current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 
         formula_amount = 0
         if city == TargetCity.MOSCOW.value:
             formula_amount = 1000 + (200 * years_since_graduation)
-        elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
+        elif city == TargetCity.PERM.value:
             formula_amount = 500 + (100 * years_since_graduation)
 
         regular_amount = 0
@@ -565,15 +587,15 @@ class App:
         else:
             if city == TargetCity.MOSCOW.value:
                 regular_amount = 4000
-            elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
+            elif city == TargetCity.PERM.value:
                 regular_amount = 2000
 
-        # Early registration discount
+        # Early registration discount (old events only)
         discount = 0
         # if early_registration:
         if city == TargetCity.MOSCOW.value:
             discount = 1000
-        elif city == TargetCity.PERM.value or city == TargetCity.PERM_SUMMER_2025.value:
+        elif city == TargetCity.PERM.value:
             discount = 500
 
         # Final amount after discount
