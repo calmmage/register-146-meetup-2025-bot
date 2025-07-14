@@ -239,7 +239,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
 
         if response == "cancel":
-            await cancel_registration_handler(message, state)
+            await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
             # Process payment for this registration
