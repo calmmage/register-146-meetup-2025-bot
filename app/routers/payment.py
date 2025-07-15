@@ -85,7 +85,7 @@ async def process_payment(
         elif city == TargetCity.PERM.value:
             payment_formula = "500р + 100 * (2025 - год выпуска)"
         elif city == TargetCity.PERM_SUMMER_2025.value:
-            payment_formula = "по таблице в зависимости от года выпуска"
+            payment_formula = "2200 − 100 ×(((Год − 1999) // 3)+ 1)"
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
 
