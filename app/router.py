@@ -30,7 +30,7 @@ date_of_event = {
     TargetCity.MOSCOW: "5 Апреля, Сб",
     TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
     TargetCity.BELGRADE: "5 Апреля, Сб",
-    TargetCity.PERM_SUMMER_2025: "2 Августа, Пт",
+    TargetCity.PERM_SUMMER_2025: "2 Августа, Сб",
 }
 
 # Add event dates in datetime format for comparison
