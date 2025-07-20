@@ -90,17 +90,23 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # Step 2: Select city
+    # Only show enabled cities
+    city_choices = {
+        "all": "Все города",
+        "cancel": "Отмена",
+    }
+    
+    # Add enabled cities only by looping through TargetCity enum
+    for city_enum in TargetCity:
+        if app.is_city_enabled(city_enum.value):
+            # Convert enum name to choice key (e.g., PERM_SUMMER_2025 -> PERM_SUMMER_2025)
+            city_key = city_enum.name
+            city_choices[city_key] = city_enum.value
+    
     city = await ask_user_choice(
         message.chat.id,
         "Шаг 2: Выберите город для рассылки",
-        choices={
-            "MOSCOW": "Москва",
-            "PERM": "Пермь",
-            "SAINT_PETERSBURG": "Санкт-Петербург",
-            "BELGRADE": "Белград",
-            "all": "Все города",
-            "cancel": "Отмена",
-        },
+        choices=city_choices,
         state=state,
         timeout=None,
     )
@@ -300,7 +306,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
     status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
 
     # Cities to test
-    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "all"]
+    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "PERM_SUMMER_2025", "all"]
 
     # Initialize report
     report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
@@ -326,6 +332,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
             "PERM": "Пермь",
             "SAINT_PETERSBURG": "Санкт-Петербург",
             "BELGRADE": "Белград",
+            "PERM_SUMMER_2025": "Пермь (Летняя встреча 2025)",
         }.get(city, city)
 
         city_all = await app.get_all_users(city)
@@ -418,7 +425,10 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
     # First send a detailed report to the validation chat
     validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
-    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    if message.from_user:
+        validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    else:
+        validation_report += f"👤 Инициатор: Неизвестно\n"
     validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
     validation_report += f"🗒️ <b>Список получателей:</b>\n"
 

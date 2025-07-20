@@ -50,6 +50,7 @@ PAYMENT_STATUS_MAP = {
 }
 
 
+
 class AppSettings(BaseSettings):
     """Basic app configuration"""
 
@@ -117,6 +118,20 @@ class App:
         self._collection = None
         self._event_logs = None
         self._deleted_users = None
+
+
+    # Quick hack: enabled cities - only PERM_SUMMER_2025 is enabled for now
+    ENABLED_CITIES = {
+        TargetCity.PERM_SUMMER_2025.value: True,
+        TargetCity.MOSCOW.value: False,
+        TargetCity.PERM.value: False,
+        TargetCity.SAINT_PETERSBURG.value: False,
+        TargetCity.BELGRADE.value: False,
+    }
+
+    def is_city_enabled(self,city: str) -> bool:
+        """Check if a city is enabled for registration"""
+        return self.ENABLED_CITIES.get(city, False)
 
     async def startup(self):
         """
@@ -814,6 +829,7 @@ class App:
                 "PERM": TargetCity.PERM.value,
                 "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
                 "BELGRADE": TargetCity.BELGRADE.value,
+                "PERM_SUMMER_2025": TargetCity.PERM_SUMMER_2025.value,
             }
             if city in city_mapping:
                 and_conditions.append({"target_city": city_mapping[city]})
