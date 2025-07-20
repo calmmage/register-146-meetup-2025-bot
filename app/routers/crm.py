@@ -90,17 +90,23 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # Step 2: Select city
+    # Only show enabled cities
+    city_choices = {
+        "all": "Все города",
+        "cancel": "Отмена",
+    }
+    
+    # Add enabled cities only by looping through TargetCity enum
+    for city_enum in TargetCity:
+        if app.is_city_enabled(city_enum.value):
+            # Convert enum name to choice key (e.g., PERM_SUMMER_2025 -> PERM_SUMMER_2025)
+            city_key = city_enum.name
+            city_choices[city_key] = city_enum.value
+    
     city = await ask_user_choice(
         message.chat.id,
         "Шаг 2: Выберите город для рассылки",
-        choices={
-            "MOSCOW": "Москва",
-            "PERM": "Пермь",
-            "SAINT_PETERSBURG": "Санкт-Петербург",
-            "BELGRADE": "Белград",
-            "all": "Все города",
-            "cancel": "Отмена",
-        },
+        choices=city_choices,
         state=state,
         timeout=None,
     )
