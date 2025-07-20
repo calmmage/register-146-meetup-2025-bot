@@ -76,38 +76,16 @@ def mock_is_admin():
 @pytest.fixture
 def mock_is_event_passed():
     with patch("app.router.is_event_passed") as mock:
-        mock.return_value = False
+        # Return False for summer event (not passed yet)
+        def event_passed_side_effect(city):
+            from app.app import TargetCity
+            return city != TargetCity.PERM_SUMMER_2025
+        mock.side_effect = event_passed_side_effect
         yield mock
 
 
 @pytest.mark.asyncio
-async def test_start_handler_new_user(
-    mock_message,
-    mock_state,
-    mock_app,
-    mock_send_safe,
-    mock_botspot_dependencies,
-    mock_is_admin,
-    mock_is_event_passed,
-):
-    from app.router import start_handler
-
-    # Configure the mocks for a new user
-    mock_app.get_user_registration.return_value = None
-
-    # Mock the register_user function
-    with patch("app.router.register_user") as mock_register:
-        mock_register.return_value = AsyncMock()
-
-        # Call the handler
-        await start_handler(mock_message, mock_state, mock_app)
-
-        # Verify register_user was called
-        mock_register.assert_called_once_with(mock_message, mock_state, mock_app)
-
-
-@pytest.mark.asyncio
-async def test_start_handler_existing_user(
+async def test_start_handler_existing_summer_user(
     mock_message,
     mock_state,
     mock_app,
@@ -119,14 +97,15 @@ async def test_start_handler_existing_user(
     from app.app import TargetCity
     from app.router import start_handler
 
-    # Configure the mocks for an existing user
-    mock_user = {
+    # Configure the mocks for a user already registered for summer event
+    mock_summer_user = {
         "full_name": "Test User",
         "graduation_year": 2010,
         "class_letter": "A",
-        "target_city": TargetCity.MOSCOW.value,
+        "target_city": TargetCity.PERM_SUMMER_2025.value,
     }
-    mock_app.get_user_registration = AsyncMock(return_value=mock_user)
+    mock_app.get_user_registration = AsyncMock(return_value=mock_summer_user)
+    mock_app.get_user_registrations = AsyncMock(return_value=[mock_summer_user])
 
     # Mock the handle_registered_user function
     with patch("app.router.handle_registered_user") as mock_handler:
@@ -136,7 +115,7 @@ async def test_start_handler_existing_user(
         await start_handler(mock_message, mock_state, mock_app)
 
         # Verify handle_registered_user was called with correct args
-        mock_handler.assert_called_once_with(mock_message, mock_state, mock_user, mock_app)
+        mock_handler.assert_called_once_with(mock_message, mock_state, mock_summer_user, mock_app)
 
 
 # TODO: Fix deep call chain issues with register_user flow

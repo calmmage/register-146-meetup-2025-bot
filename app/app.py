@@ -16,6 +16,7 @@ class TargetCity(Enum):
     MOSCOW = "Москва"
     SAINT_PETERSBURG = "Санкт-Петербург"
     BELGRADE = "Белград"
+    PERM_SUMMER_2025 = "Пермь (Летняя встреча 2025)"
 
 
 class GraduateType(str, Enum):
@@ -47,6 +48,7 @@ PAYMENT_STATUS_MAP = {
     None: "Не оплачено",
     "Не оплачено": "Не оплачено",  # For backward compatibility with existing data
 }
+
 
 
 class AppSettings(BaseSettings):
@@ -116,6 +118,20 @@ class App:
         self._collection = None
         self._event_logs = None
         self._deleted_users = None
+
+
+    # Quick hack: enabled cities - only PERM_SUMMER_2025 is enabled for now
+    ENABLED_CITIES = {
+        TargetCity.PERM_SUMMER_2025.value: True,
+        TargetCity.MOSCOW.value: False,
+        TargetCity.PERM.value: False,
+        TargetCity.SAINT_PETERSBURG.value: False,
+        TargetCity.BELGRADE.value: False,
+    }
+
+    def is_city_enabled(self,city: str) -> bool:
+        """Check if a city is enabled for registration"""
+        return self.ENABLED_CITIES.get(city, False)
 
     async def startup(self):
         """
@@ -539,7 +555,29 @@ class App:
         ):
             return 0, 0, 0, 0
 
-        # For non-graduates, use fixed recommended amounts
+        # Special pricing for summer 2025 event in Perm
+        if city == TargetCity.PERM_SUMMER_2025.value:
+            # New formula: 2200 - 100 * (((graduation_year - 1999) // 3) + 1)
+            # But let's use the exact table provided by Maria
+            year_price_map = {
+                2025: 1300, 2024: 1300, 2023: 1300,
+                2022: 1400, 2021: 1400, 2020: 1400,
+                2019: 1500, 2018: 1500, 2017: 1500,
+                2016: 1600, 2015: 1600, 2014: 1600,
+                2013: 1700, 2012: 1700, 2011: 1700,
+                2010: 1800, 2009: 1800, 2008: 1800,
+                2007: 1900, 2006: 1900, 2005: 1900,
+                2004: 2000, 2003: 2000, 2002: 2000,
+                2001: 2100, 2000: 2100, 1999: 2100,
+            }
+            
+            # For years before 1999, use 2200
+            amount = year_price_map.get(graduation_year, 2200)
+            
+            # No early registration discount for summer event
+            return amount, 0, amount, amount
+
+        # For non-graduates, use fixed recommended amounts (old events)
         if graduate_type == GraduateType.NON_GRADUATE.value:
             if city == TargetCity.MOSCOW.value:
                 return 4000, 1000, 3000, 4000
@@ -548,7 +586,7 @@ class App:
             else:
                 return 0, 0, 0, 0
 
-        # Regular payment calculation for graduates
+        # Regular payment calculation for graduates (old events)
         current_year = 2025
         years_since_graduation = max(0, current_year - graduation_year)
 
@@ -567,7 +605,7 @@ class App:
             elif city == TargetCity.PERM.value:
                 regular_amount = 2000
 
-        # Early registration discount
+        # Early registration discount (old events only)
         discount = 0
         # if early_registration:
         if city == TargetCity.MOSCOW.value:
@@ -791,6 +829,7 @@ class App:
                 "PERM": TargetCity.PERM.value,
                 "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
                 "BELGRADE": TargetCity.BELGRADE.value,
+                "PERM_SUMMER_2025": TargetCity.PERM_SUMMER_2025.value,
             }
             if city in city_mapping:
                 and_conditions.append({"target_city": city_mapping[city]})

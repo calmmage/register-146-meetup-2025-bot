@@ -26,10 +26,69 @@ from botspot.utils import send_safe
 router = Router()
 app = App()
 
+# City code mapping for callback data (to avoid special characters and long names)
+CITY_CODES = {
+    TargetCity.MOSCOW.value: "MOSCOW",
+    TargetCity.PERM.value: "PERM", 
+    TargetCity.SAINT_PETERSBURG.value: "SPB",
+    TargetCity.BELGRADE.value: "BELGRADE",
+    TargetCity.PERM_SUMMER_2025.value: "PERM_SUMMER",
+}
 
-# Check if it's an early registration (before March 15)
-EARLY_REGISTRATION_DATE = datetime.strptime("2025-03-15", "%Y-%m-%d")
-EARLY_REGISTRATION_DATE_HUMAN = "15 Марта"
+# Reverse mapping
+CITY_CODES_REVERSE = {v: k for k, v in CITY_CODES.items()}
+
+# Early registration for old events only (not applicable to summer 2025)
+EARLY_REGISTRATION_DATE = datetime.strptime("2025-07-15", "%Y-%m-%d")
+EARLY_REGISTRATION_DATE_HUMAN = "15 Июля"
+
+
+def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | None]:
+    """
+    Parse payment callback data into user_id, city_code, and amount.
+    
+    Args:
+        callback_data: The callback data string (e.g., "confirm_payment_123_PERM_SUMMER_1300")
+        
+    Returns:
+        Tuple of (user_id, city_code, amount_str)
+        
+    Raises:
+        ValueError: If the callback data format is invalid
+    """
+    if not callback_data.startswith(("confirm_payment_", "decline_payment_")):
+        raise ValueError("Invalid callback data format")
+    
+    # Remove the prefix
+    if callback_data.startswith("confirm_payment_"):
+        data = callback_data[len("confirm_payment_"):]
+    else:
+        data = callback_data[len("decline_payment_"):]
+    
+    # Split by underscore
+    parts = data.split("_")
+    if len(parts) < 2:
+        raise ValueError("Invalid callback data structure")
+    
+    user_id = int(parts[0])
+    
+    # Handle city codes that might contain underscores
+    if len(parts) >= 3:
+        # Check if the last part is a number (amount)
+        try:
+            amount_str = parts[-1]
+            int(amount_str)  # Test if it's a number
+            # If it's a number, everything in between is the city code
+            city_code = "_".join(parts[1:-1])
+        except ValueError:
+            # Last part is not a number, so it's part of the city code
+            city_code = "_".join(parts[1:])
+            amount_str = None
+    else:
+        city_code = parts[1]
+        amount_str = None
+    
+    return user_id, city_code, amount_str
 
 
 async def process_payment(
@@ -84,6 +143,8 @@ async def process_payment(
             payment_formula = "1000р + 200 * (2025 - год выпуска)"
         elif city == TargetCity.PERM.value:
             payment_formula = "500р + 100 * (2025 - год выпуска)"
+        elif city == TargetCity.PERM_SUMMER_2025.value:
+            payment_formula = "2200 − 100 ×(((Год − 1999) // 3)+ 1)"
         else:  # Saint Petersburg
             payment_formula = "за свой счет"
 
@@ -105,34 +166,44 @@ async def process_payment(
             # Delay between messages
             await asyncio.sleep(5)
 
-        # Check if we're before the early registration deadline
-        today = datetime.now()
-        is_early_registration_period = today < EARLY_REGISTRATION_DATE
-
-        formula_message = ""
-        if formula_amount > regular_amount:
-            formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
-
-        if is_early_registration_period:
+        # For summer 2025 event, no early registration discount
+        if city == TargetCity.PERM_SUMMER_2025.value:
             payment_msg_part2 = dedent(
                 f"""
-                Для вас минимальный взнос: {regular_amount} руб. {formula_message}
+                Стоимость билета для вашего года выпуска: {regular_amount} руб.
                 
-                При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
-                Минимальный взнос при ранней оплате - {discounted_amount} руб.
-                
-                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                Приятно будет увидеть вас на летней встрече! 😊
                 """
             )
         else:
-            payment_msg_part2 = dedent(
-                f"""
-                Для вас минимальный взнос: {regular_amount} руб.
-                {formula_message}
-                
-                Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
-                """
-            )
+            # Check if we're before the early registration deadline (for old events)
+            today = datetime.now()
+            is_early_registration_period = today < EARLY_REGISTRATION_DATE
+
+            formula_message = ""
+            if formula_amount > regular_amount:
+                formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
+
+            if is_early_registration_period:
+                payment_msg_part2 = dedent(
+                    f"""
+                    Для вас минимальный взнос: {regular_amount} руб. {formula_message}
+                    
+                    При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
+                    Минимальный взнос при ранней оплате - {discounted_amount} руб.
+                    
+                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    """
+                )
+            else:
+                payment_msg_part2 = dedent(
+                    f"""
+                    Для вас минимальный взнос: {regular_amount} руб.
+                    {formula_message}
+                    
+                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    """
+                )
 
         # Send part 2
         await send_safe(message.chat.id, payment_msg_part2)
@@ -320,8 +391,11 @@ async def process_payment(
 
         # Forward screenshot to events chat (which is used as validation chat)
         try:
+            logger.info(f"Starting payment proof forwarding for user {user_id}, city: {city}")
+            
             # Get events chat ID from settings
             events_chat_id = app.settings.events_chat_id
+            logger.info(f"Events chat ID: {events_chat_id}")
 
             # if today is before early registration -> "discounted_amount (later {regular amount}}" else "regular_amount"
 
@@ -355,13 +429,18 @@ async def process_payment(
 
             deps = get_dependency_manager()
             bot = deps.bot
+            logger.info(f"Got bot instance: {bot}")
 
             # Try to parse payment amount from the screenshot/PDF
-
+            logger.info(f"Parsing payment info from response: has_photo={has_photo}, has_pdf={has_pdf}")
             payment_info = await parse_payment_info(response, has_photo, has_pdf, deps.bot)
 
             # Create validation buttons
             validation_buttons = []
+            
+            # Get city code for callback data
+            city_code = CITY_CODES.get(city, city)
+            logger.info(f"Creating validation buttons for user {user_id}, city: {city}, city_code: {city_code}")
 
             # If we successfully parsed a valid amount, show simplified buttons
             if payment_info.is_valid:
@@ -370,7 +449,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text=f"✅ {payment_info.amount} руб. - Подтвердить распознанную сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city}_{payment_info.amount}",
+                            callback_data=f"confirm_payment_{user_id}_{city_code}_{payment_info.amount}",
                         )
                     ]
                 )
@@ -380,7 +459,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text="✅ Подтвердить другую сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city}_custom",
+                            callback_data=f"confirm_payment_{user_id}_{city_code}_custom",
                         )
                     ]
                 )
@@ -391,7 +470,7 @@ async def process_payment(
                         [
                             InlineKeyboardButton(
                                 text=f"✅ {discounted_amount} руб. - Подтвердить оплату по скидке",
-                                callback_data=f"confirm_payment_{user_id}_{city}_{discounted_amount}",
+                                callback_data=f"confirm_payment_{user_id}_{city_code}_{discounted_amount}",
                             )
                         ]
                     )
@@ -400,7 +479,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text=f"✅ {regular_amount} руб. - Подтвердить оплату",
-                            callback_data=f"confirm_payment_{user_id}_{city}_{regular_amount}",
+                            callback_data=f"confirm_payment_{user_id}_{city_code}_{regular_amount}",
                         )
                     ]
                 )
@@ -410,7 +489,7 @@ async def process_payment(
                         [
                             InlineKeyboardButton(
                                 text=f"✅ {formula_amount} руб. - Подтвердить оплату по формуле",
-                                callback_data=f"confirm_payment_{user_id}_{city}_{formula_amount}",
+                                callback_data=f"confirm_payment_{user_id}_{city_code}_{formula_amount}",
                             )
                         ]
                     )
@@ -420,7 +499,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text="✅ Подтвердить другую сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city}_custom",
+                            callback_data=f"confirm_payment_{user_id}_{city_code}_custom",
                         )
                     ]
                 )
@@ -430,17 +509,19 @@ async def process_payment(
                 [
                     InlineKeyboardButton(
                         text="❌ Отклонить",
-                        callback_data=f"decline_payment_{user_id}_{city}",
+                        callback_data=f"decline_payment_{user_id}_{city_code}",
                     )
                 ]
             )
 
             validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
+            logger.info(f"Created validation markup with {len(validation_buttons)} buttons")
 
             # Send the photo or document with caption containing user info
             if has_photo:
                 # Get the photo file_id from the message
                 photo = response.photo[-1]  # Get the largest photo
+                logger.info(f"Sending photo with file_id: {photo.file_id}")
 
                 # Send the photo with caption
                 forwarded_msg = await bot.send_photo(
@@ -449,14 +530,17 @@ async def process_payment(
                     caption=user_info,
                     reply_markup=validation_markup,
                 )
+                logger.info(f"Successfully sent photo to validation chat, message_id: {forwarded_msg.message_id}")
             else:  # has_pdf
                 # Send the PDF document with caption
+                logger.info(f"Sending PDF with file_id: {response.document.file_id}")
                 forwarded_msg = await bot.send_document(
                     chat_id=events_chat_id,
                     document=response.document.file_id,
                     caption=user_info,
                     reply_markup=validation_markup,
                 )
+                logger.info(f"Successfully sent PDF to validation chat, message_id: {forwarded_msg.message_id}")
 
             # Save the screenshot message ID for reference
             await app.save_payment_info(
@@ -471,6 +555,9 @@ async def process_payment(
             logger.info(f"Payment proof from user {user_id} sent to validation chat with caption")
         except Exception as e:
             logger.error(f"Error forwarding payment proof to validation chat: {e}")
+            logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+            # Re-raise the exception to preserve botspot error handling
+            raise
 
         # Notify user
         await send_safe(
@@ -651,14 +738,17 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id, city and amount from callback data
-    parts = callback_query.data.split("_")
-    if len(parts) < 4:
-        await callback_query.answer("Invalid callback data")
+    try:
+        user_id, city_code, amount_str = parse_payment_callback_data(callback_query.data)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
         return
 
-    user_id = int(parts[2])
-    city = parts[3]
-    amount_str = parts[4] if len(parts) > 4 else None
+    # Convert city code back to full city name
+    city = CITY_CODES_REVERSE.get(city_code, city_code)
+    logger.info(f"Processing payment confirmation: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
+    logger.info(f"Looking for registration: user_id={user_id}, target_city={city}")
 
     if not city:
         await callback_query.answer("Missing city information")
@@ -820,13 +910,16 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id and city from callback data
-    parts = callback_query.data.split("_")
-    if len(parts) < 3:
-        await callback_query.answer("Invalid callback data")
+    try:
+        user_id, city_code, _ = parse_payment_callback_data(callback_query.data)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
         return
 
-    user_id = int(parts[2])
-    city = parts[3] if len(parts) > 3 else None
+    # Convert city code back to full city name
+    city = CITY_CODES_REVERSE.get(city_code, city_code) if city_code else None
+    logger.info(f"Processing payment decline: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
 
     if not city:
         await callback_query.answer("Missing city information")
@@ -926,6 +1019,9 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
                 await callback_message.edit_text(text=new_text, reply_markup=None)
         except Exception as e:
             logger.error(f"Error updating callback message: {e}")
+            logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+            # Re-raise the exception to preserve botspot error handling
+            raise
 
     # Confirm to admin with a brief reply
     await message.reply(f"❌ Платеж отклонен")

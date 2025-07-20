@@ -30,6 +30,7 @@ date_of_event = {
     TargetCity.MOSCOW: "5 Апреля, Сб",
     TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
     TargetCity.BELGRADE: "5 Апреля, Сб",
+    TargetCity.PERM_SUMMER_2025: "2 Августа, Сб",
 }
 
 # Add event dates in datetime format for comparison
@@ -38,6 +39,7 @@ event_dates = {
     TargetCity.MOSCOW: datetime(2025, 4, 5),
     TargetCity.SAINT_PETERSBURG: datetime(2025, 4, 5),
     TargetCity.BELGRADE: datetime(2025, 4, 5),
+    TargetCity.PERM_SUMMER_2025: datetime(2025, 8, 2),
 }
 
 
@@ -52,6 +54,7 @@ time_of_event = {
     TargetCity.MOSCOW: "18:00",
     TargetCity.SAINT_PETERSBURG: "17:00",
     TargetCity.BELGRADE: "Уточняется",  # Предположительно
+    TargetCity.PERM_SUMMER_2025: "18:00-24:00",
 }
 
 venue_of_event = {
@@ -59,6 +62,7 @@ venue_of_event = {
     TargetCity.MOSCOW: "People Loft",
     TargetCity.SAINT_PETERSBURG: "Family Loft",
     TargetCity.BELGRADE: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "База \"Чайка\", Беседка 11",
 }
 
 address_of_event = {
@@ -66,6 +70,7 @@ address_of_event = {
     TargetCity.MOSCOW: "1-я ул. Энтузиастов, 12, метро Авиамоторная",
     TargetCity.SAINT_PETERSBURG: "Кожевенная линия, 34, Метро горный институт",
     TargetCity.BELGRADE: "Уточняется",
+    TargetCity.PERM_SUMMER_2025: "г. Пермь, ул. Встречная 33",
 }
 
 padezhi = {
@@ -73,6 +78,7 @@ padezhi = {
     TargetCity.MOSCOW: "Москве",
     TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
     TargetCity.BELGRADE: "Белграде",
+    TargetCity.PERM_SUMMER_2025: "Перми",
 }
 
 
@@ -233,7 +239,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
 
         if response == "cancel":
-            await cancel_registration_handler(message, state)
+            await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
             # Process payment for this registration
@@ -510,13 +516,13 @@ async def register_user(
             log_messages[user_id].append(log_msg)
 
     if not location:
-        # Filter out cities the user is already registered for and cities where events have passed
+        # Filter out cities the user is already registered for, cities where events have passed, and disabled cities
         available_cities = {
             city.value: f"{city.value} ({date_of_event[city]})"
             for city in TargetCity
             if city.value not in existing_cities
-            and city.value != TargetCity.PERM.value
             and not is_event_passed(city)
+            and app.is_city_enabled(city.value)
         }
         available_cities["cancel"] = "Отменить регистрацию"  # Add cancel option
 
@@ -1185,7 +1191,7 @@ async def info_handler(message: Message, state: FSMContext, app: App):
         return
 
     for city in TargetCity:
-        if city == TargetCity.PERM:
+        if not app.is_city_enabled(city.value):
             continue
 
         info_text += f"<b>🏙️ {city.value}</b>\n"
@@ -1230,9 +1236,10 @@ async def status_handler(message: Message, state: FSMContext, app: App):
     registrations = await app.get_user_registrations(user_id)
 
     if not registrations:
-        # Check if all events have passed
-        all_events_passed = all(is_event_passed(city) for city in TargetCity)
-        if all_events_passed:
+        # Check if all enabled events have passed
+        enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
+        all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
+        if all_enabled_events_passed:
             await send_safe(
                 message.chat.id,
                 "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
@@ -1303,8 +1310,9 @@ async def status_handler(message: Message, state: FSMContext, app: App):
         status_text += "\n"
 
     # Add available commands information
-    all_events_passed = all(is_event_passed(city) for city in TargetCity)
-    if not all_events_passed:
+    enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
+    all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
+    if not all_enabled_events_passed:
         status_text += "Доступные команды:\n"
         status_text += "- /info - подробная информация о встречах (дата, время, адрес)\n"
         status_text += "- /start - управление регистрациями\n"
@@ -1341,9 +1349,19 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         if result != "register":
             return
 
-    # Check if all events have passed
-    all_events_passed = all(is_event_passed(city) for city in TargetCity)
-    if all_events_passed:
+    # Check if any enabled events are available
+    enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
+    if not enabled_cities:
+        await send_safe(
+            message.chat.id,
+            "В данный момент нет доступных встреч для регистрации. Следите за новостями в группе школы.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    # Check if all enabled events have passed
+    all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
+    if all_enabled_events_passed:
         await send_safe(
             message.chat.id,
             "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
@@ -1352,12 +1370,71 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         )
         return
 
-    # Check if user is already registered
+    # Check if user is already registered for any enabled event
     existing_registration = await app.get_user_registration(message.from_user.id)
-
+    existing_enabled_registration = None
+    
     if existing_registration:
-        # User is already registered, show options
-        await handle_registered_user(message, state, existing_registration, app)
+        # Check if user has registration for any enabled event
+        user_registrations = await app.get_user_registrations(message.from_user.id)
+        existing_enabled_registration = next(
+            (reg for reg in user_registrations 
+             if app.is_city_enabled(reg.get("target_city"))),
+            None
+        )
+
+    if existing_enabled_registration:
+        # User is already registered for an enabled event, show options
+        await handle_registered_user(message, state, existing_enabled_registration, app)
     else:
-        # New user, start registration
-        await register_user(message, state, app)
+        # New user or user not registered for any enabled event
+        # Get the first available enabled city
+        available_city = next((city for city in enabled_cities if not is_event_passed(city)), None)
+        
+        if not available_city:
+            await send_safe(
+                message.chat.id,
+                "К сожалению, все доступные встречи уже прошли. Следите за новостями в группе школы.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        
+        # Show information about the available event
+        event_info = f"""
+👋 Добро пожаловать!
+
+В ближайшее время клуб друзей школы 146 проводит встречу:
+
+📅 Дата: {date_of_event[available_city]}
+⏰ Время: {time_of_event[available_city]}
+📍 Место: {venue_of_event[available_city]}
+🗺️ Адрес: {address_of_event[available_city]}
+
+Хотите зарегистрироваться на эту встречу?
+        """
+        
+        # Ask user if they want to register
+        response = await ask_user_choice(
+            message.chat.id,
+            event_info.strip(),
+            choices={
+                "yes": "Да, зарегистрироваться",
+                "cancel": "Отмена"
+            },
+            state=state,
+            timeout=None,
+        )
+        
+        if response == "cancel" or response is None:
+            await send_safe(
+                message.chat.id,
+                "Регистрация отменена. Если передумаете, просто напишите боту снова!",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        
+        # User wants to register, proceed with registration
+        reuse_info = existing_registration if existing_registration else None
+        await register_user(message, state, app, 
+                          preselected_city=available_city.value, 
+                          reuse_info=reuse_info)
