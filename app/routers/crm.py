@@ -300,7 +300,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
     status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
 
     # Cities to test
-    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "all"]
+    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "PERM_SUMMER_2025", "all"]
 
     # Initialize report
     report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
@@ -326,6 +326,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
             "PERM": "Пермь",
             "SAINT_PETERSBURG": "Санкт-Петербург",
             "BELGRADE": "Белград",
+            "PERM_SUMMER_2025": "Пермь (Летняя встреча 2025)",
         }.get(city, city)
 
         city_all = await app.get_all_users(city)
@@ -418,7 +419,10 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
     # First send a detailed report to the validation chat
     validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
-    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    if message.from_user:
+        validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    else:
+        validation_report += f"👤 Инициатор: Неизвестно\n"
     validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
     validation_report += f"🗒️ <b>Список получателей:</b>\n"
 
