@@ -43,6 +43,54 @@ EARLY_REGISTRATION_DATE = datetime.strptime("2025-07-15", "%Y-%m-%d")
 EARLY_REGISTRATION_DATE_HUMAN = "15 Июля"
 
 
+def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | None]:
+    """
+    Parse payment callback data into user_id, city_code, and amount.
+    
+    Args:
+        callback_data: The callback data string (e.g., "confirm_payment_123_PERM_SUMMER_1300")
+        
+    Returns:
+        Tuple of (user_id, city_code, amount_str)
+        
+    Raises:
+        ValueError: If the callback data format is invalid
+    """
+    if not callback_data.startswith(("confirm_payment_", "decline_payment_")):
+        raise ValueError("Invalid callback data format")
+    
+    # Remove the prefix
+    if callback_data.startswith("confirm_payment_"):
+        data = callback_data[len("confirm_payment_"):]
+    else:
+        data = callback_data[len("decline_payment_"):]
+    
+    # Split by underscore
+    parts = data.split("_")
+    if len(parts) < 2:
+        raise ValueError("Invalid callback data structure")
+    
+    user_id = int(parts[0])
+    
+    # Handle city codes that might contain underscores
+    if len(parts) >= 3:
+        # Check if the last part is a number (amount)
+        try:
+            amount_str = parts[-1]
+            int(amount_str)  # Test if it's a number
+            # If it's a number, everything in between is the city code
+            city_code = "_".join(parts[1:-1])
+        except ValueError:
+            # Last part is not a number, so it's part of the city code
+            city_code = "_".join(parts[1:])
+            amount_str = None
+    else:
+        city_code = parts[1]
+        amount_str = None
+    
+    return user_id, city_code, amount_str
+
+
 async def process_payment(
     message: Message,
     state: FSMContext,
@@ -690,18 +738,17 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id, city and amount from callback data
-    parts = callback_query.data.split("_")
-    if len(parts) < 4:
-        await callback_query.answer("Invalid callback data")
+    try:
+        user_id, city_code, amount_str = parse_payment_callback_data(callback_query.data)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
         return
-
-    user_id = int(parts[2])
-    city_code = parts[3]
-    amount_str = parts[4] if len(parts) > 4 else None
 
     # Convert city code back to full city name
     city = CITY_CODES_REVERSE.get(city_code, city_code)
     logger.info(f"Processing payment confirmation: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
+    logger.info(f"Looking for registration: user_id={user_id}, target_city={city}")
 
     if not city:
         await callback_query.answer("Missing city information")
@@ -863,17 +910,16 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id and city from callback data
-    parts = callback_query.data.split("_")
-    if len(parts) < 3:
-        await callback_query.answer("Invalid callback data")
+    try:
+        user_id, city_code, _ = parse_payment_callback_data(callback_query.data)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
         return
-
-    user_id = int(parts[2])
-    city_code = parts[3] if len(parts) > 3 else None
 
     # Convert city code back to full city name
     city = CITY_CODES_REVERSE.get(city_code, city_code) if city_code else None
     logger.info(f"Processing payment decline: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
 
     if not city:
         await callback_query.answer("Missing city information")
