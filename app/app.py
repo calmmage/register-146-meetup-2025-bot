@@ -289,12 +289,23 @@ class App:
             Tuple of (is_valid, error_message)
         """
         current_year = datetime.now().year
+        current_month = datetime.now().month
 
         # Check if year is in valid range
         if year < 1995:
             return False, f"Год выпуска должен быть не раньше 1995."
 
-        if year >= current_year:
+        # If year is this year
+        if year == current_year:
+            if current_month >= 6:
+                return True, ""
+            else:
+                return (
+                    False,
+                    f"Извините, регистрация только для выпускников. Приходите после выпуска!",
+                )
+
+        if year > current_year:
             if year <= current_year + 4:
                 return (
                     False,
