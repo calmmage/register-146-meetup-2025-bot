@@ -4,7 +4,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     ReplyKeyboardRemove,
     Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
+from aiogram.fsm.state import State, StatesGroup
 from dotenv import load_dotenv
 from loguru import logger
 from textwrap import dedent
@@ -768,23 +772,17 @@ async def register_user(
                 break
 
             elif response == "/i_am_an_organizer":
-                # User is an organizer
-                graduation_year = 1000  # Special value for organizers
-                class_letter = "О"  # "О" for "Организатор"
-                graduate_type = GraduateType.ORGANIZER
-
-                # Log organizer status
-                log_msg = await app.log_registration_step(
-                    user_id,
-                    username,
-                    "Статус участника",
-                    "Организатор",
+                # User wants to be an organizer - trigger validation flow
+                await send_safe(
+                    message.chat.id, 
+                    "Статус организатора требует подтверждения. Ваш запрос будет отправлен администраторам на рассмотрение."
                 )
-                if log_msg:
-                    log_messages[user_id].append(log_msg)
-
-                await send_safe(message.chat.id, "Вы зарегистрированы как организатор встречи!")
-                break
+                
+                # Trigger the organizer validation handler
+                await i_am_organizer_handler(message, state, app)
+                
+                # Return from registration flow to wait for validation
+                return
 
             # If we already have a year and just need the letter
             elif graduation_year is not None and class_letter is None:
@@ -1438,3 +1436,314 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         await register_user(message, state, app, 
                           preselected_city=available_city.value, 
                           reuse_info=reuse_info)
+
+
+# Define organizer validation states
+class OrganizerValidationStates(StatesGroup):
+    waiting_for_decline_reason = State()
+
+
+@commands_menu.add_command("i_am_organizer", "Я организатор")
+@router.message(Command("i_am_organizer"))
+@router.message(Command("i_am_an_organizer"))
+async def i_am_organizer_handler(message: Message, state: FSMContext, app: App):
+    """Handle organizer validation request"""
+    if message.from_user is None:
+        logger.error("Message from_user is None")
+        return
+        
+    user_id = message.from_user.id
+    username = message.from_user.username or ""
+    
+    # Log the organizer validation request
+    await app.save_event_log(
+        "command", 
+        {
+            "command": "/i_am_organizer",
+            "content": message.text,
+            "chat_type": message.chat.type
+        }, 
+        user_id, 
+        username
+    )
+    
+    # Get user's existing registration info if available
+    user_registration = await app.get_user_registration(user_id)
+    user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
+    
+    if user_registration:
+        user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
+        user_info += f"📍 Город: {user_registration.get('target_city', 'Неизвестно')}\n"
+        current_graduate_type = user_registration.get("graduate_type", GraduateType.GRADUATE.value)
+        if current_graduate_type == GraduateType.GRADUATE.value:
+            user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
+        elif current_graduate_type == GraduateType.TEACHER.value:
+            user_info += f"👨‍🏫 Текущий статус: Учитель\n"
+        elif current_graduate_type == GraduateType.NON_GRADUATE.value:
+            user_info += f"👥 Текущий статус: Друг школы\n"
+        elif current_graduate_type == GraduateType.ORGANIZER.value:
+            user_info += f"🛠️ Текущий статус: Организатор\n"
+    else:
+        user_info += "ℹ️ Пользователь еще не зарегистрирован\n"
+    
+    user_info += "\n🛠️ Запрос на статус организатора"
+    
+    try:
+        # Get events chat ID from settings
+        events_chat_id = app.settings.events_chat_id
+        logger.info(f"Sending organizer validation request to events chat ID: {events_chat_id}")
+        
+        # Create validation buttons
+        validation_buttons = [
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить статус организатора",
+                    callback_data=f"confirm_organizer_{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отклонить",
+                    callback_data=f"decline_organizer_{user_id}",
+                )
+            ]
+        ]
+        
+        validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
+        
+        # Get bot instance
+        from botspot.core.dependency_manager import get_dependency_manager
+        deps = get_dependency_manager()
+        bot = deps.bot
+        
+        # Send validation request to events chat
+        validation_msg = await bot.send_message(
+            chat_id=events_chat_id,
+            text=user_info,
+            reply_markup=validation_markup,
+        )
+        
+        logger.info(f"Organizer validation request from user {user_id} sent to validation chat")
+        
+        # Notify user that request was sent
+        await send_safe(
+            message.chat.id,
+            "Ваш запрос на статус организатора отправлен на рассмотрение. "
+            "Мы уведомим вас о результате проверки.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        
+    except Exception as e:
+        logger.error(f"Error sending organizer validation request to validation chat: {e}")
+        await send_safe(
+            message.chat.id,
+            "Произошла ошибка при отправке запроса. Пожалуйста, попробуйте позже.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+
+# Add callback handlers for organizer confirmation/decline buttons
+@router.callback_query(lambda c: c.data and c.data.startswith("confirm_organizer_"))
+async def confirm_organizer_callback(callback_query: CallbackQuery, state: FSMContext, app: App):
+    """Confirm organizer status"""
+    # Check if any state is set (meaning some operation is in progress)
+    current_state = await state.get_state()
+    if current_state is not None:
+        # If any operation is in progress, ignore this callback
+        await callback_query.answer("Дождитесь завершения текущей операции...")
+        return
+    
+    # Extract user_id from callback data
+    try:
+        user_id_str = callback_query.data.replace("confirm_organizer_", "")
+        user_id = int(user_id_str)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
+        return
+    
+    # Get user registration info
+    user_registration = await app.get_user_registration(user_id)
+    if user_registration:
+        username = user_registration.get("username", str(user_id))
+        full_name = user_registration.get("full_name", "Неизвестно")
+        
+        # Update the user's graduate_type to ORGANIZER
+        await app.update_user_graduate_type(user_id, GraduateType.ORGANIZER.value)
+        
+        # If user is registered for events that require payment, mark them as paid
+        user_registrations = await app.get_user_registrations(user_id)
+        for reg in user_registrations:
+            city = reg["target_city"]
+            # Skip cities that don't require payment
+            if city in [TargetCity.SAINT_PETERSBURG.value, TargetCity.BELGRADE.value]:
+                continue
+                
+            # Update payment status to confirmed for organizers
+            await app.update_payment_status(
+                user_id=user_id,
+                city=city,
+                status="confirmed",
+                admin_comment="Автоматически подтверждено (организатор)",
+                payment_amount=0,
+            )
+        
+        # Notify user
+        await send_safe(
+            user_id,
+            "✅ Ваш статус организатора подтвержден! "
+            "Участие для организаторов бесплатное. Спасибо за вашу помощь в организации встреч!",
+        )
+        
+        # Log the confirmation
+        await app.save_event_log(
+            "organizer_validation", 
+            {
+                "action": "confirmed",
+                "user_id": user_id,
+                "username": username,
+                "full_name": full_name
+            }, 
+            user_id, 
+            username
+        )
+        
+    else:
+        # User doesn't have registration yet, create a record for organizer status
+        await send_safe(
+            user_id,
+            "✅ Ваш статус организатора подтвержден! "
+            "При регистрации на встречи участие будет бесплатным. "
+            "Спасибо за вашу помощь в организации встреч!",
+        )
+        
+        # Log the confirmation without registration
+        await app.save_event_log(
+            "organizer_validation", 
+            {
+                "action": "confirmed", 
+                "user_id": user_id,
+                "note": "User confirmed as organizer without existing registration"
+            }, 
+            user_id, 
+            ""
+        )
+    
+    # Update callback message
+    if callback_query.message:
+        try:
+            user_info = callback_query.message.text or ""
+            new_text = f"{user_info}\n\n✅ СТАТУС ОРГАНИЗАТОРА ПОДТВЕРЖДЕН"
+            
+            await callback_query.message.edit_text(text=new_text, reply_markup=None)
+        except Exception as e:
+            logger.error(f"Error updating callback message: {e}")
+    
+    # Confirm to admin
+    await callback_query.answer("Статус организатора подтвержден")
+    
+    # Auto-export to sheets after confirmation
+    await app.export_registered_users_to_google_sheets()
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("decline_organizer_"))
+async def decline_organizer_callback(callback_query: CallbackQuery, state: FSMContext, app: App):
+    """Ask for decline reason for organizer status"""
+    # Check if any state is set (meaning some operation is in progress)
+    current_state = await state.get_state()
+    if current_state is not None:
+        # If any operation is in progress, ignore this callback
+        await callback_query.answer("Дождитесь завершения текущей операции...")
+        return
+    
+    # Extract user_id from callback data
+    try:
+        user_id_str = callback_query.data.replace("decline_organizer_", "")
+        user_id = int(user_id_str)
+    except ValueError as e:
+        await callback_query.answer(f"Invalid callback data: {e}")
+        return
+    
+    # Save data for the next step
+    await state.set_state(OrganizerValidationStates.waiting_for_decline_reason)
+    await state.update_data(
+        decline_user_id=user_id, callback_message=callback_query.message
+    )
+    
+    # Ask for decline reason by editing the original message
+    if callback_query.message:
+        try:
+            user_info = callback_query.message.text or ""
+            new_text = f"{user_info}\n\n⚠️ Укажите причину отклонения запроса организатора в ответном сообщении:"
+            
+            await callback_query.message.edit_text(text=new_text, reply_markup=None)
+        except Exception as e:
+            logger.error(f"Error updating callback message: {e}")
+    else:
+        # Fallback if message is not available
+        await callback_query.answer("Укажите причину отклонения в следующем сообщении")
+
+
+@router.message(OrganizerValidationStates.waiting_for_decline_reason)
+async def organizer_decline_reason_handler(message: Message, state: FSMContext, app: App):
+    """Handle organizer status decline reason"""
+    # Check if user is admin
+    if not is_admin(message.from_user):
+        return
+    
+    # Get data from state
+    data = await state.get_data()
+    user_id = data.get("decline_user_id")
+    callback_message = data.get("callback_message")
+    
+    if not user_id:
+        await message.reply("Ошибка: не найдена информация о запросе организатора")
+        await state.clear()
+        return
+    
+    # Get decline reason
+    decline_reason = message.text or "Причина не указана"
+    
+    # Get user info for logging
+    user_registration = await app.get_user_registration(user_id)
+    username = user_registration.get("username", str(user_id)) if user_registration else ""
+    full_name = user_registration.get("full_name", "Неизвестно") if user_registration else "Неизвестно"
+    
+    # Notify user
+    await send_safe(
+        user_id,
+        f"❌ Ваш запрос на статус организатора отклонен.\n\n"
+        f"Причина: {decline_reason}\n\n"
+        f"Если у вас есть вопросы по этому решению, обратитесь к администраторам.",
+    )
+    
+    # Log the decline
+    await app.save_event_log(
+        "organizer_validation", 
+        {
+            "action": "declined",
+            "user_id": user_id,
+            "username": username,
+            "full_name": full_name,
+            "decline_reason": decline_reason
+        }, 
+        user_id, 
+        username
+    )
+    
+    # Update the original callback message if available
+    if callback_message:
+        try:
+            user_info = callback_message.text or ""
+            # Remove the prompt if it exists
+            user_info = user_info.split("\n\n⚠️ Укажите причину")[0]
+            new_text = f"{user_info}\n\n❌ ЗАПРОС ОРГАНИЗАТОРА ОТКЛОНЕН\nПричина: {decline_reason}"
+            
+            await callback_message.edit_text(text=new_text, reply_markup=None)
+        except Exception as e:
+            logger.error(f"Error updating callback message: {e}")
+    
+    # Confirm to admin with a brief reply
+    await message.reply(f"❌ Запрос организатора отклонен")
+    
+    # Clear state
+    await state.clear()

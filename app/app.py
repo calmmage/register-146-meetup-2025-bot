@@ -788,6 +788,59 @@ class App:
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
         )
 
+    async def update_user_graduate_type(
+        self,
+        user_id: int,
+        new_graduate_type: str,
+        admin_id: Optional[int] = None,
+        admin_username: Optional[str] = None,
+    ):
+        """
+        Update the graduate type for a user across all their registrations
+
+        Args:
+            user_id: The user's Telegram ID
+            new_graduate_type: The new graduate type (GRADUATE, TEACHER, NON_GRADUATE, ORGANIZER)
+            admin_id: Optional admin's Telegram ID for logging
+            admin_username: Optional admin's Telegram username for logging
+        """
+        # Get user registrations for logging
+        registrations = await self.get_user_registrations(user_id)
+        
+        update_data = {"graduate_type": new_graduate_type.upper()}
+
+        # Prepare log data
+        log_data = {
+            "action": "update_graduate_type",
+            "user_id": user_id,
+            "new_graduate_type": new_graduate_type.upper(),
+            "registration_count": len(registrations),
+        }
+
+        if registrations:
+            log_data["full_name"] = registrations[0].get("full_name")
+            log_data["username"] = registrations[0].get("username")
+            # Log previous graduate type from the first registration
+            log_data["previous_graduate_type"] = registrations[0].get("graduate_type")
+
+        if admin_id:
+            log_data["admin_id"] = admin_id
+
+        if admin_username:
+            log_data["admin_username"] = admin_username
+
+        # Log the graduate type update
+        await self.save_event_log(
+            "graduate_type_update", log_data, admin_id or user_id, admin_username
+        )
+
+        # Update all registrations for this user
+        result = await self.collection.update_many(
+            {"user_id": user_id}, {"$set": update_data}
+        )
+
+        return result.modified_count
+
     async def normalize_graduate_types(self, admin_id: int = None, admin_username: str = None):
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
