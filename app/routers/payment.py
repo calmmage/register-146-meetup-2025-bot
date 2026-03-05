@@ -17,7 +17,7 @@ from loguru import logger
 from textwrap import dedent
 
 from app.app import App, TargetCity, GraduateType
-from app.router import is_admin, date_of_event, commands_menu
+from app.router import is_admin, commands_menu, get_event_date_display
 from app.routers.admin import PaymentInfo
 from botspot.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
@@ -138,14 +138,31 @@ async def process_payment(
         await deps.bot.send_chat_action(chat_id=message.chat.id, action="typing")
         await asyncio.sleep(3)  # 3 second delay
 
-        # Prepare payment message - split into parts for better UX
-        if city == TargetCity.MOSCOW.value:
-            payment_formula = "1000р + 200 * (2025 - год выпуска)"
+        # Prepare payment message - get formula from event data or fallback
+        # Try to load event from registration
+        registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+        event = None
+        if registration_data:
+            event = await app.get_event_for_registration(registration_data)
+
+        if event:
+            pricing_type = event.get("pricing_type", "formula")
+            if pricing_type == "free":
+                payment_formula = "за свой счет"
+            elif pricing_type == "fixed_by_year":
+                payment_formula = "фиксированная сумма по году выпуска"
+            elif pricing_type == "formula":
+                base = event.get("price_formula_base", 0)
+                rate = event.get("price_formula_rate", 0)
+                ref_year = event.get("price_formula_reference_year", 2026)
+                payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
+            else:
+                payment_formula = "за свой счет"
+        elif city == TargetCity.MOSCOW.value:
+            payment_formula = "1000р + 200 × (2025 − год выпуска)"
         elif city == TargetCity.PERM.value:
-            payment_formula = "500р + 100 * (2025 - год выпуска)"
-        elif city == TargetCity.PERM_SUMMER_2025.value:
-            payment_formula = "2200 − 100 ×(((Год − 1999) // 3)+ 1)"
-        else:  # Saint Petersburg
+            payment_formula = "500р + 100 × (2025 − год выпуска)"
+        else:
             payment_formula = "за свой счет"
 
         # only display formula if not a friend of school
@@ -630,15 +647,15 @@ async def pay_handler(message: Message, state: FSMContext):
         )
         return
 
-    # Filter registrations that require payment
-    # Skip St. Petersburg, Belgrade and teachers
-    payment_registrations = [
-        reg
-        for reg in registrations
-        if reg["target_city"] != TargetCity.SAINT_PETERSBURG.value
-        and reg["target_city"] != TargetCity.BELGRADE.value
-        and reg.get("graduate_type", GraduateType.GRADUATE.value) != GraduateType.TEACHER.value
-    ]
+    # Filter registrations that require payment using event data
+    from app.router import is_event_free
+
+    payment_registrations = []
+    for reg in registrations:
+        event = await app.get_event_for_registration(reg)
+        graduate_type_val = reg.get("graduate_type", GraduateType.GRADUATE.value)
+        if not is_event_free(event, graduate_type_val):
+            payment_registrations.append(reg)
 
     if not payment_registrations:
         await send_safe(
@@ -653,14 +670,11 @@ async def pay_handler(message: Message, state: FSMContext):
         choices = {}
         for reg in payment_registrations:
             city = reg["target_city"]
-            city_enum = next((c for c in TargetCity if c.value == city), None)
+            event = await app.get_event_for_registration(reg)
             status = reg.get("payment_status", "не оплачено")
             status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
-
-            if city_enum is not None:
-                choices[city] = f"{city} ({date_of_event[city_enum]}) - {status_emoji} {status}"
-            else:
-                choices[city] = f"{city} - {status_emoji} {status}"
+            date_str = get_event_date_display(event)
+            choices[city] = f"{city} ({date_str}) - {status_emoji} {status}"
 
         response = await ask_user_choice(
             message.chat.id,
