@@ -3,18 +3,18 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from calmlib.utils import setup_logger, heartbeat_for_sync
+from botspot.core.bot_manager import BotManager
+from calmlib.logging import setup_logger
 from dotenv import load_dotenv
 from loguru import logger
 
 from app.app import App
-from botspot.core.bot_manager import BotManager
+
 from .router import router as main_router
 from .routers.events import events_router
 from .routers.feedback import router as feedback_router
 from .routers.payment import router as payment_router
 from .routers.stats import router as admin_router
-
 
 # Initialize bot and dispatcher
 
