@@ -21,7 +21,7 @@ cd your-bot-name
 
 2. Install dependencies:
 ```bash
-poetry install
+uv sync
 ```
 
 3. Set up your environment:
@@ -32,7 +32,7 @@ cp example.env .env
 
 4. Run the bot:
 ```bash
-poetry run python run.py
+uv run python run.py
 ```
 
 ## Project Structure
@@ -66,12 +66,12 @@ The template uses environment variables for configuration. See `example.env` for
 
 1. Install pre-commit hooks:
 ```bash
-pre-commit install
+uv run pre-commit install
 ```
 
 2. Run tests:
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 ## Docker Support
