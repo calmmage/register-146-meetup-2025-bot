@@ -10,6 +10,7 @@ from loguru import logger
 from app.app import App
 from botspot.core.bot_manager import BotManager
 from .router import router as main_router
+from .routers.events import events_router
 from .routers.feedback import router as feedback_router
 from .routers.payment import router as payment_router
 from .routers.stats import router as admin_router
@@ -24,6 +25,7 @@ def main(debug=False) -> None:
     load_dotenv(Path(__file__).parent.parent / ".env")
 
     dp = Dispatcher()
+    dp.include_router(events_router)
     dp.include_router(admin_router)
     dp.include_router(payment_router)
     dp.include_router(feedback_router)

@@ -990,14 +990,18 @@ class App:
         return result.modified_count
 
     async def _get_users_base(
-        self, payment_status: Optional[str] = None, city: Optional[str] = None
+        self,
+        payment_status: Optional[str] = None,
+        city: Optional[str] = None,
+        event_id: Optional[str] = None,
     ) -> List[Dict]:
         """
-        Base method to get users with various filters
+        Base method to get users with various filters.
 
         Args:
             payment_status: Filter by payment status ("confirmed", "pending", "declined", None for any)
-            city: Filter by city (None for all cities)
+            city: Filter by city enum key (legacy, e.g. "MOSCOW") or None for all
+            event_id: Filter by event_id (preferred over city)
 
         Returns:
             List of user registrations matching the criteria
@@ -1013,9 +1017,11 @@ class App:
         elif payment_status == "paid":
             and_conditions.append({"payment_status": "confirmed"})
 
-        # Filter by city if specified
-        if city and city != "all":
-            # Map city key to actual value
+        # Filter by event_id (preferred) or legacy city
+        if event_id and event_id != "all":
+            and_conditions.append({"event_id": event_id})
+        elif city and city != "all":
+            # Legacy: map city key to actual value
             city_mapping = {
                 "MOSCOW": TargetCity.MOSCOW.value,
                 "PERM": TargetCity.PERM.value,
@@ -1033,17 +1039,20 @@ class App:
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
 
-    async def get_unpaid_users(self, city: Optional[str] = None) -> List[Dict]:
+    async def get_unpaid_users(
+        self, city: Optional[str] = None, event_id: Optional[str] = None
+    ) -> List[Dict]:
         """
         Get all users who have not paid yet (payment_status is not "confirmed")
 
         Args:
-            city: Optional city to filter by
+            city: Optional city to filter by (legacy)
+            event_id: Optional event_id to filter by (preferred)
 
         Returns:
             List of user registrations with unpaid status
         """
-        return await self._get_users_base(payment_status="unpaid", city=city)
+        return await self._get_users_base(payment_status="unpaid", city=city, event_id=event_id)
 
     async def get_users_without_feedback(self, city: Optional[str] = None) -> List[Dict]:
         """
@@ -1083,29 +1092,35 @@ class App:
                 
         return users_with_feedback
 
-    async def get_paid_users(self, city: Optional[str] = None) -> List[Dict]:
+    async def get_paid_users(
+        self, city: Optional[str] = None, event_id: Optional[str] = None
+    ) -> List[Dict]:
         """
         Get all users who have paid (payment_status is "confirmed")
 
         Args:
-            city: Optional city to filter by
+            city: Optional city to filter by (legacy)
+            event_id: Optional event_id to filter by (preferred)
 
         Returns:
             List of user registrations with paid status
         """
-        return await self._get_users_base(payment_status="paid", city=city)
+        return await self._get_users_base(payment_status="paid", city=city, event_id=event_id)
 
-    async def get_all_users(self, city: Optional[str] = None) -> List[Dict]:
+    async def get_all_users(
+        self, city: Optional[str] = None, event_id: Optional[str] = None
+    ) -> List[Dict]:
         """
-        Get all users regardless of payment status
+        Get all users regardless of payment status.
 
         Args:
-            city: Optional city to filter by
+            city: Optional city to filter by (legacy)
+            event_id: Optional event_id to filter by (preferred)
 
         Returns:
             List of all user registrations
         """
-        return await self._get_users_base(city=city)
+        return await self._get_users_base(city=city, event_id=event_id)
 
     async def _fix_database(self) -> Dict[str, int]:
         """
