@@ -73,17 +73,6 @@ def mock_is_admin():
         yield mock
 
 
-@pytest.fixture
-def mock_is_event_passed():
-    with patch("app.router.is_event_passed") as mock:
-        # Return False for summer event (not passed yet)
-        def event_passed_side_effect(city):
-            from app.app import TargetCity
-            return city != TargetCity.PERM_SUMMER_2025
-        mock.side_effect = event_passed_side_effect
-        yield mock
-
-
 @pytest.mark.asyncio
 async def test_start_handler_existing_summer_user(
     mock_message,
@@ -92,30 +81,32 @@ async def test_start_handler_existing_summer_user(
     mock_send_safe,
     mock_botspot_dependencies,
     mock_is_admin,
-    mock_is_event_passed,
 ):
-    from app.app import TargetCity
     from app.router import start_handler
 
-    # Configure the mocks for a user already registered for summer event
-    mock_summer_user = {
+    # Configure mock: user has archived summer 2025 registration but no active ones
+    mock_app.get_enabled_events = AsyncMock(return_value=[
+        {"_id": "ev1", "city": "Москва", "date_display": "21 Марта, Сб", "status": "upcoming"},
+    ])
+    mock_app.is_event_passed = MagicMock(return_value=False)
+    mock_app.get_user_active_registrations = AsyncMock(return_value=[])
+    mock_app.get_user_registration = AsyncMock(return_value={
         "full_name": "Test User",
         "graduation_year": 2010,
         "class_letter": "A",
-        "target_city": TargetCity.PERM_SUMMER_2025.value,
-    }
-    mock_app.get_user_registration = AsyncMock(return_value=mock_summer_user)
-    mock_app.get_user_registrations = AsyncMock(return_value=[mock_summer_user])
+        "target_city": "Пермь (Летняя встреча 2025)",
+    })
 
-    # Mock the handle_registered_user function
-    with patch("app.router.handle_registered_user") as mock_handler:
-        mock_handler.return_value = AsyncMock()
+    # Mock ask_user_choice to simulate user cancelling
+    with patch("app.router.ask_user_choice") as mock_ask:
+        mock_ask.return_value = "cancel"
 
         # Call the handler
         await start_handler(mock_message, mock_state, mock_app)
 
-        # Verify handle_registered_user was called with correct args
-        mock_handler.assert_called_once_with(mock_message, mock_state, mock_summer_user, mock_app)
+        # Since user has no active registrations, they should be asked to register
+        # (not routed to handle_registered_user)
+        mock_ask.assert_called_once()
 
 
 # TODO: Fix deep call chain issues with register_user flow

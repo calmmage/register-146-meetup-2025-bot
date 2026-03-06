@@ -236,17 +236,22 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     # User attended, continue with feedback questions
 
     # Step 2: Ask which city the user attended
+    # Build choices from events that have passed or are archived
+    city_choices = {}
+    all_events = await app.get_all_events()
+    for ev in all_events:
+        status = ev.get("status", "")
+        if status in ("archived", "passed"):
+            ev_id = str(ev["_id"])
+            label = f"{ev.get('city', 'Unknown')}, {ev.get('date_display', '')}"
+            city_choices[ev_id] = label
+    city_choices["skip"] = "Пропустить вопрос"
+    city_choices["cancel"] = "Отмена"
+
     city = await ask_user_choice(
         message.chat.id,
         "В каком городе?",
-        choices={
-            "perm": "Пермь, в субботу 29 марта",
-            "moscow": "Москва, в субботу 05 апреля",
-            "saint_petersburg": "Питер, в субботу 05 апреля",
-            "belgrade": "Белград, в субботу 05 апреля",
-            "skip": "Пропустить вопрос",
-            "cancel": "Отмена",
-        },
+        choices=city_choices,
         highlight_default=False,
         state=state,
         timeout=None,

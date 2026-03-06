@@ -8,7 +8,7 @@ from aiogram.types import (
 from dotenv import load_dotenv
 from loguru import logger
 from textwrap import dedent
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime
 
 from app.app import App, TargetCity, RegisteredUser, GraduateType
@@ -25,61 +25,33 @@ load_dotenv()
 # Dictionary to track log messages for each user
 log_messages: Dict[int, List[Message]] = {}
 
-date_of_event = {
-    TargetCity.PERM: "29 Марта, Сб",
-    TargetCity.MOSCOW: "5 Апреля, Сб",
-    TargetCity.SAINT_PETERSBURG: "5 Апреля, Сб",
-    TargetCity.BELGRADE: "5 Апреля, Сб",
-    TargetCity.PERM_SUMMER_2025: "2 Августа, Сб",
-}
 
-# Add event dates in datetime format for comparison
-event_dates = {
-    TargetCity.PERM: datetime(2025, 3, 29),
-    TargetCity.MOSCOW: datetime(2025, 4, 5),
-    TargetCity.SAINT_PETERSBURG: datetime(2025, 4, 5),
-    TargetCity.BELGRADE: datetime(2025, 4, 5),
-    TargetCity.PERM_SUMMER_2025: datetime(2025, 8, 2),
-}
+# ---- Helper functions to get event data ----
 
 
-def is_event_passed(city: TargetCity) -> bool:
-    """Check if the event for a given city has already passed"""
-    today = datetime.now()
-    return today > event_dates[city]
+def get_event_date_display(event: Optional[Dict]) -> str:
+    """Get display date from an event dict."""
+    if event:
+        return event.get("date_display", "дата неизвестна")
+    return "дата неизвестна"
 
 
-time_of_event = {
-    TargetCity.PERM: "17:00",
-    TargetCity.MOSCOW: "18:00",
-    TargetCity.SAINT_PETERSBURG: "17:00",
-    TargetCity.BELGRADE: "Уточняется",  # Предположительно
-    TargetCity.PERM_SUMMER_2025: "18:00-24:00",
-}
+def get_event_city(event: Optional[Dict]) -> str:
+    """Get city name from an event dict."""
+    if event:
+        return event.get("city", "")
+    return ""
 
-venue_of_event = {
-    TargetCity.PERM: "Пермское бистро",
-    TargetCity.MOSCOW: "People Loft",
-    TargetCity.SAINT_PETERSBURG: "Family Loft",
-    TargetCity.BELGRADE: "Уточняется",
-    TargetCity.PERM_SUMMER_2025: "База \"Чайка\", Беседка 11",
-}
 
-address_of_event = {
-    TargetCity.PERM: "ул. Сибирская, 8",
-    TargetCity.MOSCOW: "1-я ул. Энтузиастов, 12, метро Авиамоторная",
-    TargetCity.SAINT_PETERSBURG: "Кожевенная линия, 34, Метро горный институт",
-    TargetCity.BELGRADE: "Уточняется",
-    TargetCity.PERM_SUMMER_2025: "г. Пермь, ул. Встречная 33",
-}
-
-padezhi = {
-    TargetCity.PERM: "Перми",
-    TargetCity.MOSCOW: "Москве",
-    TargetCity.SAINT_PETERSBURG: "Санкт-Петербурге",
-    TargetCity.BELGRADE: "Белграде",
-    TargetCity.PERM_SUMMER_2025: "Перми",
-}
+def is_event_free(event: Optional[Dict], graduate_type: str = GraduateType.GRADUATE.value) -> bool:
+    """Check if an event is free for a given graduate type."""
+    if not event:
+        return False
+    if event.get("pricing_type") == "free":
+        return True
+    if graduate_type in event.get("free_for_types", []):
+        return True
+    return False
 
 
 async def handle_registered_user(message: Message, state: FSMContext, registration, app: App):
@@ -88,11 +60,17 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         logger.error("Message from_user is None")
         return
 
-    # Get all user registrations
-    registrations = await app.get_user_registrations(message.from_user.id)
+    # Get active registrations only (exclude archived events)
+    registrations = await app.get_user_active_registrations(message.from_user.id)
 
-    # We always want to show the same consistent menu regardless of payment status
-    # No special case for unpaid registration - everything is handled in the same interface
+    if not registrations:
+        # All registrations are for archived events
+        await send_safe(
+            message.chat.id,
+            "У вас нет активных регистраций.\nИспользуйте /start для регистрации на новую встречу.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
 
     if len(registrations) > 1:
         # User has multiple registrations
@@ -100,18 +78,19 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
 
         for reg in registrations:
             city = reg["target_city"]
-            city_enum = next((c for c in TargetCity if c.value == city), None)
+            event = await app.get_event_for_registration(reg)
+            graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
 
             # Add payment status indicator
             payment_status = ""
-            if city != TargetCity.SAINT_PETERSBURG.value and city != TargetCity.BELGRADE.value:
+            if not is_event_free(event, graduate_type):
                 status = reg.get("payment_status", "не оплачено")
                 status_emoji = (
                     "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
                 )
                 payment_status = f" - {status_emoji} {status}"
 
-            info_text += f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'}){payment_status}\n"
+            info_text += f"• {city} ({get_event_date_display(event)}){payment_status}\n"
             info_text += f"  ФИО: {reg['full_name']}\n"
             info_text += (
                 f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
@@ -144,32 +123,19 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
     else:
         # User has only one registration
-        reg = registration
+        reg = registrations[0]
         city = reg["target_city"]
         full_name = reg["full_name"]
         graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
-
-        city_enum = next((c for c in TargetCity if c.value == city), None)
+        event = await app.get_event_for_registration(reg)
 
         # Check if payment is needed and not confirmed
-        needs_payment = False
-        if (
-            city != TargetCity.SAINT_PETERSBURG.value
-            and city != TargetCity.BELGRADE.value
-            and graduate_type != GraduateType.TEACHER.value
-            and graduate_type != GraduateType.ORGANIZER.value
-            and reg.get("payment_status") != "confirmed"
-        ):
-            needs_payment = True
+        event_is_free = is_event_free(event, graduate_type)
+        needs_payment = not event_is_free and reg.get("payment_status") != "confirmed"
 
         # Payment status display
         payment_status = ""
-        if (
-            city != TargetCity.SAINT_PETERSBURG.value
-            and city != TargetCity.BELGRADE.value
-            and graduate_type != GraduateType.TEACHER.value
-            and graduate_type != GraduateType.ORGANIZER.value
-        ):
+        if not event_is_free:
             status = reg.get("payment_status", "не оплачено")
             status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
             payment_status = f"Статус оплаты: {status_emoji} {status}\n"
@@ -177,7 +143,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         info_text = dedent(
             f"""
             Вы зарегистрированы на встречу выпускников:
-            
+
             ФИО: {reg["full_name"]}
             """
         )
@@ -193,9 +159,7 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             info_text += f"Год выпуска: {reg['graduation_year']}\n"
             info_text += f"Класс: {reg['class_letter']}\n"
 
-        info_text += (
-            f"Город: {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
-        )
+        info_text += f"Город: {city} ({get_event_date_display(event)})\n"
         info_text += payment_status
         info_text += "\nЧто вы хотите сделать?"
 
@@ -203,15 +167,12 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         if needs_payment:
             choices["pay"] = "Оплатить участие"
 
-        # Prepare choices for the menu
         choices.update(
             {
                 "register_another": "Зарегистрироваться в другом городе",
                 "cancel": "Отменить регистрацию",
             }
         )
-
-        # Add payment option if needed
 
         choices["nothing"] = "Ничего, всё в порядке"
 
@@ -242,20 +203,16 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
-            # Process payment for this registration
             from app.routers.payment import process_payment
 
-            # Store the original user information in the state
             await state.update_data(
                 original_user_id=message.from_user.id, original_username=message.from_user.username
             )
 
-            # Get graduation year and graduate type
             graduation_year = reg["graduation_year"]
             graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
 
-            # Process payment
-            skip_instructions = reg.get("payment_status") is not None  # Skip if already seen
+            skip_instructions = reg.get("payment_status") is not None
             await process_payment(
                 message,
                 state,
@@ -266,7 +223,6 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             )
 
         elif response == "register_another":
-            # Keep existing registration and start new one with reused info
             await send_safe(message.chat.id, "Давайте зарегистрируемся в другом городе.")
             await register_user(message, state, app, reuse_info=registration)
 
@@ -325,7 +281,6 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         )
 
     if response == "all":
-        # Confirm deletion of all registrations
         confirm = await ask_user_choice(
             message.chat.id,
             "Вы уверены, что хотите отменить ВСЕ регистрации?",
@@ -334,7 +289,6 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             timeout=None,
         )
 
-        # Log confirmation button click
         if message.from_user:
             await app.save_event_log(
                 "button_click",
@@ -346,14 +300,11 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         if confirm == "yes":
             await app.delete_user_registration(message.from_user.id)
 
-            # Log cancellation of all registrations
-            # Get user info for logging
             user_reg = await app.get_user_registration(message.from_user.id)
             full_name = user_reg.get("full_name", "Unknown") if user_reg else "Unknown"
-            city = "все города"  # All cities
 
             await app.log_registration_canceled(
-                message.from_user.id, message.from_user.username or "", full_name, city
+                message.from_user.id, message.from_user.username or "", full_name, "все города"
             )
 
             await send_safe(
@@ -362,11 +313,9 @@ async def manage_registrations(message: Message, state: FSMContext, registration
                 reply_markup=ReplyKeyboardRemove(),
             )
         else:
-            # Go back to registration management
             await manage_registrations(message, state, registrations, app)
 
     elif response == "back":
-        # Go back to main menu
         await handle_registered_user(message, state, registrations[0], app)
 
     else:
@@ -374,18 +323,17 @@ async def manage_registrations(message: Message, state: FSMContext, registration
         city = response
         assert city is not None
         reg = next(r for r in registrations if r["target_city"] == city)
-
-        city_enum = next((c for c in TargetCity if c.value == city), None)
+        event = await app.get_event_for_registration(reg)
 
         info_text = dedent(
             f"""
             Регистрация в городе {city}:
-            
+
             ФИО: {reg["full_name"]}
             Год выпуска: {reg["graduation_year"]}
             Класс: {reg["class_letter"]}
-            Дата: {date_of_event[city_enum] if city_enum else "неизвестна"}
-            
+            Дата: {get_event_date_display(event)}
+
             Что вы хотите сделать?
             """
         )
@@ -401,7 +349,6 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             timeout=None,
         )
 
-        # Log city-specific action
         if message.from_user:
             await app.save_event_log(
                 "button_click",
@@ -411,10 +358,8 @@ async def manage_registrations(message: Message, state: FSMContext, registration
             )
 
         if action == "cancel":
-            # Delete this registration
             await app.delete_user_registration(message.from_user.id, city)
 
-            # Log cancellation
             await app.log_registration_canceled(
                 message.from_user.id,
                 message.from_user.username or "",
@@ -422,8 +367,7 @@ async def manage_registrations(message: Message, state: FSMContext, registration
                 city,
             )
 
-            # Check if user has other registrations
-            remaining = await app.get_user_registrations(message.from_user.id)
+            remaining = await app.get_user_active_registrations(message.from_user.id)
 
             if remaining:
                 await send_safe(
@@ -439,7 +383,6 @@ async def manage_registrations(message: Message, state: FSMContext, registration
                 )
 
         else:  # "back"
-            # Go back to registration management
             await manage_registrations(message, state, registrations, app=app)
 
 
@@ -489,15 +432,25 @@ async def register_user(
     existing_cities = [reg["target_city"] for reg in existing_registrations]
 
     # step 1 - greet user, ask location
-    if preselected_city:
-        # Use preselected city if provided
-        location = next((c for c in TargetCity if c.value == preselected_city), None)
+    # Load available events from DB
+    enabled_events = await app.get_enabled_events()
+    # Build a map of event_id -> event for quick lookup
+    event_map = {str(e["_id"]): e for e in enabled_events}
 
-        # Check if event has passed for this city
-        if location and is_event_passed(location):
+    selected_event = None
+
+    if preselected_city:
+        # Use preselected city if provided - find matching event
+        location = next((c for c in TargetCity if c.value == preselected_city), None)
+        selected_event = next(
+            (e for e in enabled_events if e["city"] == preselected_city or e["name"] == preselected_city),
+            None,
+        )
+
+        if selected_event and app.is_event_passed(selected_event):
             await send_safe(
                 message.chat.id,
-                f"К сожалению, встреча в городе {location.value} уже прошла.\n\n"
+                f"К сожалению, встреча в городе {preselected_city} уже прошла.\n\n"
                 "Вы можете:\n"
                 "1. Выбрать другой город, если там встреча еще не прошла\n"
                 "2. Следить за новостями в группе школы, чтобы не пропустить следующие встречи",
@@ -505,37 +458,35 @@ async def register_user(
             )
             return
 
+        if not selected_event:
+            # Try matching by TargetCity value (legacy)
+            location = next((c for c in TargetCity if c.value == preselected_city), None)
+
         # Log preselected city
         log_msg = await app.log_registration_step(
             user_id,
             username,
             "Выбор города",
-            f"Предвыбранный город: {location.value if location else preselected_city}",
+            f"Предвыбранный город: {preselected_city}",
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
 
-    if not location:
-        # Filter out cities the user is already registered for, cities where events have passed, and disabled cities
-        available_cities = {
-            city.value: f"{city.value} ({date_of_event[city]})"
-            for city in TargetCity
-            if city.value not in existing_cities
-            and not is_event_passed(city)
-            and app.is_city_enabled(city.value)
-        }
-        available_cities["cancel"] = "Отменить регистрацию"  # Add cancel option
+    if not selected_event and not location:
+        # Filter available events: not passed, not already registered
+        available_events = [
+            e
+            for e in enabled_events
+            if not app.is_event_passed(e) and e.get("city", "") not in existing_cities
+        ]
 
-        # If no cities left, inform the user
-        if not available_cities:
+        if not available_events:
             await send_safe(
                 message.chat.id,
                 "К сожалению, все встречи уже прошли или вы уже зарегистрированы во всех доступных городах.\n\n"
                 "Следите за новостями в группе школы, чтобы не пропустить следующие встречи.",
                 reply_markup=ReplyKeyboardRemove(),
             )
-
-            # Log no cities available
             log_msg = await app.log_registration_step(
                 user_id,
                 username,
@@ -544,8 +495,14 @@ async def register_user(
             )
             if log_msg:
                 log_messages[user_id].append(log_msg)
-
             return
+
+        # Build choices from available events
+        available_cities = {}
+        for e in available_events:
+            eid = str(e["_id"])
+            available_cities[eid] = f"{e['city']} ({e.get('date_display', '')})"
+        available_cities["cancel"] = "Отменить регистрацию"
 
         question = dedent(
             """
@@ -561,11 +518,9 @@ async def register_user(
             timeout=None,
         )
 
-        # Handle cancel
         if await handle_cancel_option(response, message, state):
             return
 
-        # Handle timeout/None response
         if response is None:
             await send_safe(
                 message.chat.id,
@@ -574,20 +529,29 @@ async def register_user(
             )
             return
 
-        location = TargetCity(response)
+        # Response is an event_id
+        selected_event = event_map.get(response)
+        if selected_event:
+            # Set location from event city for backward compat
+            location = next((c for c in TargetCity if c.value == selected_event["city"]), None)
+            if not location:
+                # Create a dynamic target - use city name directly
+                location = None  # Will handle below
+        else:
+            # Fallback: try as TargetCity value
+            location = next((c for c in TargetCity if c.value == response), None)
 
-        # Log city selection
+        city_name = selected_event["city"] if selected_event else (location.value if location else response)
         log_msg = await app.log_registration_step(
-            user_id, username, "Выбор города", f"Выбранный город: {location.value}"
+            user_id, username, "Выбор города", f"Выбранный город: {city_name}"
         )
 
-        # Also log to event_logs collection
         await app.save_event_log(
             "registration_step",
             {
                 "step": "city_selection",
-                "city": location.value,
-                "available_cities": list(available_cities.keys()),
+                "city": city_name,
+                "event_id": str(selected_event["_id"]) if selected_event else None,
                 "existing_cities": existing_cities,
             },
             user_id,
@@ -595,6 +559,9 @@ async def register_user(
         )
         if log_msg:
             log_messages[user_id].append(log_msg)
+
+    # Determine the city name for display
+    reg_city_name = selected_event["city"] if selected_event else (location.value if location else "")
 
     # If we have info to reuse, skip asking for name and class
     if reuse_info:
@@ -606,8 +573,8 @@ async def register_user(
         # Confirm reusing the information
         confirm_text = dedent(
             f"""
-            Хотите использовать те же данные для регистрации в городе {location.value}?
-            
+            Хотите использовать те же данные для регистрации в городе {reg_city_name}?
+
             ФИО: {full_name}
             Год выпуска: {graduation_year}
             Класс: {class_letter}
@@ -819,26 +786,42 @@ async def register_user(
         if log_msg:
             log_messages[user_id].append(log_msg)
 
+    # Determine the target_city value for backward compat
+    if location:
+        target_city_value = location
+    elif selected_event:
+        # For new events not in TargetCity enum, find best match or use city name
+        target_city_value = next(
+            (c for c in TargetCity if c.value == selected_event["city"]), None
+        )
+        if not target_city_value:
+            # Use PERM as fallback for Пермь, MOSCOW for Москва, etc.
+            target_city_value = next(
+                (c for c in TargetCity if c.value == selected_event["city"]), TargetCity.PERM
+            )
+
     # Internal validation - log error but don't expose to user
-    if not all([full_name, graduation_year is not None, class_letter, location, graduate_type]):
+    if not all([full_name, graduation_year is not None, class_letter, graduate_type]):
         logger.error(
             f"Registration validation failed - missing required fields: "
             f"full_name={full_name}, "
             f"graduation_year={graduation_year}, "
             f"class_letter={class_letter}, "
-            f"location={location}, "
             f"graduate_type={graduate_type}"
         )
 
-    # Save the registration
+    # Save the registration with event_id
+    event_id = str(selected_event["_id"]) if selected_event else None
+    registered_user = RegisteredUser(
+        full_name=full_name,
+        graduation_year=graduation_year,
+        class_letter=class_letter,
+        target_city=target_city_value,
+        event_id=event_id,
+        graduate_type=graduate_type,
+    )
     await app.save_registered_user(
-        RegisteredUser(
-            full_name=full_name,
-            graduation_year=graduation_year,
-            class_letter=class_letter,
-            target_city=location,
-            graduate_type=graduate_type,
-        ),
+        registered_user,
         user_id=user_id,
         username=username,
     )
@@ -848,7 +831,7 @@ async def register_user(
         user_id,
         username,
         "Регистрация завершена",
-        f"Город: {location.value}, ФИО: {full_name}, Выпуск: {graduation_year} {class_letter}",
+        f"Город: {reg_city_name}, ФИО: {full_name}, Выпуск: {graduation_year} {class_letter}",
     )
     if log_msg:
         log_messages[user_id].append(log_msg)
@@ -860,108 +843,77 @@ async def register_user(
         full_name,
         graduation_year,
         class_letter,
-        location.value,
+        reg_city_name,
         graduate_type.value,
     )
 
     # Clear log messages
     await delete_log_messages(user_id)
 
-    # Send confirmation message with payment info in one message
+    # Determine prepositional city name for confirmation
+    city_prep = ""
+    if selected_event:
+        city_prep = selected_event.get("city_prepositional", reg_city_name)
+    elif location:
+        from app.app import CITY_PREPOSITIONAL_MAP
+
+        city_prep = CITY_PREPOSITIONAL_MAP.get(location.value, location.value)
+
+    date_display = get_event_date_display(selected_event) if selected_event else ""
+
     confirmation_msg = (
         f"Спасибо, {full_name}!\n"
         f"Вы зарегистрированы на встречу выпускников школы 146 "
-        f"в {padezhi[location]} {date_of_event[location]}. "
+        f"в {city_prep} {date_display}. "
     )
 
-    # Skip payment flow for St. Petersburg, Belgrade, teachers, and organizers
-    if location.value == TargetCity.SAINT_PETERSBURG.value:
-        # Mark Saint Petersburg registrations as paid automatically
+    # Determine the city string for DB operations
+    city_for_db = target_city_value.value if isinstance(target_city_value, TargetCity) else reg_city_name
+
+    # Check if event is free for this participant
+    event_is_free = is_event_free(selected_event, graduate_type.value) if selected_event else False
+
+    if event_is_free or graduate_type in (GraduateType.TEACHER, GraduateType.ORGANIZER):
+        # Auto-confirm payment for free participants
+        if graduate_type == GraduateType.TEACHER:
+            comment = "Автоматически подтверждено (учитель)"
+            confirmation_msg += "\nДля учителей участие бесплатное. Спасибо за вашу работу!"
+        elif graduate_type == GraduateType.ORGANIZER:
+            comment = "Автоматически подтверждено (организатор)"
+            confirmation_msg += "\nДля организаторов участие бесплатное. Спасибо за вашу помощь!"
+        else:
+            comment = f"Автоматически подтверждено (бесплатное мероприятие)"
+            confirmation_msg += "\nДля этой встречи оплата не требуется. Все расходы участники несут самостоятельно."
+
         await app.update_payment_status(
             user_id=user_id,
-            city=location.value,
+            city=city_for_db,
             status="confirmed",
-            admin_comment="Автоматически подтверждено (Санкт-Петербург)",
+            admin_comment=comment,
             payment_amount=0,
         )
 
-        confirmation_msg += "\nДля встречи в Санкт-Петербурге оплата не требуется. Все расходы участники несут самостоятельно."
-        await send_safe(
-            message.chat.id,
-            confirmation_msg,
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-    elif location.value == TargetCity.BELGRADE.value:
-        # Mark Belgrade registrations as paid automatically
-        await app.update_payment_status(
-            user_id=user_id,
-            city=location.value,
-            status="confirmed",
-            admin_comment="Автоматически подтверждено (Белград)",
-            payment_amount=0,
-        )
-
-        confirmation_msg += "\nДля встречи в Белграде оплата не требуется. Все расходы участники несут самостоятельно."
-        confirmation_msg += (
-            "\n\nПрисоединяйтесь к группе встречи в Telegram: https://t.me/+8-4xPvS-PTcxZTEy"
-        )
-        await send_safe(
-            message.chat.id,
-            confirmation_msg,
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
-    elif graduate_type == GraduateType.TEACHER:
-        # Mark teachers as paid automatically
-        await app.update_payment_status(
-            user_id=user_id,
-            city=location.value,
-            status="confirmed",
-            admin_comment="Автоматически подтверждено (учитель)",
-            payment_amount=0,
-        )
-
-        confirmation_msg += "\nДля учителей участие бесплатное. Спасибо за вашу работу!"
         await send_safe(
             message.chat.id,
             confirmation_msg,
             reply_markup=ReplyKeyboardRemove(),
         )
 
-        # Auto-export to sheets after registration with confirmed payment
-        await app.export_registered_users_to_google_sheets()
-    elif graduate_type == GraduateType.ORGANIZER:
-        # Mark organizers as paid automatically
-        await app.update_payment_status(
-            user_id=user_id,
-            city=location.value,
-            status="confirmed",
-            admin_comment="Автоматически подтверждено (организатор)",
-            payment_amount=0,
-        )
-
-        confirmation_msg += "\nДля организаторов участие бесплатное. Спасибо за вашу помощь!"
-        await send_safe(
-            message.chat.id,
-            confirmation_msg,
-            reply_markup=ReplyKeyboardRemove(),
-        )
-
-        # Auto-export to sheets after registration with confirmed payment
         await app.export_registered_users_to_google_sheets()
     else:
-        # Regular flow for everyone else who needs to pay
+        # Regular flow - needs payment
+        if selected_event:
+            regular_amount, discount, discounted_amount, formula_amount = app.calculate_event_payment(
+                selected_event, graduation_year, graduate_type.value
+            )
+        else:
+            regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+                city_for_db, graduation_year, graduate_type.value
+            )
 
-        # Calculate payment amounts first
-        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
-            location.value, graduation_year, graduate_type.value
-        )
-
-        # Save payment info with "not paid" status - different from "pending" which is used after "pay later" click
         await app.save_payment_info(
             user_id=user_id,
-            city=location.value,
+            city=city_for_db,
             discounted_amount=discounted_amount,
             regular_amount=regular_amount,
             formula_amount=formula_amount,
@@ -972,15 +924,12 @@ async def register_user(
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 
-        # Import the process_payment function here to avoid circular imports
         from app.routers.payment import process_payment
 
-        # Store the original user information in the state
         await state.update_data(original_user_id=user_id, original_username=username)
 
-        # Process payment directly
         await process_payment(
-            message, state, location.value, graduation_year, graduate_type=graduate_type.value
+            message, state, city_for_db, graduation_year, graduate_type=graduate_type.value
         )
 
 
@@ -1043,16 +992,16 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
         reg = registrations[0]
         city = reg["target_city"]
         full_name = reg["full_name"]
-        city_enum = next((c for c in TargetCity if c.value == city), None)
+        event = await app.get_event_for_registration(reg)
 
         confirm_text = dedent(
             f"""
             Вы уверены, что хотите отменить регистрацию на встречу в городе {city}?
-            
+
             ФИО: {full_name}
             Год выпуска: {reg["graduation_year"]}
             Класс: {reg["class_letter"]}
-            Город: {city} ({date_of_event[city_enum] if city_enum else "дата неизвестна"})
+            Город: {city} ({get_event_date_display(event)})
             """
         )
 
@@ -1092,10 +1041,8 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
         choices = {}
         for reg in registrations:
             city = reg["target_city"]
-            city_enum = next((c for c in TargetCity if c.value == city), None)
-            choices[city] = (
-                f"{city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})"
-            )
+            event = await app.get_event_for_registration(reg)
+            choices[city] = f"{city} ({get_event_date_display(event)})"
 
         choices["all"] = "Отменить все регистрации"
         choices["cancel"] = "Ничего не отменять"
@@ -1179,35 +1126,42 @@ async def info_handler(message: Message, state: FSMContext, app: App):
         message.from_user.username,
     )
 
-    # Create info text with details for each city
+    # Create info text with details from DB events
     info_text = "📅 <b>Информация о встречах выпускников 146</b>\n\n"
 
-    # Check if all events have passed
-    all_events_passed = all(is_event_passed(city) for city in TargetCity)
-    if all_events_passed:
+    # Get active (non-archived) events
+    active_events = await app.get_active_events()
+
+    if not active_events:
         info_text += "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
         info_text += "Следите за новостями в группе школы, чтобы не пропустить следующие встречи."
         await send_safe(message.chat.id, info_text, parse_mode="HTML")
         return
 
-    for city in TargetCity:
-        if not app.is_city_enabled(city.value):
-            continue
+    has_upcoming = False
+    for event in active_events:
+        info_text += f"<b>🏙️ {event.get('name', event.get('city', ''))}</b>\n"
 
-        info_text += f"<b>🏙️ {city.value}</b>\n"
-
-        if is_event_passed(city):
-            info_text += f"📆 Дата: {date_of_event[city]} (встреча уже прошла)\n"
+        if app.is_event_passed(event):
+            info_text += f"📆 Дата: {event.get('date_display', '')} (встреча уже прошла)\n"
         else:
-            info_text += f"📆 Дата: {date_of_event[city]}\n"
-            info_text += f"⏰ Время: {time_of_event[city]}\n"
-            info_text += f"🏢 Место: {venue_of_event[city]}\n"
-            info_text += f"📍 Адрес: {address_of_event[city]}\n"
+            has_upcoming = True
+            info_text += f"📆 Дата: {event.get('date_display', '')}\n"
+            info_text += f"⏰ Время: {event.get('time_display', 'Уточняется')}\n"
+            venue = event.get("venue")
+            address = event.get("address")
+            if venue:
+                info_text += f"🏢 Место: {venue}\n"
+            else:
+                info_text += "🏢 Место: Уточняется\n"
+            if address:
+                info_text += f"📍 Адрес: {address}\n"
+            else:
+                info_text += "📍 Адрес: Уточняется\n"
 
         info_text += "\n"
 
-    # Add registration command info if there are upcoming events
-    if not all_events_passed:
+    if has_upcoming:
         info_text += "Используйте /start для регистрации на встречу.\n"
         info_text += "Используйте /pay для оплаты участия после регистрации.\n"
 
@@ -1233,13 +1187,15 @@ async def status_handler(message: Message, state: FSMContext, app: App):
     )
 
     user_id = message.from_user.id
-    registrations = await app.get_user_registrations(user_id)
+
+    # Get active registrations only (exclude archived events)
+    registrations = await app.get_user_active_registrations(user_id)
 
     if not registrations:
-        # Check if all enabled events have passed
-        enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
-        all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
-        if all_enabled_events_passed:
+        # Check if there are any enabled upcoming events
+        enabled_events = await app.get_enabled_events()
+        upcoming = [e for e in enabled_events if not app.is_event_passed(e)]
+        if not upcoming:
             await send_safe(
                 message.chat.id,
                 "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
@@ -1247,9 +1203,13 @@ async def status_handler(message: Message, state: FSMContext, app: App):
                 reply_markup=ReplyKeyboardRemove(),
             )
         else:
+            upcoming_text = "У вас нет активных регистраций.\n\n📅 Ближайшие встречи:\n"
+            for e in upcoming:
+                upcoming_text += f"- {e['city']} ({e.get('date_display', '')})\n"
+            upcoming_text += "\nИспользуйте /start для регистрации на встречу."
             await send_safe(
                 message.chat.id,
-                "У вас нет активных регистраций. Используйте /start для регистрации на встречу.",
+                upcoming_text,
                 reply_markup=ReplyKeyboardRemove(),
             )
         return
@@ -1258,17 +1218,17 @@ async def status_handler(message: Message, state: FSMContext, app: App):
 
     for reg in registrations:
         city = reg["target_city"]
-        city_enum = next((c for c in TargetCity if c.value == city), None)
         full_name = reg["full_name"]
         graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
+        event = await app.get_event_for_registration(reg)
 
         # Add city and date information
         status_text += f"🏙️ Город: {city}"
-        if city_enum and city_enum in date_of_event:
-            if is_event_passed(city_enum):
-                status_text += f" ({date_of_event[city_enum]} - встреча уже прошла)"
+        if event:
+            if app.is_event_passed(event):
+                status_text += f" ({get_event_date_display(event)} - встреча уже прошла)"
             else:
-                status_text += f" ({date_of_event[city_enum]})"
+                status_text += f" ({get_event_date_display(event)})"
         status_text += "\n"
 
         # Add personal information
@@ -1285,12 +1245,14 @@ async def status_handler(message: Message, state: FSMContext, app: App):
             status_text += f"🎓 Выпуск: {reg['graduation_year']} {reg['class_letter']}\n"
 
         # Add payment status
-        if city == TargetCity.SAINT_PETERSBURG.value or city == TargetCity.BELGRADE.value:
-            status_text += "💰 Оплата: За свой счет\n"
-        elif graduate_type == GraduateType.TEACHER.value:
-            status_text += "💰 Оплата: Бесплатно (учитель)\n"
-        elif graduate_type == GraduateType.ORGANIZER.value:
-            status_text += "💰 Оплата: Бесплатно (организатор)\n"
+        event_free = is_event_free(event, graduate_type)
+        if event_free:
+            if graduate_type == GraduateType.TEACHER.value:
+                status_text += "💰 Оплата: Бесплатно (учитель)\n"
+            elif graduate_type == GraduateType.ORGANIZER.value:
+                status_text += "💰 Оплата: Бесплатно (организатор)\n"
+            else:
+                status_text += "💰 Оплата: За свой счет\n"
         else:
             payment_status = reg.get("payment_status", "не оплачено")
             status_emoji = (
@@ -1300,19 +1262,17 @@ async def status_handler(message: Message, state: FSMContext, app: App):
             )
             status_text += f"💰 Статус оплаты: {status_emoji} {payment_status}\n"
 
-            # Add payment amount if available
             if "payment_amount" in reg:
                 status_text += f"💵 Сумма оплаты: {reg['payment_amount']} руб.\n"
             elif payment_status == "pending" and "discounted_payment_amount" in reg:
                 status_text += f"💵 Ожидаемая сумма: {reg['discounted_payment_amount']} руб.\n"
 
-        # Add separator between registrations
         status_text += "\n"
 
-    # Add available commands information
-    enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
-    all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
-    if not all_enabled_events_passed:
+    # Check for upcoming events
+    enabled_events = await app.get_enabled_events()
+    upcoming = [e for e in enabled_events if not app.is_event_passed(e)]
+    if upcoming:
         status_text += "Доступные команды:\n"
         status_text += "- /info - подробная информация о встречах (дата, время, адрес)\n"
         status_text += "- /start - управление регистрациями\n"
@@ -1349,19 +1309,11 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         if result != "register":
             return
 
-    # Check if any enabled events are available
-    enabled_cities = [city for city in TargetCity if app.is_city_enabled(city.value)]
-    if not enabled_cities:
-        await send_safe(
-            message.chat.id,
-            "В данный момент нет доступных встреч для регистрации. Следите за новостями в группе школы.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return
+    # Check for available events from DB
+    enabled_events = await app.get_enabled_events()
+    upcoming_events = [e for e in enabled_events if not app.is_event_passed(e)]
 
-    # Check if all enabled events have passed
-    all_enabled_events_passed = all(is_event_passed(city) for city in enabled_cities)
-    if all_enabled_events_passed:
+    if not upcoming_events:
         await send_safe(
             message.chat.id,
             "Все встречи выпускников уже прошли. Спасибо, что были с нами! 🎓\n\n"
@@ -1370,71 +1322,91 @@ async def start_handler(message: Message, state: FSMContext, app: App):
         )
         return
 
-    # Check if user is already registered for any enabled event
-    existing_registration = await app.get_user_registration(message.from_user.id)
-    existing_enabled_registration = None
-    
-    if existing_registration:
-        # Check if user has registration for any enabled event
-        user_registrations = await app.get_user_registrations(message.from_user.id)
-        existing_enabled_registration = next(
-            (reg for reg in user_registrations 
-             if app.is_city_enabled(reg.get("target_city"))),
-            None
-        )
+    # Check if user has active registrations
+    active_registrations = await app.get_user_active_registrations(message.from_user.id)
 
-    if existing_enabled_registration:
-        # User is already registered for an enabled event, show options
-        await handle_registered_user(message, state, existing_enabled_registration, app)
+    if active_registrations:
+        await handle_registered_user(message, state, active_registrations[0], app)
     else:
-        # New user or user not registered for any enabled event
-        # Get the first available enabled city
-        available_city = next((city for city in enabled_cities if not is_event_passed(city)), None)
-        
-        if not available_city:
-            await send_safe(
-                message.chat.id,
-                "К сожалению, все доступные встречи уже прошли. Следите за новостями в группе школы.",
-                reply_markup=ReplyKeyboardRemove(),
-            )
-            return
-        
-        # Show information about the available event
-        event_info = f"""
+        # New user or user with only archived registrations
+        # Get old registration data to pre-fill
+        existing_registration = await app.get_user_registration(message.from_user.id)
+
+        if len(upcoming_events) == 1:
+            # Single event - show info and ask to register
+            event = upcoming_events[0]
+            venue = event.get("venue") or "Уточняется"
+            address = event.get("address") or "Уточняется"
+
+            event_info = f"""
 👋 Добро пожаловать!
 
 В ближайшее время клуб друзей школы 146 проводит встречу:
 
-📅 Дата: {date_of_event[available_city]}
-⏰ Время: {time_of_event[available_city]}
-📍 Место: {venue_of_event[available_city]}
-🗺️ Адрес: {address_of_event[available_city]}
+📅 Дата: {event.get('date_display', '')}
+⏰ Время: {event.get('time_display', 'Уточняется')}
+📍 Место: {venue}
+🗺️ Адрес: {address}
 
 Хотите зарегистрироваться на эту встречу?
-        """
-        
-        # Ask user if they want to register
-        response = await ask_user_choice(
-            message.chat.id,
-            event_info.strip(),
-            choices={
-                "yes": "Да, зарегистрироваться",
-                "cancel": "Отмена"
-            },
-            state=state,
-            timeout=None,
-        )
-        
-        if response == "cancel" or response is None:
-            await send_safe(
+            """
+
+            response = await ask_user_choice(
                 message.chat.id,
-                "Регистрация отменена. Если передумаете, просто напишите боту снова!",
-                reply_markup=ReplyKeyboardRemove(),
+                event_info.strip(),
+                choices={
+                    "yes": "Да, зарегистрироваться",
+                    "cancel": "Отмена",
+                },
+                state=state,
+                timeout=None,
             )
-            return
-        
-        # User wants to register, proceed with registration
-        reuse_info = existing_registration if existing_registration else None
-        await register_user(message, state, app, 
-                          preselected_city=available_city.value, 
-                          reuse_info=reuse_info)
+
+            if response == "cancel" or response is None:
+                await send_safe(
+                    message.chat.id,
+                    "Регистрация отменена. Если передумаете, просто напишите боту снова!",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
+
+            reuse_info = existing_registration if existing_registration else None
+            await register_user(
+                message,
+                state,
+                app,
+                preselected_city=event["city"],
+                reuse_info=reuse_info,
+            )
+        else:
+            # Multiple events - show list
+            events_text = "👋 Добро пожаловать!\n\nБлижайшие встречи выпускников:\n\n"
+            for event in upcoming_events:
+                venue = event.get("venue") or "Уточняется"
+                events_text += (
+                    f"🏙️ {event['city']} ({event.get('date_display', '')})\n"
+                    f"   📍 {venue}\n\n"
+                )
+            events_text += "Хотите зарегистрироваться?"
+
+            response = await ask_user_choice(
+                message.chat.id,
+                events_text,
+                choices={
+                    "yes": "Да, зарегистрироваться",
+                    "cancel": "Отмена",
+                },
+                state=state,
+                timeout=None,
+            )
+
+            if response == "cancel" or response is None:
+                await send_safe(
+                    message.chat.id,
+                    "Регистрация отменена. Если передумаете, просто напишите боту снова!",
+                    reply_markup=ReplyKeyboardRemove(),
+                )
+                return
+
+            reuse_info = existing_registration if existing_registration else None
+            await register_user(message, state, app, reuse_info=reuse_info)
