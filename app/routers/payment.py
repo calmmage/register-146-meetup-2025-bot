@@ -69,25 +69,30 @@ def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | Non
     parts = data.split("_")
     if len(parts) < 2:
         raise ValueError("Invalid callback data structure")
-    
+
     user_id = int(parts[0])
-    
+
     # Handle city codes that might contain underscores
     if len(parts) >= 3:
-        # Check if the last part is a number (amount)
-        try:
-            amount_str = parts[-1]
-            int(amount_str)  # Test if it's a number
-            # If it's a number, everything in between is the city code
+        last_part = parts[-1]
+        # Check if the last part is a number (amount) or "custom"
+        if last_part == "custom":
             city_code = "_".join(parts[1:-1])
-        except ValueError:
-            # Last part is not a number, so it's part of the city code
-            city_code = "_".join(parts[1:])
-            amount_str = None
+            amount_str = "custom"
+        else:
+            try:
+                int(last_part)  # Test if it's a number
+                # If it's a number, everything in between is the city code
+                city_code = "_".join(parts[1:-1])
+                amount_str = last_part
+            except ValueError:
+                # Last part is not a number and not "custom", so it's part of the city code
+                city_code = "_".join(parts[1:])
+                amount_str = None
     else:
         city_code = parts[1]
         amount_str = None
-    
+
     return user_id, city_code, amount_str
 
 
@@ -125,10 +130,20 @@ async def process_payment(
         if registration and "graduate_type" in registration:
             graduate_type = registration["graduate_type"]
 
-    # Calculate payment amount
-    regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
-        city, graduation_year, graduate_type
-    )
+    # Calculate payment amount - try event-based calculation first
+    registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    event = None
+    if registration_data:
+        event = await app.get_event_for_registration(registration_data)
+
+    if event:
+        regular_amount, discount, discounted_amount, formula_amount = app.calculate_event_payment(
+            event, graduation_year, graduate_type
+        )
+    else:
+        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+            city, graduation_year, graduate_type
+        )
 
     # Only show instructions if not skipped
     if not skip_instructions:
@@ -139,12 +154,6 @@ async def process_payment(
         await asyncio.sleep(3)  # 3 second delay
 
         # Prepare payment message - get formula from event data or fallback
-        # Try to load event from registration
-        registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
-        event = None
-        if registration_data:
-            event = await app.get_event_for_registration(registration_data)
-
         if event:
             pricing_type = event.get("pricing_type", "formula")
             if pricing_type == "free":
@@ -155,7 +164,11 @@ async def process_payment(
                 base = event.get("price_formula_base", 0)
                 rate = event.get("price_formula_rate", 0)
                 ref_year = event.get("price_formula_reference_year", 2026)
-                payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
+                step = event.get("price_formula_step", 1)
+                if step > 1:
+                    payment_formula = f"(({ref_year} − год выпуска) ÷ {step}) × {rate} + {base}р"
+                else:
+                    payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
             else:
                 payment_formula = "за свой счет"
         elif city == TargetCity.MOSCOW.value:

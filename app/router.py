@@ -497,11 +497,13 @@ async def register_user(
                 log_messages[user_id].append(log_msg)
             return
 
-        # Build choices from available events
+        # Build choices from available events (use city name as key for display)
         available_cities = {}
+        city_to_event = {}
         for e in available_events:
-            eid = str(e["_id"])
-            available_cities[eid] = f"{e['city']} ({e.get('date_display', '')})"
+            city_name = e["city"]
+            available_cities[city_name] = f"{city_name} ({e.get('date_display', '')})"
+            city_to_event[city_name] = e
         available_cities["cancel"] = "Отменить регистрацию"
 
         question = dedent(
@@ -529,8 +531,11 @@ async def register_user(
             )
             return
 
-        # Response is an event_id
-        selected_event = event_map.get(response)
+        # Response is a city name
+        selected_event = city_to_event.get(response)
+        if not selected_event:
+            # Fallback: try event_map by ID (legacy)
+            selected_event = event_map.get(response)
         if selected_event:
             # Set location from event city for backward compat
             location = next((c for c in TargetCity if c.value == selected_event["city"]), None)
@@ -790,15 +795,13 @@ async def register_user(
     if location:
         target_city_value = location
     elif selected_event:
-        # For new events not in TargetCity enum, find best match or use city name
+        # For new events not in TargetCity enum, find best match or use city name directly
         target_city_value = next(
             (c for c in TargetCity if c.value == selected_event["city"]), None
         )
         if not target_city_value:
-            # Use PERM as fallback for Пермь, MOSCOW for Москва, etc.
-            target_city_value = next(
-                (c for c in TargetCity if c.value == selected_event["city"]), TargetCity.PERM
-            )
+            # City not in TargetCity enum - use city name string directly
+            target_city_value = selected_event["city"]
 
     # Internal validation - log error but don't expose to user
     if not all([full_name, graduation_year is not None, class_letter, graduate_type]):

@@ -217,9 +217,10 @@ async def seed_2026_spring_events(app):
             "status": "upcoming",
             "enabled": True,
             "pricing_type": "formula",
-            "price_formula_base": 1000,
-            "price_formula_rate": 200,
-            "price_formula_reference_year": 2026,
+            "price_formula_base": 1500,
+            "price_formula_rate": 450,
+            "price_formula_reference_year": 2025,
+            "price_formula_step": 3,
             "free_for_types": ["TEACHER", "ORGANIZER"],
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
@@ -235,8 +236,12 @@ async def seed_2026_spring_events(app):
             "address": None,
             "status": "upcoming",
             "enabled": True,
-            "pricing_type": "free",
-            "free_for_types": [],
+            "pricing_type": "formula",
+            "price_formula_base": 900,
+            "price_formula_rate": 350,
+            "price_formula_reference_year": 2025,
+            "price_formula_step": 3,
+            "free_for_types": ["TEACHER", "ORGANIZER"],
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         },
@@ -270,3 +275,46 @@ async def seed_2026_spring_events(app):
             logger.info(f"Seeded event: {event_data['name']}")
         else:
             logger.info(f"Event already exists: {event_data['name']}, skipping.")
+
+
+# ============================================================
+# Migration: Update 2026 pricing formulas
+# ============================================================
+@migration("003_update_2026_pricing")
+async def update_2026_pricing(app):
+    """Update Moscow and SPb 2026 events with stepped pricing formulas."""
+    # Moscow: ((2025 - year) // 3) * 450 + 1500
+    result = await app.events_col.update_one(
+        {"city": "Москва", "date": datetime(2026, 3, 21, 18, 0)},
+        {
+            "$set": {
+                "pricing_type": "formula",
+                "price_formula_base": 1500,
+                "price_formula_rate": 450,
+                "price_formula_reference_year": 2025,
+                "price_formula_step": 3,
+                "free_for_types": ["TEACHER", "ORGANIZER"],
+                "updated_at": datetime.now(),
+            }
+        },
+    )
+    if result.modified_count > 0:
+        logger.info("Updated Moscow 2026 pricing formula")
+
+    # Saint Petersburg: ((2025 - year) // 3) * 350 + 900
+    result = await app.events_col.update_one(
+        {"city": "Санкт-Петербург", "date": datetime(2026, 3, 28, 17, 0)},
+        {
+            "$set": {
+                "pricing_type": "formula",
+                "price_formula_base": 900,
+                "price_formula_rate": 350,
+                "price_formula_reference_year": 2025,
+                "price_formula_step": 3,
+                "free_for_types": ["TEACHER", "ORGANIZER"],
+                "updated_at": datetime.now(),
+            }
+        },
+    )
+    if result.modified_count > 0:
+        logger.info("Updated Saint Petersburg 2026 pricing formula")

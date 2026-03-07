@@ -5,7 +5,7 @@ from enum import Enum
 from loguru import logger
 from pydantic import SecretStr, BaseModel, Field
 from pydantic_settings import BaseSettings
-from typing import Optional, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict, Union
 
 from botspot import get_database
 from botspot.utils import send_safe
@@ -101,7 +101,7 @@ class RegisteredUser(BaseModel):
     full_name: str
     graduation_year: int
     class_letter: str
-    target_city: TargetCity
+    target_city: Union[TargetCity, str]
     event_id: Optional[str] = None
     user_id: Optional[int] = None
     username: Optional[str] = None
@@ -308,14 +308,21 @@ class App:
             base = event.get("price_formula_base", 0)
             rate = event.get("price_formula_rate", 0)
             ref_year = event.get("price_formula_reference_year", 2026)
+            step = event.get("price_formula_step", 1)
             years_since = max(0, ref_year - graduation_year)
-            formula_amount = base + rate * years_since
+            if step > 1:
+                formula_amount = (years_since // step) * rate + base
+            else:
+                formula_amount = base + rate * years_since
 
             # Cap for old graduates (15+ years)
             regular_amount = formula_amount
             if years_since > 15:
                 # Cap at what 15-year grad would pay
-                regular_amount = base + rate * 15
+                if step > 1:
+                    regular_amount = (15 // step) * rate + base
+                else:
+                    regular_amount = base + rate * 15
 
             # Non-graduates get fixed recommended amount
             if graduate_type == GraduateType.NON_GRADUATE.value:
@@ -358,7 +365,8 @@ class App:
         # Convert the model to a dict and extract the enum value before saving
         data = registered_user.model_dump()
         # Convert the enums to their string values for MongoDB storage
-        data["target_city"] = data["target_city"].value
+        if hasattr(data["target_city"], "value"):
+            data["target_city"] = data["target_city"].value
         if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
             data["graduate_type"] = data["graduate_type"].value.upper()  # Ensure uppercase
 
