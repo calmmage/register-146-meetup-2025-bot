@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from loguru import logger
 
 from app.app import App
+from app.user_interactions import setup_dispatcher as setup_user_interactions
 
 from .router import router as main_router
 from .routers.events import events_router
@@ -43,12 +44,14 @@ def main(debug=False) -> None:
 
     # Initialize bot manager
     bm = BotManager(bot=bot)
+    bm.settings.ask_user.enabled = False
 
     # Run database fix on startup
     dp.startup.register(app.startup)
 
     # Setup dispatcher with our components
     bm.setup_dispatcher(dp)
+    setup_user_interactions(dp)
 
     # Start polling
     dp.run_polling(bot)

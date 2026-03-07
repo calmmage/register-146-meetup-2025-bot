@@ -19,7 +19,7 @@ from textwrap import dedent
 from app.app import App, TargetCity, GraduateType
 from app.router import is_admin, commands_menu, get_event_date_display
 from app.routers.admin import PaymentInfo
-from botspot.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
+from app.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
 # Create router

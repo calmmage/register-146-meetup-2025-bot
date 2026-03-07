@@ -14,7 +14,7 @@ from datetime import datetime
 from app.app import App, TargetCity, RegisteredUser, GraduateType
 from app.routers.admin import admin_handler
 from botspot import commands_menu
-from botspot.user_interactions import ask_user, ask_user_choice
+from app.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 
 router = Router()

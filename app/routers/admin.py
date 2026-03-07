@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice, ask_user_raw
+from app.user_interactions import ask_user_choice, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
@@ -44,18 +44,14 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
     response = await ask_user_choice(
         message.chat.id,
         "Вы администратор бота. Что вы хотите сделать?",
-        # todo: rework this?
         choices={
-            "notify_users": "Рассылка пользователям",
+            "register": "Протестировать бота (обычный сценарий)",
             # "send_feedback_request": "Отправить запрос на обратную связь",
-            # stats
+            "manage_events": "Управление встречами",
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
-            # not finished
-            # "mark_payment": "Отметить оплату пользователя вручную",
             "other": "Другие действия",
-            # testing
-            "register": "Протестировать бота (обычный сценарий)",
+            "notify_users": "Рассылка пользователям",
         },
         state=state,
         timeout=None,
@@ -96,6 +92,10 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
         from app.routers.crm import test_user_selection_handler
 
         await test_user_selection_handler(message, state, app=app)
+    elif response == "manage_events":
+        from app.routers.events import manage_events_handler
+
+        await manage_events_handler(message, state, app=app)
     # elif response == "send_feedback_request":
     #     from app.routers.crm import send_feedback_request_handler
 

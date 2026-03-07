@@ -8,7 +8,7 @@ from app.routers.admin import router
 from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
+from app.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
