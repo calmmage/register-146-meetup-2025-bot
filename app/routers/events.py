@@ -79,6 +79,19 @@ def _format_event_summary(event: dict, reg_count: int = 0) -> str:
         names = [type_names.get(t, t) for t in free_for]
         lines.append(f"🎓 Бесплатно для: {', '.join(names)}")
 
+    # Guest settings
+    if event.get("guests_enabled"):
+        max_g = event.get("max_guests_per_person", 3)
+        min_p = event.get("guest_price_minimum", 0)
+        guest_info = f"до {max_g} чел."
+        if min_p > 0:
+            guest_info += f", мин. {min_p}₽"
+        else:
+            guest_info += ", цена = как у регистранта"
+        lines.append(f"👥 Гости: {guest_info}")
+    else:
+        lines.append("👥 Гости: Нет")
+
     status_map = {
         "upcoming": "Открыта для регистрации",
         "registration_closed": "Регистрация закрыта",
@@ -334,7 +347,56 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
         event_data["free_for_types"] = ["TEACHER"]
     # else: empty list
 
-    # Step 10: Confirmation
+    # Step 10: Guest settings
+    guests_choice = await ask_user_choice(
+        message.chat.id,
+        "👥 Разрешить участникам приводить гостей (+1)?",
+        choices={
+            "yes": "Да",
+            "no": "Нет",
+        },
+        state=state,
+        timeout=None,
+    )
+
+    if guests_choice == "yes":
+        event_data["guests_enabled"] = True
+
+        max_guests_resp = await ask_user_raw(
+            message.chat.id,
+            "Максимальное количество гостей на человека (по умолчанию 3):",
+            state=state,
+            timeout=None,
+        )
+        if max_guests_resp and max_guests_resp.text:
+            text = max_guests_resp.text.strip()
+            try:
+                event_data["max_guests_per_person"] = max(1, int(text))
+            except ValueError:
+                event_data["max_guests_per_person"] = 3
+        else:
+            event_data["max_guests_per_person"] = 3
+
+        min_price_resp = await ask_user_raw(
+            message.chat.id,
+            "Минимальная цена за гостя в рублях (0 = такая же, как у регистранта):",
+            state=state,
+            timeout=None,
+        )
+        if min_price_resp and min_price_resp.text:
+            text = min_price_resp.text.strip()
+            try:
+                event_data["guest_price_minimum"] = max(0, int(text))
+            except ValueError:
+                event_data["guest_price_minimum"] = 0
+        else:
+            event_data["guest_price_minimum"] = 0
+    else:
+        event_data["guests_enabled"] = False
+        event_data["max_guests_per_person"] = 3
+        event_data["guest_price_minimum"] = 0
+
+    # Step 11: Confirmation
     summary = _format_event_summary(event_data)
     confirm = await ask_user_confirmation(
         message.chat.id,
@@ -506,6 +568,7 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     "time": "Время",
                     "venue": "Место",
                     "address": "Адрес",
+                    "guests": "Настройки гостей",
                     "back": "Назад",
                 },
                 state=state,
@@ -601,3 +664,61 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                 if resp and resp.text:
                     await app.update_event(selection, {"address": resp.text.strip()})
                     await send_safe(message.chat.id, "✅ Адрес обновлен.")
+
+            elif field == "guests":
+                current_enabled = event.get("guests_enabled", False)
+                current_max = event.get("max_guests_per_person", 3)
+                current_min = event.get("guest_price_minimum", 0)
+
+                guest_action = await ask_user_choice(
+                    message.chat.id,
+                    f"Текущие настройки гостей:\n"
+                    f"• Разрешены: {'Да' if current_enabled else 'Нет'}\n"
+                    f"• Макс. гостей: {current_max}\n"
+                    f"• Мин. цена: {current_min}₽\n\n"
+                    f"Что изменить?",
+                    choices={
+                        "toggle": f"{'Выключить' if current_enabled else 'Включить'} гостей",
+                        "max": "Изменить макс. количество",
+                        "min_price": "Изменить мин. цену",
+                        "back": "Назад",
+                    },
+                    state=state,
+                    timeout=None,
+                )
+
+                if guest_action == "toggle":
+                    new_enabled = not current_enabled
+                    await app.update_event(selection, {"guests_enabled": new_enabled})
+                    await send_safe(
+                        message.chat.id,
+                        f"✅ Гости {'включены' if new_enabled else 'выключены'}.",
+                    )
+                elif guest_action == "max":
+                    resp = await ask_user_raw(
+                        message.chat.id,
+                        f"Текущий максимум: {current_max}\nВведите новый:",
+                        state=state,
+                        timeout=None,
+                    )
+                    if resp and resp.text:
+                        try:
+                            new_max = max(1, int(resp.text.strip()))
+                            await app.update_event(selection, {"max_guests_per_person": new_max})
+                            await send_safe(message.chat.id, f"✅ Максимум гостей: {new_max}.")
+                        except ValueError:
+                            await send_safe(message.chat.id, "❌ Введите число.")
+                elif guest_action == "min_price":
+                    resp = await ask_user_raw(
+                        message.chat.id,
+                        f"Текущая мин. цена: {current_min}₽\nВведите новую (0 = как у регистранта):",
+                        state=state,
+                        timeout=None,
+                    )
+                    if resp and resp.text:
+                        try:
+                            new_min = max(0, int(resp.text.strip()))
+                            await app.update_event(selection, {"guest_price_minimum": new_min})
+                            await send_safe(message.chat.id, f"✅ Мин. цена гостя: {new_min}₽.")
+                        except ValueError:
+                            await send_safe(message.chat.id, "❌ Введите число.")

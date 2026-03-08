@@ -270,3 +270,37 @@ async def seed_2026_spring_events(app):
             logger.info(f"Seeded event: {event_data['name']}")
         else:
             logger.info(f"Event already exists: {event_data['name']}, skipping.")
+
+
+# ============================================================
+# Migration: Add guest fields to events and registrations
+# ============================================================
+@migration("003_add_guest_fields")
+async def add_guest_fields(app):
+    """Add default guest fields to all existing events and registrations."""
+    # Add guest fields to all events that don't have them yet
+    event_result = await app.events_col.update_many(
+        {"guests_enabled": {"$exists": False}},
+        {
+            "$set": {
+                "guests_enabled": False,
+                "max_guests_per_person": 3,
+                "guest_price_minimum": 0,
+            }
+        },
+    )
+    if event_result.modified_count > 0:
+        logger.info(f"Added guest fields to {event_result.modified_count} events.")
+
+    # Add guest fields to all registrations that don't have them yet
+    reg_result = await app.collection.update_many(
+        {"guests": {"$exists": False}},
+        {
+            "$set": {
+                "guests": [],
+                "guest_count": 0,
+            }
+        },
+    )
+    if reg_result.modified_count > 0:
+        logger.info(f"Added guest fields to {reg_result.modified_count} registrations.")

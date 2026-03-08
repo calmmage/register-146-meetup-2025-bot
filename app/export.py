@@ -125,6 +125,8 @@ class SheetExporter:
             "Регулярная сумма",
             "Формула",
             "Дата оплаты",
+            "Кол-во гостей",
+            "Имена гостей",
         ]
 
         # Update all sheets with headers
@@ -156,6 +158,11 @@ class SheetExporter:
                 graduate_type, "Выпускник"
             )  # Default to "Выпускник" if type is unknown
 
+            # Guest info
+            guests = user.get("guests", [])
+            guest_count = user.get("guest_count", len(guests))
+            guest_names = ", ".join(g.get("name", "") for g in guests) if guests else ""
+
             # Create a row of user data
             user_row = [
                 user["full_name"],
@@ -170,6 +177,8 @@ class SheetExporter:
                 regular_amount,
                 formula_amount,
                 payment_timestamp,
+                guest_count,
+                guest_names,
             ]
 
             # Add to main sheet
@@ -244,6 +253,8 @@ class SheetExporter:
                 "Регулярная сумма",
                 "Формула",
                 "Дата оплаты",
+                "Кол-во гостей",
+                "Имена гостей",
             ]
             writer.writerow(headers)
 
@@ -268,6 +279,11 @@ class SheetExporter:
                     graduate_type, "Выпускник"
                 )  # Default to "Выпускник" if type is unknown
 
+                # Guest info
+                guests = user.get("guests", [])
+                guest_count = user.get("guest_count", len(guests))
+                guest_names = ", ".join(g.get("name", "") for g in guests) if guests else ""
+
                 writer.writerow(
                     [
                         user["full_name"],
@@ -282,6 +298,8 @@ class SheetExporter:
                         regular_amount,
                         formula_amount,
                         payment_timestamp,
+                        guest_count,
+                        guest_names,
                     ]
                 )
 

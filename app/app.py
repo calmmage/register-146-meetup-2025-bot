@@ -328,6 +328,14 @@ class App:
 
         return 0, 0, 0, 0
 
+    def calculate_guest_price(self, event: Dict, registrant_price: int) -> int:
+        """Calculate the price for a single guest.
+
+        Formula: max(guest_price_minimum, registrant_price)
+        """
+        minimum = event.get("guest_price_minimum", 0)
+        return max(minimum, registrant_price)
+
     async def _update_event_statuses(self):
         """Mark events as 'passed' if their date is in the past."""
         now = datetime.now()
@@ -399,6 +407,21 @@ class App:
 
         # Log the registration action
         await self.save_event_log("user_registration", log_data, user_id, username)
+
+    async def save_registration_guests(
+        self, user_id: int, city: str, guests: List[Dict]
+    ):
+        """Save guest list to an existing registration.
+
+        Args:
+            user_id: Telegram user ID
+            city: target_city value
+            guests: list of {"name": str, "price": int}
+        """
+        await self.collection.update_one(
+            {"user_id": user_id, "target_city": city},
+            {"$set": {"guests": guests, "guest_count": len(guests)}},
+        )
 
     async def get_user_registrations(self, user_id: int):
         """Get all registrations for a user"""
@@ -658,6 +681,7 @@ class App:
         class_letter: str,
         city: str,
         graduate_type: str = GraduateType.GRADUATE.value,
+        guests: List[Dict] = None,
     ) -> None:
         """
         Log a completed registration to the events chat
@@ -696,6 +720,11 @@ class App:
             message += f"💰 Оплата: За свой счет (Санкт-Петербург)\n"
         elif city == TargetCity.BELGRADE.value:
             message += f"💰 Оплата: За свой счет (Белград)\n"
+
+        if guests:
+            message += f"\n👥 Гости ({len(guests)}):\n"
+            for g in guests:
+                message += f"  • {g['name']} — {g['price']}₽\n"
 
         await self.log_to_chat(message, "events")
 

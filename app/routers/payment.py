@@ -98,6 +98,7 @@ async def process_payment(
     graduation_year: int,
     skip_instructions=False,
     graduate_type: str = GraduateType.GRADUATE.value,
+    guests: list = None,
 ):
     """Process payment for an event registration"""
     # Check if we have original user information in the state
@@ -129,6 +130,19 @@ async def process_payment(
     regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
         city, graduation_year, graduate_type
     )
+
+    # If guests provided, load from state or registration
+    if guests is None:
+        # Try to load guest info from the registration
+        if user_id:
+            reg_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+            if reg_data:
+                guests = reg_data.get("guests", [])
+    guests = guests or []
+
+    # Calculate guest total
+    guest_total = sum(g.get("price", 0) for g in guests)
+    total_with_guests = regular_amount + guest_total
 
     # Only show instructions if not skipped
     if not skip_instructions:
@@ -224,6 +238,15 @@ async def process_payment(
 
         # Send part 2
         await send_safe(message.chat.id, payment_msg_part2)
+
+        # Show guest breakdown if applicable
+        if guests:
+            guest_msg = f"\n👥 Гости ({len(guests)}):\n"
+            for i, g in enumerate(guests, 1):
+                guest_msg += f"  {i}. {g['name']} — {g['price']} руб.\n"
+            guest_msg += f"\n💰 Итого с гостями: {total_with_guests} руб."
+            await send_safe(message.chat.id, guest_msg)
+            await asyncio.sleep(2)
 
         # Delay between messages
         await asyncio.sleep(3)
@@ -425,7 +448,14 @@ async def process_payment(
             # Get user info for the message
             user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
             user_info += f"📍 Город: {city}\n"
-            user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
+            if guests:
+                user_info += f"💰 Сумма (регистрант): {needs_to_pay}\n"
+                user_info += f"👥 Гости ({len(guests)}):\n"
+                for g in guests:
+                    user_info += f"  • {g['name']} — {g['price']} руб.\n"
+                user_info += f"💰 Итого: {total_with_guests} руб.\n"
+            else:
+                user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
 
             # Get user registration for additional info
             user_registration = await app.get_user_registration(user_id)

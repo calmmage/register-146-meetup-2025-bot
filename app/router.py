@@ -93,8 +93,13 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             info_text += f"• {city} ({get_event_date_display(event)}){payment_status}\n"
             info_text += f"  ФИО: {reg['full_name']}\n"
             info_text += (
-                f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
+                f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n"
             )
+            reg_guests = reg.get("guests", [])
+            if reg_guests:
+                guest_names = ", ".join(g["name"] for g in reg_guests)
+                info_text += f"  👥 Гости: {guest_names}\n"
+            info_text += "\n"
 
         info_text += "Что вы хотите сделать?"
 
@@ -160,6 +165,14 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             info_text += f"Класс: {reg['class_letter']}\n"
 
         info_text += f"Город: {city} ({get_event_date_display(event)})\n"
+
+        # Show guest info
+        reg_guests = reg.get("guests", [])
+        if reg_guests:
+            info_text += f"👥 Гости ({len(reg_guests)}):\n"
+            for g in reg_guests:
+                info_text += f"  • {g['name']}\n"
+
         info_text += payment_status
         info_text += "\nЧто вы хотите сделать?"
 
@@ -826,12 +839,77 @@ async def register_user(
         username=username,
     )
 
+    # --- Guest step ---
+    guests = []
+    if selected_event and selected_event.get("guests_enabled"):
+        max_guests = selected_event.get("max_guests_per_person", 3)
+
+        # Build guest count choices
+        guest_choices = {"0": "Нет, только я"}
+        for i in range(1, max_guests + 1):
+            guest_choices[str(i)] = f"+{i}"
+
+        guest_count_resp = await ask_user_choice(
+            message.chat.id,
+            "👥 Хотите зарегистрировать кого-то с собой?",
+            choices=guest_choices,
+            state=state,
+            timeout=None,
+        )
+
+        guest_count = int(guest_count_resp) if guest_count_resp and guest_count_resp.isdigit() else 0
+
+        if guest_count > 0:
+            # Calculate guest price
+            if selected_event:
+                reg_amount, _, _, _ = app.calculate_event_payment(
+                    selected_event, graduation_year, graduate_type.value
+                )
+            else:
+                reg_amount = 0
+            guest_price = app.calculate_guest_price(selected_event, reg_amount)
+
+            for i in range(1, guest_count + 1):
+                from app.user_interactions import ask_user_raw
+
+                name_resp = await ask_user_raw(
+                    message.chat.id,
+                    f"Имя гостя {i}:",
+                    state=state,
+                    timeout=None,
+                )
+                guest_name = ""
+                if name_resp and name_resp.text:
+                    guest_name = name_resp.text.strip()
+                if len(guest_name) < 2:
+                    guest_name = f"Гость {i}"
+
+                guests.append({"name": guest_name, "price": guest_price})
+
+            # Show guest summary
+            guest_summary = f"👥 Гости ({len(guests)}):\n"
+            for i, g in enumerate(guests, 1):
+                guest_summary += f"  {i}. {g['name']} — {g['price']}₽\n"
+            guest_total = sum(g["price"] for g in guests)
+            guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
+            await send_safe(message.chat.id, guest_summary)
+
+        # Log guest step
+        log_msg = await app.log_registration_step(
+            user_id,
+            username,
+            "Гости",
+            f"Количество: {guest_count}, Имена: {', '.join(g['name'] for g in guests) if guests else 'нет'}",
+        )
+        if log_msg:
+            log_messages[user_id].append(log_msg)
+
     # Log registration completion
     log_msg = await app.log_registration_step(
         user_id,
         username,
         "Регистрация завершена",
-        f"Город: {reg_city_name}, ФИО: {full_name}, Выпуск: {graduation_year} {class_letter}",
+        f"Город: {reg_city_name}, ФИО: {full_name}, Выпуск: {graduation_year} {class_letter}, Гости: {len(guests)}",
     )
     if log_msg:
         log_messages[user_id].append(log_msg)
@@ -845,10 +923,18 @@ async def register_user(
         class_letter,
         reg_city_name,
         graduate_type.value,
+        guests=guests,
     )
 
     # Clear log messages
     await delete_log_messages(user_id)
+
+    # Determine the city string for DB operations
+    city_for_db = target_city_value.value if isinstance(target_city_value, TargetCity) else reg_city_name
+
+    # Save guest data to registration
+    if guests:
+        await app.save_registration_guests(user_id, city_for_db, guests)
 
     # Determine prepositional city name for confirmation
     city_prep = ""
@@ -866,9 +952,8 @@ async def register_user(
         f"Вы зарегистрированы на встречу выпускников школы 146 "
         f"в {city_prep} {date_display}. "
     )
-
-    # Determine the city string for DB operations
-    city_for_db = target_city_value.value if isinstance(target_city_value, TargetCity) else reg_city_name
+    if guests:
+        confirmation_msg += f"\nС вами {len(guests)} гост{'ь' if len(guests) == 1 else 'ей' if len(guests) >= 5 else 'я'}. "
 
     # Check if event is free for this participant
     event_is_free = is_event_free(selected_event, graduate_type.value) if selected_event else False
@@ -885,21 +970,47 @@ async def register_user(
             comment = f"Автоматически подтверждено (бесплатное мероприятие)"
             confirmation_msg += "\nДля этой встречи оплата не требуется. Все расходы участники несут самостоятельно."
 
-        await app.update_payment_status(
-            user_id=user_id,
-            city=city_for_db,
-            status="confirmed",
-            admin_comment=comment,
-            payment_amount=0,
-        )
+        # For free registrants, guests still pay if guest_price_minimum > 0
+        guest_total = sum(g["price"] for g in guests) if guests else 0
+        if guest_total > 0:
+            comment += f" (гости: {guest_total}₽)"
+            confirmation_msg += f"\n\n💰 Оплата за гостей: {guest_total}₽"
 
-        await send_safe(
-            message.chat.id,
-            confirmation_msg,
-            reply_markup=ReplyKeyboardRemove(),
-        )
+            await app.update_payment_status(
+                user_id=user_id,
+                city=city_for_db,
+                status="not paid",
+                payment_amount=0,
+            )
 
-        await app.export_registered_users_to_google_sheets()
+            await send_safe(
+                message.chat.id,
+                confirmation_msg + "\nСейчас пришлем информацию об оплате за гостей...",
+            )
+
+            from app.routers.payment import process_payment
+
+            await state.update_data(original_user_id=user_id, original_username=username)
+            await process_payment(
+                message, state, city_for_db, graduation_year,
+                graduate_type=graduate_type.value, guests=guests,
+            )
+        else:
+            await app.update_payment_status(
+                user_id=user_id,
+                city=city_for_db,
+                status="confirmed",
+                admin_comment=comment,
+                payment_amount=0,
+            )
+
+            await send_safe(
+                message.chat.id,
+                confirmation_msg,
+                reply_markup=ReplyKeyboardRemove(),
+            )
+
+            await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow - needs payment
         if selected_event:
@@ -910,6 +1021,12 @@ async def register_user(
             regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
                 city_for_db, graduation_year, graduate_type.value
             )
+
+        # Add guest total to payment amounts
+        guest_total = sum(g["price"] for g in guests) if guests else 0
+        regular_amount += guest_total
+        discounted_amount += guest_total
+        formula_amount += guest_total
 
         await app.save_payment_info(
             user_id=user_id,
@@ -929,7 +1046,8 @@ async def register_user(
         await state.update_data(original_user_id=user_id, original_username=username)
 
         await process_payment(
-            message, state, city_for_db, graduation_year, graduate_type=graduate_type.value
+            message, state, city_for_db, graduation_year,
+            graduate_type=graduate_type.value, guests=guests,
         )
 
 

@@ -76,7 +76,18 @@ async def show_stats(message: Message, app: App):
 
     total = total_active + total_deleted
     deleted_percentage = f" ({total_deleted/total:.1%} удаленных)" if total > 0 else ""
-    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n\n"
+    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n"
+
+    # Count total guests (active registrations only)
+    guest_cursor = app.collection.aggregate(
+        [{"$group": {"_id": None, "total_guests": {"$sum": {"$ifNull": ["$guest_count", 0]}}}}]
+    )
+    guest_agg_result = await guest_cursor.to_list(length=None)
+    total_guests = guest_agg_result[0]["total_guests"] if guest_agg_result else 0
+    if total_guests > 0:
+        stats_text += f"👥 Гостей: <b>{total_guests}</b>\n"
+        stats_text += f"🎯 Всего участников (рег. + гости): <b>{total_active + total_guests}</b>\n"
+    stats_text += "\n"
 
     # 2. Distribution by graduate type (combine active and deleted)
     # Active users
