@@ -125,6 +125,9 @@ class SheetExporter:
             "Регулярная сумма",
             "Формула",
             "Дата оплаты",
+            "Кол-во гостей",
+            "Гости",
+            "Сумма за гостей",
         ]
 
         # Update all sheets with headers
@@ -156,6 +159,15 @@ class SheetExporter:
                 graduate_type, "Выпускник"
             )  # Default to "Выпускник" if type is unknown
 
+            # Guest info
+            guests = user.get("guests", [])
+            guest_count = len(guests)
+            guest_names = "; ".join(
+                f"{g.get('full_name', '')} ({g.get('relationship', '')}, {g.get('payment_amount', 0)}₽)"
+                for g in guests
+            ) if guests else ""
+            guest_payment_total = sum(g.get("payment_amount", 0) for g in guests)
+
             # Create a row of user data
             user_row = [
                 user["full_name"],
@@ -170,6 +182,9 @@ class SheetExporter:
                 regular_amount,
                 formula_amount,
                 payment_timestamp,
+                guest_count,
+                guest_names,
+                guest_payment_total,
             ]
 
             # Add to main sheet
@@ -244,6 +259,9 @@ class SheetExporter:
                 "Регулярная сумма",
                 "Формула",
                 "Дата оплаты",
+                "Кол-во гостей",
+                "Гости",
+                "Сумма за гостей",
             ]
             writer.writerow(headers)
 
@@ -268,6 +286,15 @@ class SheetExporter:
                     graduate_type, "Выпускник"
                 )  # Default to "Выпускник" if type is unknown
 
+                # Guest info
+                guests = user.get("guests", [])
+                guest_count = len(guests)
+                guest_names = "; ".join(
+                    f"{g.get('full_name', '')} ({g.get('relationship', '')}, {g.get('payment_amount', 0)}₽)"
+                    for g in guests
+                ) if guests else ""
+                guest_payment_total = sum(g.get("payment_amount", 0) for g in guests)
+
                 writer.writerow(
                     [
                         user["full_name"],
@@ -282,6 +309,9 @@ class SheetExporter:
                         regular_amount,
                         formula_amount,
                         payment_timestamp,
+                        guest_count,
+                        guest_names,
+                        guest_payment_total,
                     ]
                 )
 

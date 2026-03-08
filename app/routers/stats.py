@@ -76,7 +76,23 @@ async def show_stats(message: Message, app: App):
 
     total = total_active + total_deleted
     deleted_percentage = f" ({total_deleted/total:.1%} удаленных)" if total > 0 else ""
-    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n\n"
+    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n"
+
+    # Guest statistics
+    guest_cursor = app.collection.aggregate([
+        {"$project": {"target_city": 1, "guest_count": {"$size": {"$ifNull": ["$guests", []]}}}},
+        {"$group": {"_id": "$target_city", "total_guests": {"$sum": "$guest_count"}}},
+    ])
+    guest_stats = await guest_cursor.to_list(length=None)
+    total_guests = sum(s["total_guests"] for s in guest_stats)
+    if total_guests > 0:
+        stats_text += f"👥 Гости: <b>{total_guests}</b> чел."
+        guest_by_city = {s["_id"]: s["total_guests"] for s in guest_stats if s["total_guests"] > 0}
+        if guest_by_city:
+            parts = [f"{city}: {cnt}" for city, cnt in sorted(guest_by_city.items())]
+            stats_text += f" ({', '.join(parts)})"
+        stats_text += f"\n🧑‍🤝‍🧑 Всего людей (с гостями): <b>{total_active + total_guests}</b>\n"
+    stats_text += "\n"
 
     # 2. Distribution by graduate type (combine active and deleted)
     # Active users
@@ -477,7 +493,23 @@ async def show_simple_stats(message: Message, app: App):
 
     total = total_active + total_deleted
     deleted_percentage = f" ({total_deleted/total:.1%} удаленных)" if total > 0 else ""
-    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n\n"
+    stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n"
+
+    # Guest statistics
+    guest_cursor = app.collection.aggregate([
+        {"$project": {"target_city": 1, "guest_count": {"$size": {"$ifNull": ["$guests", []]}}}},
+        {"$group": {"_id": "$target_city", "total_guests": {"$sum": "$guest_count"}}},
+    ])
+    guest_stats = await guest_cursor.to_list(length=None)
+    total_guests = sum(s["total_guests"] for s in guest_stats)
+    if total_guests > 0:
+        stats_text += f"👥 Гости: <b>{total_guests}</b> чел."
+        guest_by_city = {s["_id"]: s["total_guests"] for s in guest_stats if s["total_guests"] > 0}
+        if guest_by_city:
+            parts = [f"{city}: {cnt}" for city, cnt in sorted(guest_by_city.items())]
+            stats_text += f" ({', '.join(parts)})"
+        stats_text += f"\n🧑‍🤝‍🧑 Всего людей (с гостями): <b>{total_active + total_guests}</b>\n"
+    stats_text += "\n"
 
     # 2. Distribution by graduate type (combine active and deleted)
     # Active users

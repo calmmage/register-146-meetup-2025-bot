@@ -16,7 +16,7 @@ from datetime import datetime
 from loguru import logger
 from textwrap import dedent
 
-from app.app import App, TargetCity, GraduateType
+from app.app import App, TargetCity, GraduateType, GuestInfo
 from app.router import is_admin, date_of_event, commands_menu
 from app.routers.admin import PaymentInfo
 from botspot.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
@@ -98,6 +98,7 @@ async def process_payment(
     graduation_year: int,
     skip_instructions=False,
     graduate_type: str = GraduateType.GRADUATE.value,
+    guests: list = None,
 ):
     """Process payment for an event registration"""
     # Check if we have original user information in the state
@@ -129,6 +130,20 @@ async def process_payment(
     regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
         city, graduation_year, graduate_type
     )
+
+    # Calculate total amount including guests
+    if guests is None:
+        guests = []
+    # Try to load guests from registration if not passed directly
+    if not guests and user_id:
+        reg = await app.get_user_registration(user_id)
+        if reg and reg.get("guests"):
+            guests = [
+                GuestInfo(**g) if isinstance(g, dict) else g
+                for g in reg["guests"]
+            ]
+    guest_total = sum(g.payment_amount for g in guests) if guests else 0
+    total_amount = regular_amount + guest_total
 
     # Only show instructions if not skipped
     if not skip_instructions:
@@ -168,13 +183,28 @@ async def process_payment(
 
         # For summer 2025 event, no early registration discount
         if city == TargetCity.PERM_SUMMER_2025.value:
-            payment_msg_part2 = dedent(
-                f"""
-                Стоимость билета для вашего года выпуска: {regular_amount} руб.
-                
-                Приятно будет увидеть вас на летней встрече! 😊
-                """
-            )
+            if guests:
+                guest_lines = "\n".join(
+                    f"Гость ({g.full_name}): {g.payment_amount} руб." for g in guests
+                )
+                payment_msg_part2 = dedent(
+                    f"""
+                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
+                    {guest_lines}
+
+                    Итого к оплате: {total_amount} руб.
+
+                    Приятно будет увидеть вас на летней встрече! 😊
+                    """
+                )
+            else:
+                payment_msg_part2 = dedent(
+                    f"""
+                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
+
+                    Приятно будет увидеть вас на летней встрече! 😊
+                    """
+                )
         else:
             # Check if we're before the early registration deadline (for old events)
             today = datetime.now()
@@ -405,6 +435,11 @@ async def process_payment(
             else:
                 needs_to_pay = f"{regular_amount} руб"
 
+            # Build payment summary including guests
+            if guests:
+                needs_to_pay = f"{total_amount} руб (своих {regular_amount} + гости {guest_total})"
+            # else needs_to_pay is already set above
+
             # Get user info for the message
             user_info = f"👤 Пользователь: {username or ''} (ID: {user_id})\n"
             user_info += f"📍 Город: {city}\n"
@@ -423,6 +458,12 @@ async def process_payment(
                     user_info += f"👥 Статус: Друг школы (не выпускник)\n"
                 else:
                     user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
+
+            # Add guest info to admin message
+            if guests:
+                user_info += f"👥 Гости ({len(guests)}):\n"
+                for g in guests:
+                    user_info += f"  • {g.full_name} ({g.relationship}) — {g.payment_amount} руб.\n"
 
             # Get bot instance
             from botspot.core.dependency_manager import get_dependency_manager
@@ -464,6 +505,17 @@ async def process_payment(
                     ]
                 )
             else:
+                # Add total amount button when guests are present
+                if guests and total_amount != regular_amount:
+                    validation_buttons.append(
+                        [
+                            InlineKeyboardButton(
+                                text=f"✅ {total_amount} руб. - Подтвердить (с гостями)",
+                                callback_data=f"confirm_payment_{user_id}_{city_code}_{total_amount}",
+                            )
+                        ]
+                    )
+
                 # Add standard buttons for different amounts
                 if today < EARLY_REGISTRATION_DATE:
                     validation_buttons.append(

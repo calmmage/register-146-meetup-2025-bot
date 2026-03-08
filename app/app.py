@@ -26,6 +26,17 @@ class GraduateType(str, Enum):
     ORGANIZER = "ORGANIZER"
 
 
+class PlusOnePricingStrategy(str, Enum):
+    SAME_AS_REGISTRANT = "same_as_registrant"
+    SAME_WITH_MINIMUM = "same_with_minimum"
+
+
+class GuestInfo(BaseModel):
+    full_name: str
+    relationship: str
+    payment_amount: int = 0
+
+
 # Mapping for human-readable graduate types
 GRADUATE_TYPE_MAP = {
     GraduateType.GRADUATE.value: "Выпускник",
@@ -77,6 +88,7 @@ class RegisteredUser(BaseModel):
     user_id: Optional[int] = None
     username: Optional[str] = None
     graduate_type: GraduateType = GraduateType.GRADUATE
+    guests: List[GuestInfo] = []
 
 
 class FeedbackData(BaseModel):
@@ -129,9 +141,33 @@ class App:
         TargetCity.BELGRADE.value: False,
     }
 
-    def is_city_enabled(self,city: str) -> bool:
+    # Plus-one guest configuration per event
+    PLUS_ONE_CONFIG: Dict[str, dict] = {
+        TargetCity.PERM_SUMMER_2025.value: {
+            "enabled": True,
+            "max_guests": 2,
+            "pricing_strategy": PlusOnePricingStrategy.SAME_WITH_MINIMUM,
+            "min_guest_price": 1500,
+        },
+    }
+
+    def is_city_enabled(self, city: str) -> bool:
         """Check if a city is enabled for registration"""
         return self.ENABLED_CITIES.get(city, False)
+
+    def get_plus_one_config(self, city: str) -> dict:
+        """Get plus-one configuration for a city"""
+        return self.PLUS_ONE_CONFIG.get(city, {})
+
+    def calculate_guest_price(self, city: str, registrant_price: int) -> int:
+        """Calculate the price for a guest based on the city's pricing strategy"""
+        config = self.get_plus_one_config(city)
+        if not config.get("enabled", False):
+            return registrant_price
+        strategy = config.get("pricing_strategy", PlusOnePricingStrategy.SAME_AS_REGISTRANT)
+        if strategy == PlusOnePricingStrategy.SAME_WITH_MINIMUM:
+            return max(registrant_price, config.get("min_guest_price", 0))
+        return registrant_price
 
     async def startup(self):
         """
@@ -181,6 +217,10 @@ class App:
         if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
             data["graduate_type"] = data["graduate_type"].value.upper()  # Ensure uppercase
 
+        # Convert guests list to dicts for MongoDB storage
+        if data.get("guests"):
+            data["guests"] = [g if isinstance(g, dict) else g for g in data["guests"]]
+
         # Add user_id and username if provided
         if user_id is not None:
             data["user_id"] = user_id
@@ -218,6 +258,27 @@ class App:
 
         # Log the registration action
         await self.save_event_log("user_registration", log_data, user_id, username)
+
+    async def save_guests(
+        self, user_id: int, city: str, guests: List[GuestInfo]
+    ) -> None:
+        """Save guest list for a user's registration"""
+        guests_data = [g.model_dump() if isinstance(g, GuestInfo) else g for g in guests]
+        await self.collection.update_one(
+            {"user_id": user_id, "target_city": city},
+            {"$set": {"guests": guests_data}},
+        )
+
+        await self.save_event_log(
+            "guests_added",
+            {
+                "action": "save_guests",
+                "city": city,
+                "guest_count": len(guests),
+                "guests": [{"full_name": g.full_name, "relationship": g.relationship} for g in guests if isinstance(g, GuestInfo)],
+            },
+            user_id,
+        )
 
     async def get_user_registrations(self, user_id: int):
         """Get all registrations for a user"""

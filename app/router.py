@@ -11,7 +11,7 @@ from textwrap import dedent
 from typing import Dict, List
 from datetime import datetime
 
-from app.app import App, TargetCity, RegisteredUser, GraduateType
+from app.app import App, TargetCity, RegisteredUser, GraduateType, GuestInfo
 from app.routers.admin import admin_handler
 from botspot import commands_menu
 from botspot.user_interactions import ask_user, ask_user_choice
@@ -114,8 +114,15 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
             info_text += f"• {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'}){payment_status}\n"
             info_text += f"  ФИО: {reg['full_name']}\n"
             info_text += (
-                f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n\n"
+                f"  Год выпуска: {reg['graduation_year']}, Класс: {reg['class_letter']}\n"
             )
+            # Show guests if any
+            guests = reg.get("guests", [])
+            if guests:
+                info_text += f"  👥 Гости ({len(guests)}): "
+                info_text += ", ".join(g.get("full_name", "") for g in guests)
+                info_text += "\n"
+            info_text += "\n"
 
         info_text += "Что вы хотите сделать?"
 
@@ -196,6 +203,12 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         info_text += (
             f"Город: {city} ({date_of_event[city_enum] if city_enum else 'дата неизвестна'})\n"
         )
+        # Show guests if any
+        reg_guests = reg.get("guests", [])
+        if reg_guests:
+            info_text += f"👥 Гости ({len(reg_guests)}): "
+            info_text += ", ".join(g.get("full_name", "") for g in reg_guests)
+            info_text += "\n"
         info_text += payment_status
         info_text += "\nЧто вы хотите сделать?"
 
@@ -867,6 +880,95 @@ async def register_user(
     # Clear log messages
     await delete_log_messages(user_id)
 
+    # Calculate payment amount early (needed for guest pricing)
+    regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+        location.value, graduation_year, graduate_type.value
+    )
+
+    # --- Plus-one guest flow ---
+    guests = []
+    plus_one_cfg = app.get_plus_one_config(location.value)
+    if plus_one_cfg.get("enabled", False):
+        max_guests = plus_one_cfg.get("max_guests", 1)
+
+        while len(guests) < max_guests:
+            prompt_text = "Хотите зарегистрировать кого-то с собой? (+1)" if not guests else "Хотите добавить ещё одного гостя?"
+            add_guest = await ask_user_choice(
+                message.chat.id,
+                prompt_text,
+                choices={"yes": "Да, добавить гостя", "no": "Нет, продолжить"},
+                state=state,
+                timeout=None,
+            )
+            if add_guest != "yes":
+                break
+
+            # Collect guest name with validation
+            guest_name = None
+            while guest_name is None:
+                name_response = await ask_user(
+                    message.chat.id,
+                    "Введите имя и фамилию гостя:",
+                    state=state,
+                    timeout=None,
+                )
+                if name_response is None:
+                    await send_safe(
+                        message.chat.id,
+                        "⏰ Время ожидания истекло. Гости не будут добавлены.",
+                    )
+                    break
+                valid, error = app.validate_full_name(name_response)
+                if valid:
+                    guest_name = name_response
+                else:
+                    await send_safe(message.chat.id, f"❌ {error} Пожалуйста, попробуйте еще раз.")
+
+            if guest_name is None:
+                break
+
+            # Collect relationship
+            rel_response = await ask_user_choice(
+                message.chat.id,
+                f"Кем вам приходится {guest_name}?",
+                choices={
+                    "Супруг(а)": "Супруг(а)",
+                    "Друг/Подруга": "Друг/Подруга",
+                    "Коллега": "Коллега",
+                    "other": "Другое",
+                },
+                state=state,
+                timeout=None,
+            )
+            if rel_response == "other":
+                rel_response = await ask_user(
+                    message.chat.id,
+                    "Укажите, кем вам приходится гость:",
+                    state=state,
+                    timeout=None,
+                )
+                if rel_response is None:
+                    rel_response = "Другое"
+
+            # Calculate guest price
+            guest_price = app.calculate_guest_price(location.value, regular_amount)
+
+            guest = GuestInfo(
+                full_name=guest_name,
+                relationship=rel_response,
+                payment_amount=guest_price,
+            )
+            guests.append(guest)
+
+            await send_safe(
+                message.chat.id,
+                f"✅ Гость добавлен: {guest_name} ({rel_response}), стоимость: {guest_price} руб.",
+            )
+
+    # Save guests to DB
+    if guests:
+        await app.save_guests(user_id, location.value, guests)
+
     # Send confirmation message with payment info in one message
     confirmation_msg = (
         f"Спасибо, {full_name}!\n"
@@ -952,11 +1054,7 @@ async def register_user(
         await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow for everyone else who needs to pay
-
-        # Calculate payment amounts first
-        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
-            location.value, graduation_year, graduate_type.value
-        )
+        # (regular_amount, discount, discounted_amount, formula_amount already calculated above)
 
         # Save payment info with "not paid" status - different from "pending" which is used after "pay later" click
         await app.save_payment_info(
@@ -980,7 +1078,8 @@ async def register_user(
 
         # Process payment directly
         await process_payment(
-            message, state, location.value, graduation_year, graduate_type=graduate_type.value
+            message, state, location.value, graduation_year,
+            graduate_type=graduate_type.value, guests=guests,
         )
 
 
