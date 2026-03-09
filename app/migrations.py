@@ -270,3 +270,97 @@ async def seed_2026_spring_events(app):
             logger.info(f"Seeded event: {event_data['name']}")
         else:
             logger.info(f"Event already exists: {event_data['name']}, skipping.")
+
+
+# ============================================================
+# Migration: Add guest fields to events and registrations
+# ============================================================
+@migration("003_add_guest_fields")
+async def add_guest_fields(app):
+    """Add default guest fields to all existing events and registrations."""
+    # Add guest fields to all events that don't have them yet
+    event_result = await app.events_col.update_many(
+        {"guests_enabled": {"$exists": False}},
+        {
+            "$set": {
+                "guests_enabled": False,
+                "max_guests_per_person": 3,
+                "guest_price_minimum": 0,
+            }
+        },
+    )
+    if event_result.modified_count > 0:
+        logger.info(f"Added guest fields to {event_result.modified_count} events.")
+
+    # Add guest fields to all registrations that don't have them yet
+    reg_result = await app.collection.update_many(
+        {"guests": {"$exists": False}},
+        {
+            "$set": {
+                "guests": [],
+                "guest_count": 0,
+            }
+        },
+    )
+    if reg_result.modified_count > 0:
+        logger.info(f"Added guest fields to {reg_result.modified_count} registrations.")
+
+
+# ============================================================
+# Migration: Update pricing for Moscow/SPb + add early bird + stepped formula
+# ============================================================
+@migration("004_update_pricing_and_early_bird")
+async def update_pricing_and_early_bird(app):
+    """Update Moscow/SPb pricing with stepped formula and add early bird discount."""
+    # Update Moscow event (spring 2026)
+    moscow_result = await app.events_col.update_one(
+        {"city": "Москва", "date": datetime(2026, 3, 21, 18, 0)},
+        {
+            "$set": {
+                "price_formula_base": 1500,
+                "price_formula_rate": 500,
+                "price_formula_reference_year": 2025,
+                "price_formula_step": 3,
+                "early_bird_discount": 500,
+                "early_bird_deadline": datetime(2026, 3, 18),
+                "free_for_types": ["TEACHER", "ORGANIZER"],
+            }
+        },
+    )
+    if moscow_result.modified_count > 0:
+        logger.info("Updated Moscow event pricing: stepped formula + early bird.")
+
+    # Update SPb event (spring 2026) — no longer free!
+    spb_result = await app.events_col.update_one(
+        {"city": "Санкт-Петербург", "date": datetime(2026, 3, 28, 17, 0)},
+        {
+            "$set": {
+                "pricing_type": "formula",
+                "price_formula_base": 1000,
+                "price_formula_rate": 400,
+                "price_formula_reference_year": 2025,
+                "price_formula_step": 3,
+                "early_bird_discount": 500,
+                "early_bird_deadline": datetime(2026, 3, 25),
+                "free_for_types": ["TEACHER", "ORGANIZER"],
+            }
+        },
+    )
+    if spb_result.modified_count > 0:
+        logger.info("Updated SPb event: free -> formula pricing + early bird.")
+
+    # Add default price_formula_step to all events missing it
+    step_result = await app.events_col.update_many(
+        {"price_formula_step": {"$exists": False}},
+        {"$set": {"price_formula_step": 1}},
+    )
+    if step_result.modified_count > 0:
+        logger.info(f"Added default price_formula_step=1 to {step_result.modified_count} events.")
+
+    # Add default early bird fields to all events missing them
+    eb_result = await app.events_col.update_many(
+        {"early_bird_discount": {"$exists": False}},
+        {"$set": {"early_bird_discount": 0, "early_bird_deadline": None}},
+    )
+    if eb_result.modified_count > 0:
+        logger.info(f"Added default early bird fields to {eb_result.modified_count} events.")
