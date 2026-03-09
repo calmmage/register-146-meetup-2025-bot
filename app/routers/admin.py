@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice, ask_user_raw
+from app.user_interactions import ask_user_choice, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
@@ -44,25 +44,20 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
     response = await ask_user_choice(
         message.chat.id,
         "Вы администратор бота. Что вы хотите сделать?",
-        # todo: rework this?
         choices={
-            "notify_users": "Рассылка пользователям",
+            "register": "Протестировать бота (обычный сценарий)",
             # "send_feedback_request": "Отправить запрос на обратную связь",
-            # stats
+            "manage_events": "Управление встречами",
             "view_stats": "Посмотреть статистику (подробно)",
             "view_simple_stats": "Посмотреть статистику (кратко)",
-            # not finished
-            # "mark_payment": "Отметить оплату пользователя вручную",
             "other": "Другие действия",
-            # testing
-            "register": "Протестировать бота (обычный сценарий)",
+            "notify_users": "Рассылка пользователям",
         },
         state=state,
         timeout=None,
     )
 
     if response == "other":
-
         response = await ask_user_choice(
             message.chat.id,
             "Другие команды:",
@@ -96,6 +91,10 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
         from app.routers.crm import test_user_selection_handler
 
         await test_user_selection_handler(message, state, app=app)
+    elif response == "manage_events":
+        from app.routers.events import manage_events_handler
+
+        await manage_events_handler(message, state, app=app)
     # elif response == "send_feedback_request":
     #     from app.routers.crm import send_feedback_request_handler
 
@@ -111,7 +110,9 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
 
 
 @commands_menu.add_command(
-    "export", "Экспорт списка участников (активных и удаленных)", visibility=Visibility.ADMIN_ONLY
+    "export",
+    "Экспорт списка участников (активных и удаленных)",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("export"), AdminFilter())
 async def export_handler(message: Message, state: FSMContext, app: App):
@@ -153,7 +154,9 @@ async def export_handler(message: Message, state: FSMContext, app: App):
 
             if csv_content:
                 # Send the CSV content as a file using send_safe
-                await send_safe(message.chat.id, csv_content, filename="участники_встречи.csv")
+                await send_safe(
+                    message.chat.id, csv_content, filename="участники_встречи.csv"
+                )
             else:
                 await send_safe(message.chat.id, result_message)
 
@@ -172,7 +175,9 @@ async def export_handler(message: Message, state: FSMContext, app: App):
 
             if csv_content:
                 # Send the CSV content as a file using send_safe
-                await send_safe(message.chat.id, csv_content, filename="удаленные_участники.csv")
+                await send_safe(
+                    message.chat.id, csv_content, filename="удаленные_участники.csv"
+                )
             else:
                 await send_safe(message.chat.id, result_message)
 
@@ -189,7 +194,9 @@ async def export_handler(message: Message, state: FSMContext, app: App):
 
             if csv_content:
                 # Send the CSV content as a file using send_safe
-                await send_safe(message.chat.id, csv_content, filename="отзывы_пользователей.csv")
+                await send_safe(
+                    message.chat.id, csv_content, filename="отзывы_пользователей.csv"
+                )
             else:
                 await send_safe(message.chat.id, result_message)
 
@@ -205,20 +212,26 @@ def _format_graduate_type(grad_type: str, plural=False):
 
 
 @commands_menu.add_command(
-    "normalize_db", "Нормализовать типы выпускников в БД", visibility=Visibility.ADMIN_ONLY
+    "normalize_db",
+    "Нормализовать типы выпускников в БД",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("normalize_db"), AdminFilter())
 async def normalize_db(message: Message, app: App):
     """Normalize graduate types in the database"""
 
     # Send initial message
-    status_msg = await send_safe(message.chat.id, "Нормализация типов выпускников в базе данных...")
+    status_msg = await send_safe(
+        message.chat.id, "Нормализация типов выпускников в базе данных..."
+    )
 
     # Run normalization
     modified = await app.normalize_graduate_types()
 
     # Update message with results
-    await status_msg.edit_text(f"✅ Нормализация завершена. Обновлено записей: {modified}")
+    await status_msg.edit_text(
+        f"✅ Нормализация завершена. Обновлено записей: {modified}"
+    )
 
 
 # todo: auto-determine file type from name.
@@ -298,10 +311,15 @@ async def parse_payment_handler(message: Message, state: FSMContext):
 
     # Check if the message has a photo or document
     has_photo = response.photo is not None and len(response.photo) > 0
-    has_pdf = response.document is not None and response.document.mime_type == "application/pdf"
+    has_pdf = (
+        response.document is not None
+        and response.document.mime_type == "application/pdf"
+    )
 
     if not (has_photo or has_pdf):
-        await send_safe(message.chat.id, "Пожалуйста, отправьте изображение или PDF-файл")
+        await send_safe(
+            message.chat.id, "Пожалуйста, отправьте изображение или PDF-файл"
+        )
         return
 
     # Send status message

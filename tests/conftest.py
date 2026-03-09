@@ -13,7 +13,9 @@ def mock_env_vars(monkeypatch):
     monkeypatch.setenv("PAYMENT_NAME", "Test Receiver")
     monkeypatch.setenv("EVENTS_CHAT_ID", "-1001234567890")
     monkeypatch.setenv("GOOGLE_SHEETS_ID", "test_sheet_id")
-    monkeypatch.setenv("GOOGLE_CREDENTIALS", '{"type": "service_account", "test": "value"}')
+    monkeypatch.setenv(
+        "GOOGLE_CREDENTIALS", '{"type": "service_account", "test": "value"}'
+    )
 
 
 @pytest.fixture(autouse=True)

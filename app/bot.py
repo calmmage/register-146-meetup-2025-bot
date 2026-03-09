@@ -3,17 +3,19 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from calmlib.utils import setup_logger, heartbeat_for_sync
+from botspot.core.bot_manager import BotManager
+from calmlib.logging import setup_logger
 from dotenv import load_dotenv
 from loguru import logger
 
 from app.app import App
-from botspot.core.bot_manager import BotManager
+from app.user_interactions import setup_dispatcher as setup_user_interactions
+
 from .router import router as main_router
+from .routers.events import events_router
 from .routers.feedback import router as feedback_router
 from .routers.payment import router as payment_router
 from .routers.stats import router as admin_router
-
 
 # Initialize bot and dispatcher
 
@@ -24,6 +26,7 @@ def main(debug=False) -> None:
     load_dotenv(Path(__file__).parent.parent / ".env")
 
     dp = Dispatcher()
+    dp.include_router(events_router)
     dp.include_router(admin_router)
     dp.include_router(payment_router)
     dp.include_router(feedback_router)
@@ -41,12 +44,14 @@ def main(debug=False) -> None:
 
     # Initialize bot manager
     bm = BotManager(bot=bot)
+    bm.settings.ask_user.enabled = False
 
     # Run database fix on startup
     dp.startup.register(app.startup)
 
     # Setup dispatcher with our components
     bm.setup_dispatcher(dp)
+    setup_user_interactions(dp)
 
     # Start polling
     dp.run_polling(bot)

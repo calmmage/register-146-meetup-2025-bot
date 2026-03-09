@@ -20,7 +20,7 @@ class TestAppRegistration:
         mock_db.get_collection.side_effect = lambda name: {
             "registered_users": self.mock_collection,
             "event_logs": self.mock_event_logs,
-            "deleted_users": self.mock_deleted_users
+            "deleted_users": self.mock_deleted_users,
         }.get(name, AsyncMock())
 
         # Create a patcher for get_database
@@ -33,11 +33,13 @@ class TestAppRegistration:
             payment_phone_number="1234567890",
             payment_name="Test User",
         )
-        
+
         # Patch save_event_log to avoid test side effects
-        self.save_event_log_patcher = patch.object(self.app, "save_event_log", AsyncMock())
+        self.save_event_log_patcher = patch.object(
+            self.app, "save_event_log", AsyncMock()
+        )
         self.save_event_log_patcher.start()
-        
+
         # Sample user data
         self.sample_user = RegisteredUser(
             full_name="Иванов Иван",
@@ -48,7 +50,7 @@ class TestAppRegistration:
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
         )
-        
+
     def teardown_method(self):
         """Clean up after each test"""
         self.db_patcher.stop()
@@ -59,18 +61,20 @@ class TestAppRegistration:
         """Test saving a new registered user"""
         # Mock find_one to return None (no existing registration)
         self.mock_collection.find_one.return_value = None
-        
+
         # Mock insert_one
         self.mock_collection.insert_one.return_value.inserted_id = "mock_id"
 
         # Call the method
         await self.app.save_registered_user(
-            self.sample_user, user_id=self.sample_user.user_id, username=self.sample_user.username
+            self.sample_user,
+            user_id=self.sample_user.user_id,
+            username=self.sample_user.username,
         )
 
         # Check that insert_one was called with the correct data
         assert self.mock_collection.insert_one.call_count >= 1
-        
+
         # Get the first call to insert_one which should be our user data
         insert_data = self.mock_collection.insert_one.call_args_list[0][0][0]
 
@@ -187,7 +191,9 @@ class TestAppRegistration:
 
         # Use patch to mock the get_user_registrations method
         with patch.object(
-            self.app, "get_user_registrations", AsyncMock(return_value=sample_registrations)
+            self.app,
+            "get_user_registrations",
+            AsyncMock(return_value=sample_registrations),
         ):
             # Call the method
             registration = await self.app.get_user_registration(123456)
@@ -203,7 +209,9 @@ class TestAppRegistration:
     async def test_get_user_registration_not_exists(self):
         """Test getting a single registration when user has no registrations"""
         # Mock get_user_registrations to return empty list
-        with patch.object(self.app, "get_user_registrations", AsyncMock(return_value=[])):
+        with patch.object(
+            self.app, "get_user_registrations", AsyncMock(return_value=[])
+        ):
             # Call the method
             registration = await self.app.get_user_registration(123456)
 
@@ -217,9 +225,13 @@ class TestAppRegistration:
     async def test_delete_user_registration_specific_city(self):
         """Test deleting a user's registration for a specific city"""
         # Mock move_user_to_deleted to return True
-        with patch.object(self.app, 'move_user_to_deleted', AsyncMock(return_value=True)) as mock_move:
+        with patch.object(
+            self.app, "move_user_to_deleted", AsyncMock(return_value=True)
+        ) as mock_move:
             # Call the method
-            result = await self.app.delete_user_registration(123456, city=TargetCity.MOSCOW.value)
+            result = await self.app.delete_user_registration(
+                123456, city=TargetCity.MOSCOW.value
+            )
 
             # Verify the move_user_to_deleted was called with correct parameters
             mock_move.assert_called_once_with(123456, TargetCity.MOSCOW.value)
@@ -231,7 +243,9 @@ class TestAppRegistration:
     async def test_delete_user_registration_all_cities(self):
         """Test deleting all of a user's registrations"""
         # Mock move_user_to_deleted to return True
-        with patch.object(self.app, 'move_user_to_deleted', AsyncMock(return_value=True)) as mock_move:
+        with patch.object(
+            self.app, "move_user_to_deleted", AsyncMock(return_value=True)
+        ) as mock_move:
             # Call the method
             result = await self.app.delete_user_registration(123456)
 
@@ -245,7 +259,9 @@ class TestAppRegistration:
     async def test_delete_user_registration_none_found(self):
         """Test attempting to delete registrations that don't exist"""
         # Mock move_user_to_deleted to return False (no records found)
-        with patch.object(self.app, 'move_user_to_deleted', AsyncMock(return_value=False)) as mock_move:
+        with patch.object(
+            self.app, "move_user_to_deleted", AsyncMock(return_value=False)
+        ) as mock_move:
             # Call the method
             result = await self.app.delete_user_registration(123456)
 
@@ -254,7 +270,7 @@ class TestAppRegistration:
 
             # Verify the result
             assert result is False
-            
+
     @pytest.mark.asyncio
     async def test_move_user_to_deleted_specific_city(self):
         """Test moving a user to deleted_users collection for a specific city"""
@@ -263,37 +279,41 @@ class TestAppRegistration:
             "_id": "mock_id",
             "user_id": 123456,
             "target_city": TargetCity.MOSCOW.value,
-            "full_name": "Test User"
+            "full_name": "Test User",
         }
-        
+
         # Mock find to return a cursor that will return our user
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[user_record])
         self.mock_collection.find = MagicMock(return_value=mock_cursor)
-        
+
         # Mock delete_one to indicate success
         mock_result = MagicMock()
         mock_result.deleted_count = 1
         self.mock_collection.delete_one.return_value = mock_result
-        
+
         # Mock insert_one for deleted users collection
         self.mock_deleted_users.insert_one = AsyncMock()
-        
+
         # Call the method
         result = await self.app.move_user_to_deleted(123456, TargetCity.MOSCOW.value)
-        
+
         # Verify that the record was retrieved with correct query
-        self.mock_collection.find.assert_called_once_with({"user_id": 123456, "target_city": TargetCity.MOSCOW.value})
-        
+        self.mock_collection.find.assert_called_once_with(
+            {"user_id": 123456, "target_city": TargetCity.MOSCOW.value}
+        )
+
         # Verify that the record was inserted into deleted_users
         self.mock_deleted_users.insert_one.assert_called_once()
-        
+
         # Verify deletion was called with the right parameters
-        self.mock_collection.delete_one.assert_called_once_with({"user_id": 123456, "target_city": TargetCity.MOSCOW.value})
-        
+        self.mock_collection.delete_one.assert_called_once_with(
+            {"user_id": 123456, "target_city": TargetCity.MOSCOW.value}
+        )
+
         # Verify the result
         assert result is True
-        
+
     @pytest.mark.asyncio
     async def test_move_user_to_deleted_all_cities(self):
         """Test moving all of a user's registrations to deleted_users"""
@@ -303,44 +323,44 @@ class TestAppRegistration:
                 "_id": "mock_id1",
                 "user_id": 123456,
                 "target_city": TargetCity.MOSCOW.value,
-                "full_name": "Test User"
+                "full_name": "Test User",
             },
             {
                 "_id": "mock_id2",
                 "user_id": 123456,
                 "target_city": TargetCity.PERM.value,
-                "full_name": "Test User"
-            }
+                "full_name": "Test User",
+            },
         ]
-        
+
         # Mock find to return a cursor that will return our users
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=user_records)
         self.mock_collection.find = MagicMock(return_value=mock_cursor)
-        
+
         # Mock delete_many to indicate success
         mock_result = MagicMock()
         mock_result.deleted_count = 2
         self.mock_collection.delete_many.return_value = mock_result
-        
+
         # Mock insert_many for deleted users collection
         self.mock_deleted_users.insert_many = AsyncMock()
-        
+
         # Call the method
         result = await self.app.move_user_to_deleted(123456)
-        
+
         # Verify that the records were retrieved with correct query
         self.mock_collection.find.assert_called_once_with({"user_id": 123456})
-        
+
         # Verify that the records were inserted into deleted_users
         self.mock_deleted_users.insert_many.assert_called_once()
-        
+
         # Verify deletion was called with the right parameters
         self.mock_collection.delete_many.assert_called_once_with({"user_id": 123456})
-        
+
         # Verify the result
         assert result is True
-        
+
     @pytest.mark.asyncio
     async def test_move_user_to_deleted_none_found(self):
         """Test attempting to move user records that don't exist"""
@@ -348,18 +368,18 @@ class TestAppRegistration:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
         self.mock_collection.find = MagicMock(return_value=mock_cursor)
-        
+
         # Call the method
         result = await self.app.move_user_to_deleted(123456)
-        
+
         # Verify that the database was queried
         self.mock_collection.find.assert_called_once_with({"user_id": 123456})
-        
+
         # Verify that no insertion or deletion was performed
         self.mock_deleted_users.insert_one.assert_not_called()
         self.mock_deleted_users.insert_many.assert_not_called()
         self.mock_collection.delete_one.assert_not_called()
         self.mock_collection.delete_many.assert_not_called()
-        
+
         # Verify the result
         assert result is False

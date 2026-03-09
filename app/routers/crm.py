@@ -2,49 +2,52 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.routers.admin import router
-from app.app import TargetCity, App
+from app.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from botspot.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
+from app.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
 
-def apply_message_templates(template: str, user_data: Dict[str, Any]) -> str:
+def apply_message_templates(
+    template: str, user_data: Dict[str, Any], event: Optional[Dict] = None
+) -> str:
     """
-    Apply template substitutions to a message based on user data.
+    Apply template substitutions to a message based on user data and event.
 
     Args:
         template: The message template containing placeholders
         user_data: Dictionary with user information
+        event: Optional event dict with venue/address/time/date info
 
     Returns:
         Personalized message with replaced placeholders
     """
-    from app.router import time_of_event, venue_of_event, address_of_event, padezhi, date_of_event
-
     # Extract user data
     user_name = user_data.get("full_name", "")
     user_city_value = user_data.get("target_city", "")
     user_year = user_data.get("graduation_year", "")
     user_class = user_data.get("class_letter", "")
 
-    # Convert city string to enum for dictionary lookups
-    city_enum = None
-    for city_enum_value in TargetCity:
-        if city_enum_value.value == user_city_value:
-            city_enum = city_enum_value
-            break
-
-    # Get city-specific details
-    user_city_padezh = padezhi.get(city_enum, user_city_value) if city_enum else "городе"
-    user_address = address_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-    user_venue = venue_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-    user_time = time_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
-    user_date = date_of_event.get(city_enum, "Уточняется") if city_enum else "Уточняется"
+    # Get city-specific details from event
+    if event:
+        user_city_padezh = event.get("city_prepositional", user_city_value)
+        user_address = event.get("address") or "Уточняется"
+        user_venue = event.get("venue") or "Уточняется"
+        user_time = event.get("time_display") or "Уточняется"
+        user_date = event.get("date_display") or "Уточняется"
+        if not user_city_value:
+            user_city_value = event.get("city", "")
+    else:
+        user_city_padezh = "городе"
+        user_address = "Уточняется"
+        user_venue = "Уточняется"
+        user_time = "Уточняется"
+        user_date = "Уточняется"
 
     # Apply substitutions
     result = template
@@ -89,20 +92,19 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         await send_safe(message.chat.id, "Операция отменена")
         return
 
-    # Step 2: Select city
-    # Only show enabled cities
+    # Step 2: Select city (from enabled events)
     city_choices = {
         "all": "Все города",
         "cancel": "Отмена",
     }
-    
-    # Add enabled cities only by looping through TargetCity enum
-    for city_enum in TargetCity:
-        if app.is_city_enabled(city_enum.value):
-            # Convert enum name to choice key (e.g., PERM_SUMMER_2025 -> PERM_SUMMER_2025)
-            city_key = city_enum.name
-            city_choices[city_key] = city_enum.value
-    
+
+    enabled_events = await app.get_enabled_events()
+    event_map = {}  # event_id -> event dict for later lookup
+    for ev in enabled_events:
+        event_id = str(ev["_id"])
+        city_choices[event_id] = ev.get("city", "Unknown")
+        event_map[event_id] = ev
+
     city = await ask_user_choice(
         message.chat.id,
         "Шаг 2: Выберите город для рассылки",
@@ -144,32 +146,38 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка пользователей...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Получение списка пользователей..."
+    )
 
     # Get appropriate user list
+    city_filter = city if city != "all" else None
     if audience == "unpaid":
-        users = await app.get_unpaid_users(city if city != "all" else None)
+        users = await app.get_unpaid_users(event_id=city_filter)
         audience_name = "не оплативших пользователей"
     elif audience == "paid":
-        users = await app.get_paid_users(city if city != "all" else None)
+        users = await app.get_paid_users(event_id=city_filter)
         audience_name = "оплативших пользователей"
     else:  # all
-        users = await app.get_all_users(city if city != "all" else None)
+        users = await app.get_all_users(event_id=city_filter)
         audience_name = "всех пользователей"
 
     # Check if we have users matching criteria
     if not users:
-        await status_msg.edit_text("❌ Пользователи, соответствующие критериям, не найдены!")
+        await status_msg.edit_text(
+            "❌ Пользователи, соответствующие критериям, не найдены!"
+        )
         return
 
     # Format city for display
-    city_name = {
-        "MOSCOW": "Москве",
-        "PERM": "Перми",
-        "SAINT_PETERSBURG": "Санкт-Петербурге",
-        "BELGRADE": "Белграде",
-        "all": "всех городах",
-    }.get(city or "", city or "")
+    if city == "all" or not city:
+        city_name = "всех городах"
+    elif city in event_map:
+        city_name = event_map[city].get(
+            "city_prepositional", event_map[city].get("city", city)
+        )
+    else:
+        city_name = city
 
     # Generate preview report
     preview = f"📊 Найдено {len(users)} {audience_name} в {city_name}:\n\n"
@@ -207,10 +215,16 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
     if users and any(marker in notification_text for marker in template_markers):
         example_user = users[0]  # Take the first user for the example
 
+        # Look up event for this user
+        example_event = await app.get_event_for_registration(example_user)
         # Create a personalized example using our utility function
-        personalized_example = apply_message_templates(notification_text, example_user)
+        personalized_example = apply_message_templates(
+            notification_text, example_user, example_event
+        )
 
-        preview += "\n\n<b>Пример персонализированного сообщения для пользователя:</b>\n"
+        preview += (
+            "\n\n<b>Пример персонализированного сообщения для пользователя:</b>\n"
+        )
         preview += f"<i>{example_user.get('full_name', '')}</i>\n\n"
         preview += personalized_example
 
@@ -229,12 +243,14 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # First send a detailed report to the validation chat
-    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
-    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report += (
+        f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    )
     validation_report += f"🎯 Целевая аудитория: {len(users)} пользователей\n"
     validation_report += f"🏙️ Город: {city_name}\n"
     validation_report += f"💰 Категория: {audience_name}\n\n"
-    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+    validation_report += "🗒️ <b>Список получателей:</b>\n"
 
     # Add a list of users (limited to avoid oversized message)
     for i, user in enumerate(users[:20], 1):
@@ -248,7 +264,7 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         validation_report += f"...и еще {len(users) - 20} пользователей\n"
 
     # Add template text to the report
-    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    validation_report += "\n📋 <b>Шаблон сообщения:</b>\n"
     validation_report += notification_text
 
     # Send report to validation chat before starting the actual notifications
@@ -267,8 +283,12 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
             continue
 
         try:
+            # Look up event for this user's registration
+            user_event = await app.get_event_for_registration(user)
             # Process templates for this user using our utility function
-            personalized_text = apply_message_templates(notification_text, user)
+            personalized_text = apply_message_templates(
+                notification_text, user, user_event
+            )
 
             await send_safe(user_id, personalized_text)
             sent_count += 1
@@ -296,60 +316,56 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
 
 
 @commands_menu.add_command(
-    "test_user_selection", "Тест выборки пользователей", visibility=Visibility.ADMIN_ONLY
+    "test_user_selection",
+    "Тест выборки пользователей",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("test_user_selection"), AdminFilter())
 async def test_user_selection_handler(message: Message, state: FSMContext, app: App):
     """Test the user selection methods by reporting counts for each city and payment status"""
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
-
-    # Cities to test
-    cities = ["MOSCOW", "PERM", "SAINT_PETERSBURG", "BELGRADE", "PERM_SUMMER_2025", "all"]
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Тестирование выборки пользователей..."
+    )
 
     # Initialize report
     report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
-    report += "<i>Примечание: Санкт-Петербург, Белград и учителя автоматически помечаются как оплатившие.</i>\n\n"
+    report += "<i>Примечание: бесплатные мероприятия и учителя автоматически помечаются как оплатившие.</i>\n\n"
 
-    # Get counts for all cities combined
+    # Get counts for all events combined
     all_users = await app.get_all_users()
     all_paid = await app.get_paid_users()
     all_unpaid = await app.get_unpaid_users()
 
-    report += f"<b>Все города:</b>\n"
+    report += "<b>Все города:</b>\n"
     report += f"- Всего пользователей: {len(all_users)}\n"
     report += f"- Оплатившие: {len(all_paid)}\n"
     report += f"- Неоплатившие: {len(all_unpaid)}\n\n"
 
-    # Get counts for each city
-    for city in cities:
-        if city == "all":
-            continue  # Already handled above
+    # Get counts per active event
+    active_events = await app.get_active_events()
+    for ev in active_events:
+        event_id = str(ev["_id"])
+        city_display = ev.get("name", ev.get("city", "Unknown"))
 
-        city_display = {
-            "MOSCOW": "Москва",
-            "PERM": "Пермь",
-            "SAINT_PETERSBURG": "Санкт-Петербург",
-            "BELGRADE": "Белград",
-            "PERM_SUMMER_2025": "Пермь (Летняя встреча 2025)",
-        }.get(city, city)
-
-        city_all = await app.get_all_users(city)
-        city_paid = await app.get_paid_users(city)
-        city_unpaid = await app.get_unpaid_users(city)
+        ev_all = await app.get_all_users(event_id=event_id)
+        ev_paid = await app.get_paid_users(event_id=event_id)
+        ev_unpaid = await app.get_unpaid_users(event_id=event_id)
 
         report += f"<b>{city_display}:</b>\n"
-        report += f"- Всего пользователей: {len(city_all)}\n"
-        report += f"- Оплатившие: {len(city_paid)}\n"
-        report += f"- Неоплатившие: {len(city_unpaid)}\n\n"
+        report += f"- Всего пользователей: {len(ev_all)}\n"
+        report += f"- Оплатившие: {len(ev_paid)}\n"
+        report += f"- Неоплатившие: {len(ev_unpaid)}\n\n"
 
     # Update status message with report
     await status_msg.edit_text(report, parse_mode="HTML")
 
 
 @commands_menu.add_command(
-    "notify_early_payment", "Уведомить о раннем платеже", visibility=Visibility.ADMIN_ONLY
+    "notify_early_payment",
+    "Уведомить о раннем платеже",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("notify_early_payment"), AdminFilter())
 async def notify_early_payment_handler(message: Message, state: FSMContext, app: App):
@@ -373,9 +389,11 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         return
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка не оплативших...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Получение списка не оплативших..."
+    )
 
-    # Get list of users who haven't paid
+    # Get list of users who haven't paid (across all active events)
     unpaid_users = await app.get_unpaid_users()
 
     # Check if we have unpaid users
@@ -409,7 +427,9 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
     # For dry run, we're done
     if response == "dry_run":
-        await send_safe(message.chat.id, "🔍 Тестовый режим завершен. Уведомления не отправлялись.")
+        await send_safe(
+            message.chat.id, "🔍 Тестовый режим завершен. Уведомления не отправлялись."
+        )
         return
 
     # For actual notification, ask for confirmation
@@ -424,13 +444,17 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         return
 
     # First send a detailed report to the validation chat
-    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
     if message.from_user:
-        validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+        validation_report += (
+            f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+        )
     else:
-        validation_report += f"👤 Инициатор: Неизвестно\n"
-    validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
-    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+        validation_report += "👤 Инициатор: Неизвестно\n"
+    validation_report += (
+        f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
+    )
+    validation_report += "🗒️ <b>Список получателей:</b>\n"
 
     # Add a list of users (limited to avoid oversized message)
     for i, user in enumerate(unpaid_users[:20], 1):
@@ -444,7 +468,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         validation_report += f"...и еще {len(unpaid_users) - 20} пользователей\n"
 
     # Add template text to the report
-    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    validation_report += "\n📋 <b>Шаблон сообщения:</b>\n"
     template_text = (
         "🔔 <b>Напоминание о раннем платеже</b>\n\n"
         "Привет, {name}! Напоминаем, что до окончания периода ранней оплаты "
@@ -477,8 +501,12 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
             continue
 
         try:
+            # Look up event for this user's registration
+            user_event = await app.get_event_for_registration(user)
             # Process templates for this user using our utility function
-            personalized_text = apply_message_templates(notification_text, user)
+            personalized_text = apply_message_templates(
+                notification_text, user, user_event
+            )
 
             await send_safe(user_id, personalized_text)
             sent_count += 1

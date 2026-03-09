@@ -2,23 +2,14 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and uv.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends curl git && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir uv
 
-# Install poetry
-RUN pip install --no-cache-dir poetry
-
-# Copy the entire project files
 COPY . .
 
-# Configure poetry and install dependencies
-RUN poetry config virtualenvs.create false 
-RUN poetry install --only main,extras
+RUN uv sync --group extras
 
-# Copy application code
-COPY app/ .
-
-# Run the bot
-CMD ["poetry", "run", "python", "run.py"]
+CMD ["uv", "run", "python", "run.py"]

@@ -1,5 +1,4 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.app import App
 
@@ -59,15 +58,24 @@ class TestAppValidation:
         # Mock current year to be 2025 for consistent tests
         mock_now = MagicMock()
         mock_now.year = 2025
+        mock_now.month = 3
         mock_datetime.now.return_value = mock_now
 
         test_cases = [
             # Too early
             (1994, False, "Год выпуска должен быть не раньше 1995."),
-            # Current year
-            (2025, False, "Извините, регистрация только для выпускников. Приходите после выпуска!"),
+            # Current year (month < 6, so not yet graduated)
+            (
+                2025,
+                False,
+                "Извините, регистрация только для выпускников. Приходите после выпуска!",
+            ),
             # Future year within acceptable range
-            (2028, False, "Извините, регистрация только для выпускников. Приходите после выпуска!"),
+            (
+                2028,
+                False,
+                "Извините, регистрация только для выпускников. Приходите после выпуска!",
+            ),
             # Future year beyond acceptable range
             (2030, False, "Год выпуска не может быть позже 2029."),
         ]
@@ -133,7 +141,9 @@ class TestAppValidation:
         ]
 
         for input_str, expected_year, expected_letter, expected_error in test_cases:
-            year, letter, error = self.app.parse_graduation_year_and_class_letter(input_str)
+            year, letter, error = self.app.parse_graduation_year_and_class_letter(
+                input_str
+            )
             assert year == expected_year
             assert letter == expected_letter
             assert error == expected_error

@@ -8,7 +8,7 @@ from loguru import logger
 from app.app import App
 
 from botspot import commands_menu
-from botspot.user_interactions import ask_user_choice, ask_user_raw, ask_user_choice_raw
+from app.user_interactions import ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
 router = Router()
@@ -70,7 +70,9 @@ async def save_feedback_and_thank(
 
     # Standard thank you message
     thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
-    thank_you_msg += "Смотри на канал @school146club и общий чат на 713 выпускников 146 "
+    thank_you_msg += (
+        "Смотри на канал @school146club и общий чат на 713 выпускников 146 "
+    )
     thank_you_msg += "(вход модерируется по ссылке https://t.me/+Y5AbalGQBktmOGFi) "
     thank_you_msg += "чтобы узнать о наших следующих мероприятиях.\n\n"
 
@@ -79,19 +81,21 @@ async def save_feedback_and_thank(
 
     city = feedback_data.get("city")
     if city == "perm":
-        thank_you_msg += "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        thank_you_msg += (
+            "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        )
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
     elif city == "moscow":
-        thank_you_msg += "• Ваш город - Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+        thank_you_msg += (
+            "• Ваш город - Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+        )
         thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
     else:
         thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
 
     if is_cancel:
-        thank_you_msg += (
-            "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
-        )
+        thank_you_msg += "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
 
     await send_safe(
         message.chat.id,
@@ -236,17 +240,22 @@ async def feedback_handler(message: Message, state: FSMContext, app: App):
     # User attended, continue with feedback questions
 
     # Step 2: Ask which city the user attended
+    # Build choices from events that have passed or are archived
+    city_choices = {}
+    all_events = await app.get_all_events()
+    for ev in all_events:
+        status = ev.get("status", "")
+        if status in ("archived", "passed"):
+            ev_id = str(ev["_id"])
+            label = f"{ev.get('city', 'Unknown')}, {ev.get('date_display', '')}"
+            city_choices[ev_id] = label
+    city_choices["skip"] = "Пропустить вопрос"
+    city_choices["cancel"] = "Отмена"
+
     city = await ask_user_choice(
         message.chat.id,
         "В каком городе?",
-        choices={
-            "perm": "Пермь, в субботу 29 марта",
-            "moscow": "Москва, в субботу 05 апреля",
-            "saint_petersburg": "Питер, в субботу 05 апреля",
-            "belgrade": "Белград, в субботу 05 апреля",
-            "skip": "Пропустить вопрос",
-            "cancel": "Отмена",
-        },
+        choices=city_choices,
         highlight_default=False,
         state=state,
         timeout=None,

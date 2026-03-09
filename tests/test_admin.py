@@ -68,7 +68,9 @@ async def test_admin_handler_export(
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_register(mock_message, mock_state, mock_ask_user_choice, mock_app):
+async def test_admin_handler_register(
+    mock_message, mock_state, mock_ask_user_choice, mock_app
+):
     # Configure mock for "register" choice
     mock_ask_user_choice.return_value = "register"
 
@@ -80,7 +82,9 @@ async def test_admin_handler_register(mock_message, mock_state, mock_ask_user_ch
 
 
 @pytest.mark.asyncio
-async def test_admin_handler_view_stats(mock_message, mock_state, mock_ask_user_choice, mock_app):
+async def test_admin_handler_view_stats(
+    mock_message, mock_state, mock_ask_user_choice, mock_app
+):
     # Configure mock for "view_stats" choice
     mock_ask_user_choice.return_value = "view_stats"
 

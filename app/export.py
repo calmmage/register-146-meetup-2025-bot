@@ -10,7 +10,10 @@ from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 from botspot import get_database
 
 # Define the scopes for Google Sheets API
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
 
 class SheetExporter:
@@ -47,7 +50,9 @@ class SheetExporter:
                 )
                 if os.path.exists(creds_file):
                     logger.info(f"Using credentials file: {creds_file}")
-                    credentials = Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+                    credentials = Credentials.from_service_account_file(
+                        creds_file, scopes=SCOPES
+                    )
                     return gspread.authorize(credentials)
                 else:
                     raise ValueError(
@@ -125,6 +130,8 @@ class SheetExporter:
             "Регулярная сумма",
             "Формула",
             "Дата оплаты",
+            "Кол-во гостей",
+            "Имена гостей",
         ]
 
         # Update all sheets with headers
@@ -141,13 +148,19 @@ class SheetExporter:
         for user in users:
             # Get payment status and all payment amounts
             raw_status = user.get("payment_status", None)
-            payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
+            payment_status = PAYMENT_STATUS_MAP.get(
+                raw_status, PAYMENT_STATUS_MAP[None]
+            )
             payment_amount = user.get("payment_amount", 0)  # Actual payment amount
-            discounted_amount = user.get("discounted_payment_amount", 0)  # Min amount with discount
+            discounted_amount = user.get(
+                "discounted_payment_amount", 0
+            )  # Min amount with discount
             regular_amount = user.get(
                 "regular_payment_amount", 0
             )  # Regular amount without discount
-            formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
+            formula_amount = user.get(
+                "formula_payment_amount", 0
+            )  # Amount from formula
             payment_timestamp = user.get("payment_timestamp", "")
 
             # Get graduate type and convert to human-readable format
@@ -155,6 +168,11 @@ class SheetExporter:
             graduate_type_display = GRADUATE_TYPE_MAP.get(
                 graduate_type, "Выпускник"
             )  # Default to "Выпускник" if type is unknown
+
+            # Guest info
+            guests = user.get("guests", [])
+            guest_count = user.get("guest_count", len(guests))
+            guest_names = ", ".join(g.get("name", "") for g in guests) if guests else ""
 
             # Create a row of user data
             user_row = [
@@ -170,6 +188,8 @@ class SheetExporter:
                 regular_amount,
                 formula_amount,
                 payment_timestamp,
+                guest_count,
+                guest_names,
             ]
 
             # Add to main sheet
@@ -204,7 +224,9 @@ class SheetExporter:
             if rows:
                 type_sheets[graduate_type].update("A2", rows)
 
-        message = f"Успешно экспортировано {len(main_rows)} пользователей в Google Таблицы\n"
+        message = (
+            f"Успешно экспортировано {len(main_rows)} пользователей в Google Таблицы\n"
+        )
         message += "Доступно по ссылке: " + main_sheet.url
         logger.success(message)
 
@@ -244,6 +266,8 @@ class SheetExporter:
                 "Регулярная сумма",
                 "Формула",
                 "Дата оплаты",
+                "Кол-во гостей",
+                "Имена гостей",
             ]
             writer.writerow(headers)
 
@@ -251,7 +275,9 @@ class SheetExporter:
             for user in users:
                 # Get payment status and all payment amounts
                 raw_status = user.get("payment_status", None)
-                payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
+                payment_status = PAYMENT_STATUS_MAP.get(
+                    raw_status, PAYMENT_STATUS_MAP[None]
+                )
                 payment_amount = user.get("payment_amount", 0)  # Actual payment amount
                 discounted_amount = user.get(
                     "discounted_payment_amount", 0
@@ -259,7 +285,9 @@ class SheetExporter:
                 regular_amount = user.get(
                     "regular_payment_amount", 0
                 )  # Regular amount without discount
-                formula_amount = user.get("formula_payment_amount", 0)  # Amount from formula
+                formula_amount = user.get(
+                    "formula_payment_amount", 0
+                )  # Amount from formula
                 payment_timestamp = user.get("payment_timestamp", "")
 
                 # Get graduate type and convert to human-readable format
@@ -267,6 +295,13 @@ class SheetExporter:
                 graduate_type_display = GRADUATE_TYPE_MAP.get(
                     graduate_type, "Выпускник"
                 )  # Default to "Выпускник" if type is unknown
+
+                # Guest info
+                guests = user.get("guests", [])
+                guest_count = user.get("guest_count", len(guests))
+                guest_names = (
+                    ", ".join(g.get("name", "") for g in guests) if guests else ""
+                )
 
                 writer.writerow(
                     [
@@ -282,6 +317,8 @@ class SheetExporter:
                         regular_amount,
                         formula_amount,
                         payment_timestamp,
+                        guest_count,
+                        guest_names,
                     ]
                 )
 
@@ -289,7 +326,10 @@ class SheetExporter:
             output.close()
 
             logger.success(f"Успешно экспортировано {len(users)} пользователей в CSV")
-            return csv_content, f"Успешно экспортировано {len(users)} пользователей в CSV"
+            return (
+                csv_content,
+                f"Успешно экспортировано {len(users)} пользователей в CSV",
+            )
 
         except Exception as e:
             logger.error(f"Ошибка при экспорте данных в CSV: {e}")
@@ -331,7 +371,9 @@ class SheetExporter:
         for user in users:
             # Get payment status and amount
             raw_status = user.get("payment_status", None)
-            payment_status = PAYMENT_STATUS_MAP.get(raw_status, PAYMENT_STATUS_MAP[None])
+            payment_status = PAYMENT_STATUS_MAP.get(
+                raw_status, PAYMENT_STATUS_MAP[None]
+            )
             payment_amount = user.get("payment_amount", 0)  # Actual payment amount
 
             # Get graduate type and convert to human-readable format
@@ -362,8 +404,13 @@ class SheetExporter:
         csv_content = output.getvalue()
         output.close()
 
-        logger.success(f"Успешно экспортировано {len(users)} удаленных пользователей в CSV")
-        return csv_content, f"Успешно экспортировано {len(users)} удаленных пользователей в CSV"
+        logger.success(
+            f"Успешно экспортировано {len(users)} удаленных пользователей в CSV"
+        )
+        return (
+            csv_content,
+            f"Успешно экспортировано {len(users)} удаленных пользователей в CSV",
+        )
 
     async def export_feedback_to_sheets(self, silent=False):
         """Export all feedback to a dedicated sheet in the Google Spreadsheet
@@ -465,7 +512,9 @@ class SheetExporter:
         if feedback_rows:
             feedback_sheet.update("A2", feedback_rows)
 
-        message = f"Успешно экспортировано {len(feedback_rows)} отзывов в Google Таблицы\n"
+        message = (
+            f"Успешно экспортировано {len(feedback_rows)} отзывов в Google Таблицы\n"
+        )
         message += "Доступно по ссылке: " + feedback_sheet.url
         logger.success(message)
 
@@ -478,7 +527,9 @@ class SheetExporter:
         try:
             # Create feedback collection if it doesn't exist
             if not hasattr(self.app, "_feedback_collection"):
-                self.app._feedback_collection = get_database().get_collection("feedback")
+                self.app._feedback_collection = get_database().get_collection(
+                    "feedback"
+                )
 
             # Get all feedback from MongoDB
             cursor = self.app._feedback_collection.find({})
@@ -555,8 +606,13 @@ class SheetExporter:
             csv_content = output.getvalue()
             output.close()
 
-            logger.success(f"Успешно экспортировано {len(feedback_items)} отзывов в CSV")
-            return csv_content, f"Успешно экспортировано {len(feedback_items)} отзывов в CSV"
+            logger.success(
+                f"Успешно экспортировано {len(feedback_items)} отзывов в CSV"
+            )
+            return (
+                csv_content,
+                f"Успешно экспортировано {len(feedback_items)} отзывов в CSV",
+            )
 
         except Exception as e:
             logger.error(f"Ошибка при экспорте отзывов в CSV: {e}")
