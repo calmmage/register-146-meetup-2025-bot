@@ -3,7 +3,7 @@ from aiogram.types import Message
 from datetime import datetime
 from enum import Enum
 from loguru import logger
-from pydantic import SecretStr, BaseModel, Field
+from pydantic import SecretStr, BaseModel
 from pydantic_settings import BaseSettings
 from typing import Optional, Tuple, List, Dict
 
@@ -507,7 +507,7 @@ class App:
 
         # Check if year is in valid range
         if year < 1995:
-            return False, f"Год выпуска должен быть не раньше 1995."
+            return False, "Год выпуска должен быть не раньше 1995."
 
         # If year is this year
         if year == current_year:
@@ -516,14 +516,14 @@ class App:
             else:
                 return (
                     False,
-                    f"Извините, регистрация только для выпускников. Приходите после выпуска!",
+                    "Извините, регистрация только для выпускников. Приходите после выпуска!",
                 )
 
         if year > current_year:
             if year <= current_year + 4:
                 return (
                     False,
-                    f"Извините, регистрация только для выпускников. Приходите после выпуска!",
+                    "Извините, регистрация только для выпускников. Приходите после выпуска!",
                 )
             else:
                 return False, f"Год выпуска не может быть позже {current_year + 4}."
@@ -650,10 +650,6 @@ class App:
             return None
 
         try:
-            from botspot.core.dependency_manager import get_dependency_manager
-
-            deps = get_dependency_manager()
-
             return await send_safe(chat_id, message)
         except Exception as e:
             logger.error(f"Failed to log to {chat_type} chat: {e}")
@@ -705,17 +701,17 @@ class App:
             city: The city of the event
             graduate_type: Type of participant (graduate, teacher, non_graduate)
         """
-        message = f"✅ НОВАЯ РЕГИСТРАЦИЯ\n\n"
+        message = "✅ НОВАЯ РЕГИСТРАЦИЯ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {full_name}\n"
 
         # Format graduation info based on graduate type
         if graduate_type == GraduateType.TEACHER.value:
-            message += f"👨‍🏫 Статус: Учитель\n"
+            message += "👨‍🏫 Статус: Учитель\n"
         elif graduate_type == GraduateType.NON_GRADUATE.value:
-            message += f"👥 Статус: Не выпускник\n"
+            message += "👥 Статус: Не выпускник\n"
         elif graduate_type == GraduateType.ORGANIZER.value:
-            message += f"🛠️ Статус: Организатор\n"
+            message += "🛠️ Статус: Организатор\n"
         else:
             message += f"🎓 Выпуск: {graduation_year} {class_letter}\n"
 
@@ -723,11 +719,11 @@ class App:
 
         # Add payment status for different participant types
         if graduate_type == GraduateType.TEACHER.value:
-            message += f"💰 Оплата: Бесплатно (учитель)\n"
+            message += "💰 Оплата: Бесплатно (учитель)\n"
         elif graduate_type == GraduateType.ORGANIZER.value:
-            message += f"💰 Оплата: Бесплатно (организатор)\n"
+            message += "💰 Оплата: Бесплатно (организатор)\n"
         elif city == TargetCity.BELGRADE.value:
-            message += f"💰 Оплата: За свой счет (Белград)\n"
+            message += "💰 Оплата: За свой счет (Белград)\n"
 
         if guests:
             message += f"\n👥 Гости ({len(guests)}):\n"
@@ -751,7 +747,7 @@ class App:
             username: User's Telegram username
             city: The city of the canceled registration (or None if all)
         """
-        message = f"❌ ОТМЕНА РЕГИСТРАЦИИ\n\n"
+        message = "❌ ОТМЕНА РЕГИСТРАЦИИ\n\n"
         message += f"👤 Пользователь: {username or user_id}\n"
         message += f"📋 ФИО: {full_name}\n"
 

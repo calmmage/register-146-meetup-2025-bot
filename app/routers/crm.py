@@ -233,12 +233,12 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # First send a detailed report to the validation chat
-    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
     validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
     validation_report += f"🎯 Целевая аудитория: {len(users)} пользователей\n"
     validation_report += f"🏙️ Город: {city_name}\n"
     validation_report += f"💰 Категория: {audience_name}\n\n"
-    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+    validation_report += "🗒️ <b>Список получателей:</b>\n"
 
     # Add a list of users (limited to avoid oversized message)
     for i, user in enumerate(users[:20], 1):
@@ -252,7 +252,7 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         validation_report += f"...и еще {len(users) - 20} пользователей\n"
 
     # Add template text to the report
-    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    validation_report += "\n📋 <b>Шаблон сообщения:</b>\n"
     validation_report += notification_text
 
     # Send report to validation chat before starting the actual notifications
@@ -320,7 +320,7 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
     all_paid = await app.get_paid_users()
     all_unpaid = await app.get_unpaid_users()
 
-    report += f"<b>Все города:</b>\n"
+    report += "<b>Все города:</b>\n"
     report += f"- Всего пользователей: {len(all_users)}\n"
     report += f"- Оплатившие: {len(all_paid)}\n"
     report += f"- Неоплатившие: {len(all_unpaid)}\n\n"
@@ -420,13 +420,13 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         return
 
     # First send a detailed report to the validation chat
-    validation_report = f"📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
+    validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
     if message.from_user:
         validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
     else:
-        validation_report += f"👤 Инициатор: Неизвестно\n"
+        validation_report += "👤 Инициатор: Неизвестно\n"
     validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
-    validation_report += f"🗒️ <b>Список получателей:</b>\n"
+    validation_report += "🗒️ <b>Список получателей:</b>\n"
 
     # Add a list of users (limited to avoid oversized message)
     for i, user in enumerate(unpaid_users[:20], 1):
@@ -440,7 +440,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         validation_report += f"...и еще {len(unpaid_users) - 20} пользователей\n"
 
     # Add template text to the report
-    validation_report += f"\n📋 <b>Шаблон сообщения:</b>\n"
+    validation_report += "\n📋 <b>Шаблон сообщения:</b>\n"
     template_text = (
         "🔔 <b>Напоминание о раннем платеже</b>\n\n"
         "Привет, {name}! Напоминаем, что до окончания периода ранней оплаты "

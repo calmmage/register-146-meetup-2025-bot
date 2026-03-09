@@ -846,7 +846,7 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                         try:
                             new_deadline = datetime.strptime(resp.text.strip(), "%d.%m.%Y")
                             await app.update_event(selection, {"early_bird_deadline": new_deadline})
-                            await send_safe(message.chat.id, f"✅ Дедлайн обновлён.")
+                            await send_safe(message.chat.id, "✅ Дедлайн обновлён.")
                         except ValueError:
                             await send_safe(message.chat.id, "❌ Неверный формат. Используйте ДД.ММ.ГГГГ")
 

@@ -470,9 +470,9 @@ async def process_payment(
                 # Add graduate type info
                 graduate_type = user_registration.get("graduate_type", GraduateType.GRADUATE.value)
                 if graduate_type == GraduateType.TEACHER.value:
-                    user_info += f"👨‍🏫 Статус: Учитель (бесплатно)\n"
+                    user_info += "👨‍🏫 Статус: Учитель (бесплатно)\n"
                 elif graduate_type == GraduateType.NON_GRADUATE.value:
-                    user_info += f"👥 Статус: Друг школы (не выпускник)\n"
+                    user_info += "👥 Статус: Друг школы (не выпускник)\n"
                 else:
                     user_info += f"🎓 Выпуск: {user_registration.get('graduation_year', 'Неизвестно')} {user_registration.get('class_letter', '')}\n"
 
@@ -1073,7 +1073,7 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
             raise
 
     # Confirm to admin with a brief reply
-    await message.reply(f"❌ Платеж отклонен")
+    await message.reply("❌ Платеж отклонен")
 
     # Clear state
     await state.clear()

@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from loguru import logger
 from textwrap import dedent
 from typing import Dict, List, Optional
-from datetime import datetime
 
 from app.app import App, TargetCity, RegisteredUser, GraduateType
 from app.routers.admin import admin_handler
@@ -130,7 +129,6 @@ async def handle_registered_user(message: Message, state: FSMContext, registrati
         # User has only one registration
         reg = registrations[0]
         city = reg["target_city"]
-        full_name = reg["full_name"]
         graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
         event = await app.get_event_for_registration(reg)
 
@@ -967,7 +965,7 @@ async def register_user(
             comment = "Автоматически подтверждено (организатор)"
             confirmation_msg += "\nДля организаторов участие бесплатное. Спасибо за вашу помощь!"
         else:
-            comment = f"Автоматически подтверждено (бесплатное мероприятие)"
+            comment = "Автоматически подтверждено (бесплатное мероприятие)"
             confirmation_msg += "\nДля этой встречи оплата не требуется. Все расходы участники несут самостоятельно."
 
         # For free registrants, guests still pay if guest_price_minimum > 0

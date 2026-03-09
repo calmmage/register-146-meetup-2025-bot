@@ -8,7 +8,7 @@ from loguru import logger
 from app.app import App
 
 from botspot import commands_menu
-from app.user_interactions import ask_user_choice, ask_user_raw, ask_user_choice_raw
+from app.user_interactions import ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
 router = Router()

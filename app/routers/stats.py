@@ -763,7 +763,7 @@ async def show_simple_stats(message: Message, app: App):
     )
 
     if total_with_payment > 0:
-        stats_text += f"\n<b>Всего по статусам:</b>\n"
+        stats_text += "\n<b>Всего по статусам:</b>\n"
 
         # Active users
         stats_text += "<u>Активные пользователи:</u>\n"
@@ -833,9 +833,6 @@ async def show_year_stats(message: Message, app: App):
         reg["is_deleted"] = False
     for reg in deleted_registrations:
         reg["is_deleted"] = True
-
-    # We'll use only active registrations for the visualizations
-    visualizations_regs = active_registrations
 
     # Combine both sets for text stats
     all_registrations = active_registrations + deleted_registrations
@@ -1114,13 +1111,12 @@ async def show_five_year_stats(message: Message, app: App):
     # Calculate total stats (including deleted) for caption
     active_count = len(active_registrations)
     deleted_count = len(deleted_registrations)
-    total_count = active_count + deleted_count
 
     # Delete status message
     await status_msg.delete()
 
     # Send the diagram with informative caption
-    caption = f"📊 Зарегистрировавшиеся по пятилеткам выпуска и городам\n"
+    caption = "📊 Зарегистрировавшиеся по пятилеткам выпуска и городам\n"
     caption += f"График показывает только {active_count} активных участников\n"
     if deleted_count > 0:
         caption += f"(в статистике также есть {deleted_count} удаленных участников, не показанных на графике)"
