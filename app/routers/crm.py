@@ -146,7 +146,9 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         return
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка пользователей...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Получение списка пользователей..."
+    )
 
     # Get appropriate user list
     city_filter = city if city != "all" else None
@@ -162,14 +164,18 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
 
     # Check if we have users matching criteria
     if not users:
-        await status_msg.edit_text("❌ Пользователи, соответствующие критериям, не найдены!")
+        await status_msg.edit_text(
+            "❌ Пользователи, соответствующие критериям, не найдены!"
+        )
         return
 
     # Format city for display
     if city == "all" or not city:
         city_name = "всех городах"
     elif city in event_map:
-        city_name = event_map[city].get("city_prepositional", event_map[city].get("city", city))
+        city_name = event_map[city].get(
+            "city_prepositional", event_map[city].get("city", city)
+        )
     else:
         city_name = city
 
@@ -212,9 +218,13 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
         # Look up event for this user
         example_event = await app.get_event_for_registration(example_user)
         # Create a personalized example using our utility function
-        personalized_example = apply_message_templates(notification_text, example_user, example_event)
+        personalized_example = apply_message_templates(
+            notification_text, example_user, example_event
+        )
 
-        preview += "\n\n<b>Пример персонализированного сообщения для пользователя:</b>\n"
+        preview += (
+            "\n\n<b>Пример персонализированного сообщения для пользователя:</b>\n"
+        )
         preview += f"<i>{example_user.get('full_name', '')}</i>\n\n"
         preview += personalized_example
 
@@ -234,7 +244,9 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
 
     # First send a detailed report to the validation chat
     validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
-    validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    validation_report += (
+        f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+    )
     validation_report += f"🎯 Целевая аудитория: {len(users)} пользователей\n"
     validation_report += f"🏙️ Город: {city_name}\n"
     validation_report += f"💰 Категория: {audience_name}\n\n"
@@ -274,7 +286,9 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
             # Look up event for this user's registration
             user_event = await app.get_event_for_registration(user)
             # Process templates for this user using our utility function
-            personalized_text = apply_message_templates(notification_text, user, user_event)
+            personalized_text = apply_message_templates(
+                notification_text, user, user_event
+            )
 
             await send_safe(user_id, personalized_text)
             sent_count += 1
@@ -302,14 +316,18 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
 
 
 @commands_menu.add_command(
-    "test_user_selection", "Тест выборки пользователей", visibility=Visibility.ADMIN_ONLY
+    "test_user_selection",
+    "Тест выборки пользователей",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("test_user_selection"), AdminFilter())
 async def test_user_selection_handler(message: Message, state: FSMContext, app: App):
     """Test the user selection methods by reporting counts for each city and payment status"""
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Тестирование выборки пользователей...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Тестирование выборки пользователей..."
+    )
 
     # Initialize report
     report = "📊 <b>Результаты тестирования выборки пользователей:</b>\n\n"
@@ -345,7 +363,9 @@ async def test_user_selection_handler(message: Message, state: FSMContext, app: 
 
 
 @commands_menu.add_command(
-    "notify_early_payment", "Уведомить о раннем платеже", visibility=Visibility.ADMIN_ONLY
+    "notify_early_payment",
+    "Уведомить о раннем платеже",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("notify_early_payment"), AdminFilter())
 async def notify_early_payment_handler(message: Message, state: FSMContext, app: App):
@@ -369,7 +389,9 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
         return
 
     # Show processing message
-    status_msg = await send_safe(message.chat.id, "⏳ Получение списка не оплативших...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Получение списка не оплативших..."
+    )
 
     # Get list of users who haven't paid (across all active events)
     unpaid_users = await app.get_unpaid_users()
@@ -405,7 +427,9 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
     # For dry run, we're done
     if response == "dry_run":
-        await send_safe(message.chat.id, "🔍 Тестовый режим завершен. Уведомления не отправлялись.")
+        await send_safe(
+            message.chat.id, "🔍 Тестовый режим завершен. Уведомления не отправлялись."
+        )
         return
 
     # For actual notification, ask for confirmation
@@ -422,10 +446,14 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
     # First send a detailed report to the validation chat
     validation_report = "📢 <b>МАССОВАЯ РАССЫЛКА ЗАПУЩЕНА</b>\n\n"
     if message.from_user:
-        validation_report += f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+        validation_report += (
+            f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+        )
     else:
         validation_report += "👤 Инициатор: Неизвестно\n"
-    validation_report += f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
+    validation_report += (
+        f"🎯 Целевая аудитория: {len(unpaid_users)} пользователей без оплаты\n\n"
+    )
     validation_report += "🗒️ <b>Список получателей:</b>\n"
 
     # Add a list of users (limited to avoid oversized message)
@@ -476,7 +504,9 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
             # Look up event for this user's registration
             user_event = await app.get_event_for_registration(user)
             # Process templates for this user using our utility function
-            personalized_text = apply_message_templates(notification_text, user, user_event)
+            personalized_text = apply_message_templates(
+                notification_text, user, user_event
+            )
 
             await send_safe(user_id, personalized_text)
             sent_count += 1

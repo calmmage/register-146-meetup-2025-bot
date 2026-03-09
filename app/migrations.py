@@ -154,15 +154,33 @@ async def archive_2025_events(app):
             "enabled": False,
             "pricing_type": "fixed_by_year",
             "year_price_map": {
-                "2025": 1300, "2024": 1300, "2023": 1300,
-                "2022": 1400, "2021": 1400, "2020": 1400,
-                "2019": 1500, "2018": 1500, "2017": 1500,
-                "2016": 1600, "2015": 1600, "2014": 1600,
-                "2013": 1700, "2012": 1700, "2011": 1700,
-                "2010": 1800, "2009": 1800, "2008": 1800,
-                "2007": 1900, "2006": 1900, "2005": 1900,
-                "2004": 2000, "2003": 2000, "2002": 2000,
-                "2001": 2100, "2000": 2100, "1999": 2100,
+                "2025": 1300,
+                "2024": 1300,
+                "2023": 1300,
+                "2022": 1400,
+                "2021": 1400,
+                "2020": 1400,
+                "2019": 1500,
+                "2018": 1500,
+                "2017": 1500,
+                "2016": 1600,
+                "2015": 1600,
+                "2014": 1600,
+                "2013": 1700,
+                "2012": 1700,
+                "2011": 1700,
+                "2010": 1800,
+                "2009": 1800,
+                "2008": 1800,
+                "2007": 1900,
+                "2006": 1900,
+                "2005": 1900,
+                "2004": 2000,
+                "2003": 2000,
+                "2002": 2000,
+                "2001": 2100,
+                "2000": 2100,
+                "1999": 2100,
             },
             "free_for_types": ["TEACHER", "ORGANIZER"],
             "target_city_value": "Пермь (Летняя встреча 2025)",
@@ -180,7 +198,9 @@ async def archive_2025_events(app):
         )
         if existing:
             event_id = str(existing["_id"])
-            logger.info(f"Archived event already exists: {event_data['name']}, skipping insert.")
+            logger.info(
+                f"Archived event already exists: {event_data['name']}, skipping insert."
+            )
         else:
             result = await app.events_col.insert_one(event_data)
             event_id = str(result.inserted_id)
@@ -355,7 +375,9 @@ async def update_pricing_and_early_bird(app):
         {"$set": {"price_formula_step": 1}},
     )
     if step_result.modified_count > 0:
-        logger.info(f"Added default price_formula_step=1 to {step_result.modified_count} events.")
+        logger.info(
+            f"Added default price_formula_step=1 to {step_result.modified_count} events."
+        )
 
     # Add default early bird fields to all events missing them
     eb_result = await app.events_col.update_many(
@@ -363,4 +385,6 @@ async def update_pricing_and_early_bird(app):
         {"$set": {"early_bird_discount": 0, "early_bird_deadline": None}},
     )
     if eb_result.modified_count > 0:
-        logger.info(f"Added default early bird fields to {eb_result.modified_count} events.")
+        logger.info(
+            f"Added default early bird fields to {eb_result.modified_count} events."
+        )

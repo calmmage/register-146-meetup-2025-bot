@@ -76,12 +76,16 @@ class TestSheetExporter:
     @patch("app.export.gspread.authorize")
     @patch("app.export.Credentials.from_service_account_info")
     @patch("app.export.os.getenv")
-    def test_get_client_base64_credentials(self, mock_getenv, mock_credentials, mock_authorize):
+    def test_get_client_base64_credentials(
+        self, mock_getenv, mock_credentials, mock_authorize
+    ):
         """Test _get_client with base64 encoded credentials"""
         # Mock base64 credentials
         mock_creds_dict = {"type": "service_account", "project_id": "mock-project"}
         mock_creds_json = json.dumps(mock_creds_dict)
-        mock_creds_base64 = base64.b64encode(mock_creds_json.encode("utf-8")).decode("utf-8")
+        mock_creds_base64 = base64.b64encode(mock_creds_json.encode("utf-8")).decode(
+            "utf-8"
+        )
 
         # Setup mocks
         mock_getenv.return_value = mock_creds_base64
@@ -106,14 +110,19 @@ class TestSheetExporter:
     @patch("app.export.gspread.authorize")
     @patch("app.export.Credentials.from_service_account_info")
     @patch("app.export.os.getenv")
-    def test_get_client_json_credentials(self, mock_getenv, mock_credentials, mock_authorize):
+    def test_get_client_json_credentials(
+        self, mock_getenv, mock_credentials, mock_authorize
+    ):
         """Test _get_client with JSON string credentials"""
         # Mock JSON credentials
         mock_creds_dict = {"type": "service_account", "project_id": "mock-project"}
         mock_creds_json = json.dumps(mock_creds_dict)
 
         # Setup mocks
-        mock_getenv.side_effect = [None, mock_creds_json]  # No BASE64, but JSON is available
+        mock_getenv.side_effect = [
+            None,
+            mock_creds_json,
+        ]  # No BASE64, but JSON is available
         mock_credentials.return_value = "mock_credentials"
         mock_authorize.return_value = "mock_authorized_client"
 

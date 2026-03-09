@@ -78,7 +78,6 @@ CITY_PREPOSITIONAL_MAP = {
 }
 
 
-
 class AppSettings(BaseSettings):
     """Basic app configuration"""
 
@@ -110,6 +109,7 @@ class RegisteredUser(BaseModel):
 
 class FeedbackData(BaseModel):
     """Model for feedback data"""
+
     user_id: int
     username: Optional[str] = None
     full_name: Optional[str] = None
@@ -171,7 +171,9 @@ class App:
         # Fix database (SPb, Belgrade, teachers should have 'confirmed' payment status)
         fix_results = await self._fix_database()
         if fix_results["total_fixed"] > 0:
-            logger.info(f"Database fix applied to {fix_results['total_fixed']} records:")
+            logger.info(
+                f"Database fix applied to {fix_results['total_fixed']} records:"
+            )
             logger.info(f"- SPb: {fix_results['spb_fixed']}")
             logger.info(f"- Belgrade: {fix_results['belgrade_fixed']}")
             logger.info(f"- Teachers: {fix_results['teachers_fixed']}")
@@ -179,25 +181,33 @@ class App:
     @property
     def collection(self):
         if self._collection is None:
-            self._collection = get_database().get_collection(self.registration_collection_name)
+            self._collection = get_database().get_collection(
+                self.registration_collection_name
+            )
         return self._collection
 
     @property
     def event_logs(self):
         if self._event_logs is None:
-            self._event_logs = get_database().get_collection(self.event_logs_collection_name)
+            self._event_logs = get_database().get_collection(
+                self.event_logs_collection_name
+            )
         return self._event_logs
 
     @property
     def deleted_users(self):
         if self._deleted_users is None:
-            self._deleted_users = get_database().get_collection(self.deleted_users_collection_name)
+            self._deleted_users = get_database().get_collection(
+                self.deleted_users_collection_name
+            )
         return self._deleted_users
 
     @property
     def events_col(self):
         if self._events_col is None:
-            self._events_col = get_database().get_collection(self.events_collection_name)
+            self._events_col = get_database().get_collection(
+                self.events_collection_name
+            )
         return self._events_col
 
     # ---- Event methods ----
@@ -230,7 +240,9 @@ class App:
         except Exception:
             return None
 
-    async def get_event_by_city_and_date(self, city: str, date: datetime) -> Optional[Dict]:
+    async def get_event_by_city_and_date(
+        self, city: str, date: datetime
+    ) -> Optional[Dict]:
         """Find an event matching city and date."""
         return await self.events_col.find_one({"city": city, "date": date})
 
@@ -281,7 +293,10 @@ class App:
         return await self.collection.count_documents({"event_id": event_id})
 
     def calculate_event_payment(
-        self, event: Dict, graduation_year: int, graduate_type: str = GraduateType.GRADUATE.value
+        self,
+        event: Dict,
+        graduation_year: int,
+        graduate_type: str = GraduateType.GRADUATE.value,
     ) -> Tuple[int, int, int, int]:
         """Calculate payment for an event based on its pricing config.
 
@@ -327,7 +342,11 @@ class App:
             # Early bird discount
             early_bird_discount = event.get("early_bird_discount", 0)
             early_bird_deadline = event.get("early_bird_deadline")
-            if early_bird_deadline and datetime.now() < early_bird_deadline and early_bird_discount > 0:
+            if (
+                early_bird_deadline
+                and datetime.now() < early_bird_deadline
+                and early_bird_discount > 0
+            ):
                 discount = early_bird_discount
                 discounted_amount = max(0, regular_amount - discount)
             else:
@@ -370,7 +389,10 @@ class App:
         return active
 
     async def save_registered_user(
-        self, registered_user: RegisteredUser, user_id: Optional[int] = None, username: Optional[str] = None
+        self,
+        registered_user: RegisteredUser,
+        user_id: Optional[int] = None,
+        username: Optional[str] = None,
     ):
         """Save a user registration with optional user_id and username"""
         # Convert the model to a dict and extract the enum value before saving
@@ -378,7 +400,9 @@ class App:
         # Convert the enums to their string values for MongoDB storage
         data["target_city"] = data["target_city"].value
         if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
-            data["graduate_type"] = data["graduate_type"].value.upper()  # Ensure uppercase
+            data["graduate_type"] = data[
+                "graduate_type"
+            ].value.upper()  # Ensure uppercase
 
         # Add user_id and username if provided
         if user_id is not None:
@@ -405,7 +429,9 @@ class App:
 
             if existing:
                 # Update existing registration for this city
-                await self.collection.update_one({"_id": existing["_id"]}, {"$set": data})
+                await self.collection.update_one(
+                    {"_id": existing["_id"]}, {"$set": data}
+                )
                 log_data["action"] = "update_registration"
                 log_data["existing_id"] = str(existing["_id"])
                 is_update = True
@@ -444,7 +470,11 @@ class App:
         return registrations[0] if registrations else None
 
     async def delete_user_registration(
-        self, user_id: int, city: Optional[str] = None, username: Optional[str] = None, full_name: Optional[str] = None
+        self,
+        user_id: int,
+        city: Optional[str] = None,
+        username: Optional[str] = None,
+        full_name: Optional[str] = None,
     ):
         """
         Move a user's registration to deleted_users collection instead of permanent deletion
@@ -629,7 +659,9 @@ class App:
         """Export feedback to CSV"""
         return await self.sheet_exporter.export_feedback_to_csv()
 
-    async def log_to_chat(self, message: str, chat_type: str = "logs") -> Optional[Message]:
+    async def log_to_chat(
+        self, message: str, chat_type: str = "logs"
+    ) -> Optional[Message]:
         """
         Log a message to the specified chat
 
@@ -759,7 +791,10 @@ class App:
         await self.log_to_chat(message, "events")
 
     def calculate_payment_amount(
-        self, city: str, graduation_year: int, graduate_type: str = GraduateType.GRADUATE.value
+        self,
+        city: str,
+        graduation_year: int,
+        graduate_type: str = GraduateType.GRADUATE.value,
     ) -> tuple[int, int, int, int]:
         """
         Calculate the payment amount based on city, graduation year, and graduate type
@@ -784,20 +819,38 @@ class App:
             # New formula: 2200 - 100 * (((graduation_year - 1999) // 3) + 1)
             # But let's use the exact table provided by Maria
             year_price_map = {
-                2025: 1300, 2024: 1300, 2023: 1300,
-                2022: 1400, 2021: 1400, 2020: 1400,
-                2019: 1500, 2018: 1500, 2017: 1500,
-                2016: 1600, 2015: 1600, 2014: 1600,
-                2013: 1700, 2012: 1700, 2011: 1700,
-                2010: 1800, 2009: 1800, 2008: 1800,
-                2007: 1900, 2006: 1900, 2005: 1900,
-                2004: 2000, 2003: 2000, 2002: 2000,
-                2001: 2100, 2000: 2100, 1999: 2100,
+                2025: 1300,
+                2024: 1300,
+                2023: 1300,
+                2022: 1400,
+                2021: 1400,
+                2020: 1400,
+                2019: 1500,
+                2018: 1500,
+                2017: 1500,
+                2016: 1600,
+                2015: 1600,
+                2014: 1600,
+                2013: 1700,
+                2012: 1700,
+                2011: 1700,
+                2010: 1800,
+                2009: 1800,
+                2008: 1800,
+                2007: 1900,
+                2006: 1900,
+                2005: 1900,
+                2004: 2000,
+                2003: 2000,
+                2002: 2000,
+                2001: 2100,
+                2000: 2100,
+                1999: 2100,
             }
-            
+
             # For years before 1999, use 2200
             amount = year_price_map.get(graduation_year, 2200)
-            
+
             # No early registration discount for summer event
             return amount, 0, amount, amount
 
@@ -880,7 +933,9 @@ class App:
             update_data["formula_payment_amount"] = formula_amount
 
         # Get user registration for logging
-        user_data = await self.collection.find_one({"user_id": user_id, "target_city": city})
+        user_data = await self.collection.find_one(
+            {"user_id": user_id, "target_city": city}
+        )
         full_name = user_data.get("full_name") if user_data else None
 
         # Log payment info submission
@@ -925,7 +980,10 @@ class App:
             admin_id: Optional admin's Telegram ID for logging
             admin_username: Optional admin's Telegram username for logging
         """
-        update_data = {"payment_status": status, "payment_verified_at": datetime.now().isoformat()}
+        update_data = {
+            "payment_status": status,
+            "payment_verified_at": datetime.now().isoformat(),
+        }
 
         if admin_comment:
             update_data["admin_comment"] = admin_comment
@@ -933,7 +991,9 @@ class App:
         # Get user registration for logging
         registration = None
         if payment_amount is not None or status:
-            registration = await self.collection.find_one({"user_id": user_id, "target_city": city})
+            registration = await self.collection.find_one(
+                {"user_id": user_id, "target_city": city}
+            )
 
         # Prepare log data
         log_data = {
@@ -1001,7 +1061,9 @@ class App:
             {"user_id": user_id, "target_city": city}, {"$set": update_data}
         )
 
-    async def normalize_graduate_types(self, admin_id: int = None, admin_username: str = None):
+    async def normalize_graduate_types(
+        self, admin_id: int = None, admin_username: str = None
+    ):
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
             {"graduate_type": {"$exists": True}},
@@ -1009,7 +1071,10 @@ class App:
         )
 
         # Log the normalization operation
-        log_data = {"action": "normalize_graduate_types", "modified_count": result.modified_count}
+        log_data = {
+            "action": "normalize_graduate_types",
+            "modified_count": result.modified_count,
+        }
 
         if admin_id:
             log_data["admin_id"] = admin_id
@@ -1084,9 +1149,13 @@ class App:
         Returns:
             List of user registrations with unpaid status
         """
-        return await self._get_users_base(payment_status="unpaid", city=city, event_id=event_id)
+        return await self._get_users_base(
+            payment_status="unpaid", city=city, event_id=event_id
+        )
 
-    async def get_users_without_feedback(self, city: Optional[str] = None) -> List[Dict]:
+    async def get_users_without_feedback(
+        self, city: Optional[str] = None
+    ) -> List[Dict]:
         """
         Get all users who have not provided feedback yet
 
@@ -1098,11 +1167,11 @@ class App:
         """
         all_users = await self._get_users_base(city=city)
         users_without_feedback = []
-        
+
         for user in all_users:
             if not await self.has_provided_feedback(user["user_id"]):
                 users_without_feedback.append(user)
-                
+
         return users_without_feedback
 
     async def get_users_with_feedback(self, city: Optional[str] = None) -> List[Dict]:
@@ -1117,11 +1186,11 @@ class App:
         """
         all_users = await self._get_users_base(city=city)
         users_with_feedback = []
-        
+
         for user in all_users:
             if await self.has_provided_feedback(user["user_id"]):
                 users_with_feedback.append(user)
-                
+
         return users_with_feedback
 
     async def get_paid_users(
@@ -1137,7 +1206,9 @@ class App:
         Returns:
             List of user registrations with paid status
         """
-        return await self._get_users_base(payment_status="paid", city=city, event_id=event_id)
+        return await self._get_users_base(
+            payment_status="paid", city=city, event_id=event_id
+        )
 
     async def get_all_users(
         self, city: Optional[str] = None, event_id: Optional[str] = None
@@ -1173,21 +1244,30 @@ class App:
 
         # Fix Belgrade registrations
         belgrade_result = await self.collection.update_many(
-            {"target_city": TargetCity.BELGRADE.value, "payment_status": {"$ne": "confirmed"}},
+            {
+                "target_city": TargetCity.BELGRADE.value,
+                "payment_status": {"$ne": "confirmed"},
+            },
             {"$set": {"payment_status": "confirmed"}},
         )
         results["belgrade_fixed"] = belgrade_result.modified_count
 
         # Fix teacher registrations
         teachers_result = await self.collection.update_many(
-            {"graduate_type": GraduateType.TEACHER.value, "payment_status": {"$ne": "confirmed"}},
+            {
+                "graduate_type": GraduateType.TEACHER.value,
+                "payment_status": {"$ne": "confirmed"},
+            },
             {"$set": {"payment_status": "confirmed"}},
         )
         results["teachers_fixed"] = teachers_result.modified_count
 
         # Fix organizer registrations
         organizers_result = await self.collection.update_many(
-            {"graduate_type": GraduateType.ORGANIZER.value, "payment_status": {"$ne": "confirmed"}},
+            {
+                "graduate_type": GraduateType.ORGANIZER.value,
+                "payment_status": {"$ne": "confirmed"},
+            },
             {"$set": {"payment_status": "confirmed"}},
         )
         results["organizers_fixed"] = organizers_result.modified_count
@@ -1260,7 +1340,9 @@ class App:
 
         # Get user info if full_name is not provided
         if not feedback_data.full_name:
-            user_info = await self.collection.find_one({"user_id": feedback_data.user_id})
+            user_info = await self.collection.find_one(
+                {"user_id": feedback_data.user_id}
+            )
             if user_info and "full_name" in user_info:
                 feedback_data.full_name = user_info.get("full_name")
 
@@ -1292,7 +1374,9 @@ class App:
 
         return str(result.inserted_id)
 
-    async def move_user_to_deleted(self, user_id: int, city: Optional[str] = None) -> bool:
+    async def move_user_to_deleted(
+        self, user_id: int, city: Optional[str] = None
+    ) -> bool:
         """
         Move a user from registered_users to deleted_users collection
 
@@ -1313,7 +1397,9 @@ class App:
         records = await cursor.to_list(length=None)
 
         if not records:
-            logger.warning(f"No records found to move for user_id={user_id}, city={city}")
+            logger.warning(
+                f"No records found to move for user_id={user_id}, city={city}"
+            )
             return False
 
         # Add deletion timestamp to each record
@@ -1324,10 +1410,14 @@ class App:
         # Insert into deleted_users collection
         if len(records) == 1:
             await self.deleted_users.insert_one(records[0])
-            logger.info(f"Moved 1 record to deleted_users: user_id={user_id}, city={city}")
+            logger.info(
+                f"Moved 1 record to deleted_users: user_id={user_id}, city={city}"
+            )
         else:
             await self.deleted_users.insert_many(records)
-            logger.info(f"Moved {len(records)} records to deleted_users: user_id={user_id}")
+            logger.info(
+                f"Moved {len(records)} records to deleted_users: user_id={user_id}"
+            )
 
         # Now that records are backed up, delete from main collection
         if city:
@@ -1349,6 +1439,6 @@ class App:
         """
         if not hasattr(self, "_feedback_collection"):
             self._feedback_collection = get_database().get_collection("feedback")
-            
+
         feedback = await self._feedback_collection.find_one({"user_id": user_id})
         return feedback is not None

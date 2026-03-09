@@ -21,7 +21,9 @@ def get_median(ratios):
     return ratios[len(ratios) // 2]
 
 
-@commands_menu.add_command("stats", "Статистика регистраций", visibility=Visibility.ADMIN_ONLY)
+@commands_menu.add_command(
+    "stats", "Статистика регистраций", visibility=Visibility.ADMIN_ONLY
+)
 @router.message(Command("stats"), AdminFilter())
 async def show_stats(message: Message, app: App):
     """Показать статистику регистраций"""
@@ -75,12 +77,21 @@ async def show_stats(message: Message, app: App):
         stats_text += f"• {city}: <b>{total_count}</b> человек{deleted_note}\n"
 
     total = total_active + total_deleted
-    deleted_percentage = f" ({total_deleted/total:.1%} удаленных)" if total > 0 else ""
+    deleted_percentage = (
+        f" ({total_deleted / total:.1%} удаленных)" if total > 0 else ""
+    )
     stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n"
 
     # Count total guests (active registrations only)
     guest_cursor = app.collection.aggregate(
-        [{"$group": {"_id": None, "total_guests": {"$sum": {"$ifNull": ["$guest_count", 0]}}}}]
+        [
+            {
+                "$group": {
+                    "_id": None,
+                    "total_guests": {"$sum": {"$ifNull": ["$guest_count", 0]}},
+                }
+            }
+        ]
     )
     guest_agg_result = await guest_cursor.to_list(length=None)
     total_guests = guest_agg_result[0]["total_guests"] if guest_agg_result else 0
@@ -101,7 +112,12 @@ async def show_stats(message: Message, app: App):
                                 {
                                     "$or": [
                                         {"$eq": ["$graduate_type", None]},
-                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                        {
+                                            "$eq": [
+                                                {"$toUpper": "$graduate_type"},
+                                                "GRADUATE",
+                                            ]
+                                        },
                                     ]
                                 },
                                 "GRADUATE",
@@ -127,7 +143,12 @@ async def show_stats(message: Message, app: App):
                                 {
                                     "$or": [
                                         {"$eq": ["$graduate_type", None]},
-                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                        {
+                                            "$eq": [
+                                                {"$toUpper": "$graduate_type"},
+                                                "GRADUATE",
+                                            ]
+                                        },
                                     ]
                                 },
                                 "GRADUATE",
@@ -172,9 +193,12 @@ async def show_stats(message: Message, app: App):
     # Active users
     active_payment_cursor = app.collection.aggregate(
         [
-
-            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
-            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
+            {
+                "$match": {"target_city": {"$ne": "Белград"}}
+            },  # Exclude Belgrade as it's free
+            {
+                "$match": {"graduate_type": {"$ne": "TEACHER"}}
+            },  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
@@ -183,12 +207,16 @@ async def show_stats(message: Message, app: App):
                             "payment": {"$ifNull": ["$payment_amount", 0]},
                             "formula": {"$ifNull": ["$formula_payment_amount", 0]},
                             "regular": {"$ifNull": ["$regular_payment_amount", 0]},
-                            "discounted": {"$ifNull": ["$discounted_payment_amount", 0]},
+                            "discounted": {
+                                "$ifNull": ["$discounted_payment_amount", 0]
+                            },
                         }
                     },
                     "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
                     "confirmed_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
+                        }
                     },
                     "pending_count": {
                         "$sum": {
@@ -204,7 +232,9 @@ async def show_stats(message: Message, app: App):
                         }
                     },
                     "declined_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]
+                        }
                     },
                     "unpaid_count": {
                         "$sum": {
@@ -213,7 +243,9 @@ async def show_stats(message: Message, app: App):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
-                                        {"$not": "$payment_status"},  # No payment_status field
+                                        {
+                                            "$not": "$payment_status"
+                                        },  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -230,9 +262,12 @@ async def show_stats(message: Message, app: App):
     # Deleted users
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
-
-            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
-            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
+            {
+                "$match": {"target_city": {"$ne": "Белград"}}
+            },  # Exclude Belgrade as it's free
+            {
+                "$match": {"graduate_type": {"$ne": "TEACHER"}}
+            },  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
@@ -241,12 +276,16 @@ async def show_stats(message: Message, app: App):
                             "payment": {"$ifNull": ["$payment_amount", 0]},
                             "formula": {"$ifNull": ["$formula_payment_amount", 0]},
                             "regular": {"$ifNull": ["$regular_payment_amount", 0]},
-                            "discounted": {"$ifNull": ["$discounted_payment_amount", 0]},
+                            "discounted": {
+                                "$ifNull": ["$discounted_payment_amount", 0]
+                            },
                         }
                     },
                     "total_paid": {"$sum": {"$ifNull": ["$payment_amount", 0]}},
                     "confirmed_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
+                        }
                     },
                     "pending_count": {
                         "$sum": {
@@ -262,7 +301,9 @@ async def show_stats(message: Message, app: App):
                         }
                     },
                     "declined_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]
+                        }
                     },
                     "unpaid_count": {
                         "$sum": {
@@ -271,7 +312,9 @@ async def show_stats(message: Message, app: App):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
-                                        {"$not": "$payment_status"},  # No payment_status field
+                                        {
+                                            "$not": "$payment_status"
+                                        },  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -378,23 +421,23 @@ async def show_stats(message: Message, app: App):
 
         # Display city statistics
         total_paid = active_paid + deleted_paid
-        deleted_note = f" (из них {deleted_paid:,} от удал.)" if deleted_paid > 0 else ""
+        deleted_note = (
+            f" (из них {deleted_paid:,} от удал.)" if deleted_paid > 0 else ""
+        )
 
         stats_text += f"\n<b>{city}:</b>\n"
         stats_text += f"💵 Собрано: <b>{total_paid:,}</b> руб.{deleted_note}\n"
         stats_text += f"📊 Медиана % от формулы: <i>{median_formula:.1f}%</i>\n"
         stats_text += f"📊 Медиана % от регулярной: <i>{median_regular:.1f}%</i>\n"
-        stats_text += f"📊 Медиана % от мин. со скидкой: <i>{median_discounted:.1f}%</i>\n\n"
+        stats_text += (
+            f"📊 Медиана % от мин. со скидкой: <i>{median_discounted:.1f}%</i>\n\n"
+        )
 
         # Payment status distribution
         stats_text += "<u>Статусы платежей (активные пользователи):</u>\n"
         if active_stat:
-            stats_text += (
-                f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{active_stat['confirmed_count']}</b>\n"
-            )
-            stats_text += (
-                f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{active_stat['pending_count']}</b>\n"
-            )
+            stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{active_stat['confirmed_count']}</b>\n"
+            stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{active_stat['pending_count']}</b>\n"
             stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{active_stat['declined_count'] + active_stat['unpaid_count']}</b>\n"
         else:
             stats_text += "Нет активных пользователей\n"
@@ -406,29 +449,33 @@ async def show_stats(message: Message, app: App):
             if deleted_stat["confirmed_count"] > 0:
                 stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{deleted_stat['confirmed_count']}</b>\n"
             if deleted_stat["pending_count"] > 0:
-                stats_text += (
-                    f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{deleted_stat['pending_count']}</b>\n"
-                )
+                stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{deleted_stat['pending_count']}</b>\n"
 
     # Add totals
     total_paid = total_paid_active + total_paid_deleted
     deleted_percentage = (
-        f" ({total_paid_deleted/total_paid:.1%} от удаленных)" if total_paid > 0 else ""
+        f" ({total_paid_deleted / total_paid:.1%} от удаленных)"
+        if total_paid > 0
+        else ""
     )
 
     if total_paid > 0:
-        stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>{deleted_percentage}\n"
+        stats_text += (
+            f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>{deleted_percentage}\n"
+        )
 
         # Calculate overall medians
         total_median_formula = get_median(all_ratios_formula)
         total_median_regular = get_median(all_ratios_regular)
         total_median_discounted = get_median(all_ratios_discounted)
 
-        stats_text += f"📊 Общая медиана % от формулы: <i>{total_median_formula:.1f}%</i>\n"
-        stats_text += f"📊 Общая медиана % от регулярной: <i>{total_median_regular:.1f}%</i>\n"
         stats_text += (
-            f"📊 Общая медиана % от мин. со скидкой: <i>{total_median_discounted:.1f}%</i>\n"
+            f"📊 Общая медиана % от формулы: <i>{total_median_formula:.1f}%</i>\n"
         )
+        stats_text += (
+            f"📊 Общая медиана % от регулярной: <i>{total_median_regular:.1f}%</i>\n"
+        )
+        stats_text += f"📊 Общая медиана % от мин. со скидкой: <i>{total_median_discounted:.1f}%</i>\n"
 
     await send_safe(message.chat.id, stats_text)
 
@@ -487,7 +534,9 @@ async def show_simple_stats(message: Message, app: App):
         stats_text += f"• {city}: <b>{total_count}</b> человек{deleted_note}\n"
 
     total = total_active + total_deleted
-    deleted_percentage = f" ({total_deleted/total:.1%} удаленных)" if total > 0 else ""
+    deleted_percentage = (
+        f" ({total_deleted / total:.1%} удаленных)" if total > 0 else ""
+    )
     stats_text += f"\nВсего: <b>{total}</b> человек{deleted_percentage}\n\n"
 
     # 2. Distribution by graduate type (combine active and deleted)
@@ -502,7 +551,12 @@ async def show_simple_stats(message: Message, app: App):
                                 {
                                     "$or": [
                                         {"$eq": ["$graduate_type", None]},
-                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                        {
+                                            "$eq": [
+                                                {"$toUpper": "$graduate_type"},
+                                                "GRADUATE",
+                                            ]
+                                        },
                                     ]
                                 },
                                 "GRADUATE",
@@ -528,7 +582,12 @@ async def show_simple_stats(message: Message, app: App):
                                 {
                                     "$or": [
                                         {"$eq": ["$graduate_type", None]},
-                                        {"$eq": [{"$toUpper": "$graduate_type"}, "GRADUATE"]},
+                                        {
+                                            "$eq": [
+                                                {"$toUpper": "$graduate_type"},
+                                                "GRADUATE",
+                                            ]
+                                        },
                                     ]
                                 },
                                 "GRADUATE",
@@ -572,14 +631,19 @@ async def show_simple_stats(message: Message, app: App):
     # 3. Basic payment status distribution (active users)
     active_payment_cursor = app.collection.aggregate(
         [
-
-            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
-            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
+            {
+                "$match": {"target_city": {"$ne": "Белград"}}
+            },  # Exclude Belgrade as it's free
+            {
+                "$match": {"graduate_type": {"$ne": "TEACHER"}}
+            },  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
                     "confirmed_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
+                        }
                     },
                     "pending_count": {
                         "$sum": {
@@ -595,7 +659,9 @@ async def show_simple_stats(message: Message, app: App):
                         }
                     },
                     "declined_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]
+                        }
                     },
                     "unpaid_count": {
                         "$sum": {
@@ -604,7 +670,9 @@ async def show_simple_stats(message: Message, app: App):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
-                                        {"$not": "$payment_status"},  # No payment_status field
+                                        {
+                                            "$not": "$payment_status"
+                                        },  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -622,14 +690,19 @@ async def show_simple_stats(message: Message, app: App):
     # Deleted users payment stats
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
-
-            {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
-            {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
+            {
+                "$match": {"target_city": {"$ne": "Белград"}}
+            },  # Exclude Belgrade as it's free
+            {
+                "$match": {"graduate_type": {"$ne": "TEACHER"}}
+            },  # Exclude teachers as they don't pay
             {
                 "$group": {
                     "_id": "$target_city",
                     "confirmed_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
+                        }
                     },
                     "pending_count": {
                         "$sum": {
@@ -645,7 +718,9 @@ async def show_simple_stats(message: Message, app: App):
                         }
                     },
                     "declined_count": {
-                        "$sum": {"$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]}
+                        "$sum": {
+                            "$cond": [{"$eq": ["$payment_status", "declined"]}, 1, 0]
+                        }
                     },
                     "unpaid_count": {
                         "$sum": {
@@ -654,7 +729,9 @@ async def show_simple_stats(message: Message, app: App):
                                     "$or": [
                                         {"$eq": ["$payment_status", None]},
                                         {"$eq": ["$payment_status", "Не оплачено"]},
-                                        {"$not": "$payment_status"},  # No payment_status field
+                                        {
+                                            "$not": "$payment_status"
+                                        },  # No payment_status field
                                     ]
                                 },
                                 1,
@@ -726,13 +803,17 @@ async def show_simple_stats(message: Message, app: App):
         stats_text += f"\n<b>{city}:</b>\n"
 
         # Active users payment status
-        total_active_statuses = active_confirmed + active_pending + active_declined + active_unpaid
+        total_active_statuses = (
+            active_confirmed + active_pending + active_declined + active_unpaid
+        )
         if total_active_statuses > 0:
-            stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{active_confirmed}</b>\n"
-            stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{active_pending}</b>\n"
             stats_text += (
-                f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{active_declined + active_unpaid}</b>\n"
+                f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{active_confirmed}</b>\n"
             )
+            stats_text += (
+                f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{active_pending}</b>\n"
+            )
+            stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{active_declined + active_unpaid}</b>\n"
         else:
             stats_text += "Нет активных пользователей\n"
 
@@ -742,7 +823,9 @@ async def show_simple_stats(message: Message, app: App):
             if deleted_confirmed > 0:
                 stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{deleted_confirmed}</b>\n"
             if deleted_pending > 0:
-                stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{deleted_pending}</b>\n"
+                stats_text += (
+                    f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{deleted_pending}</b>\n"
+                )
 
         # Show payment amounts if any
         if active_paid > 0 or deleted_paid > 0:
@@ -767,44 +850,50 @@ async def show_simple_stats(message: Message, app: App):
 
         # Active users
         stats_text += "<u>Активные пользователи:</u>\n"
-        stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{total_active_confirmed}</b>\n"
-        stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{total_active_pending}</b>\n"
         stats_text += (
-            f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{total_active_declined + total_active_unpaid}</b>\n"
+            f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{total_active_confirmed}</b>\n"
         )
+        stats_text += (
+            f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{total_active_pending}</b>\n"
+        )
+        stats_text += f"⚪️ {PAYMENT_STATUS_MAP[None]}: <b>{total_active_declined + total_active_unpaid}</b>\n"
 
         # Deleted users with payments
         if total_deleted_confirmed > 0 or total_deleted_pending > 0:
             stats_text += "\n<u>Удаленные пользователи с оплатами:</u>\n"
             if total_deleted_confirmed > 0:
-                stats_text += (
-                    f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{total_deleted_confirmed}</b>\n"
-                )
+                stats_text += f"✅ {PAYMENT_STATUS_MAP['confirmed']}: <b>{total_deleted_confirmed}</b>\n"
             if total_deleted_pending > 0:
-                stats_text += (
-                    f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{total_deleted_pending}</b>\n"
-                )
+                stats_text += f"⏳ {PAYMENT_STATUS_MAP['pending']}: <b>{total_deleted_pending}</b>\n"
 
         # Total payment amounts
         total_paid = total_paid_active + total_paid_deleted
         if total_paid > 0:
             deleted_percentage = (
-                f" ({total_paid_deleted/total_paid:.1%} от удаленных)" if total_paid > 0 else ""
+                f" ({total_paid_deleted / total_paid:.1%} от удаленных)"
+                if total_paid > 0
+                else ""
             )
-            stats_text += f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>{deleted_percentage}\n"
+            stats_text += (
+                f"\n<b>💵 Итого собрано: {total_paid:,} руб.</b>{deleted_percentage}\n"
+            )
 
     await send_safe(message.chat.id, stats_text)
 
 
 @commands_menu.add_command(
-    "year_stats", "Статистика регистраций по годам выпуска", visibility=Visibility.ADMIN_ONLY
+    "year_stats",
+    "Статистика регистраций по годам выпуска",
+    visibility=Visibility.ADMIN_ONLY,
 )
 @router.message(Command("year_stats"), AdminFilter())
 async def show_year_stats(message: Message, app: App):
     """Show registration statistics by graduation year with matplotlib diagrams"""
 
     # Send status message
-    status_msg = await send_safe(message.chat.id, "⏳ Генерация статистики по годам выпуска...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Генерация статистики по годам выпуска..."
+    )
 
     # Get all active registrations
     cursor = app.collection.find(
@@ -838,7 +927,9 @@ async def show_year_stats(message: Message, app: App):
     all_registrations = active_registrations + deleted_registrations
 
     if not active_registrations:
-        await status_msg.edit_text("❌ Нет данных о регистрациях с указанным годом выпуска.")
+        await status_msg.edit_text(
+            "❌ Нет данных о регистрациях с указанным годом выпуска."
+        )
         return
 
     # Group registrations by city and year for text stats
@@ -916,7 +1007,11 @@ async def show_year_stats(message: Message, app: App):
         period_total_deleted = sum(period_counts_deleted[city][i] for city in cities)
         period_total = period_total_active + period_total_deleted
 
-        deleted_note = f" (из них {period_total_deleted} удал.)" if period_total_deleted > 0 else ""
+        deleted_note = (
+            f" (из них {period_total_deleted} удал.)"
+            if period_total_deleted > 0
+            else ""
+        )
         stats_text += f"• {period}: <b>{period_total}</b> человек{deleted_note}\n"
 
     # Add city breakdown
@@ -927,7 +1022,9 @@ async def show_year_stats(message: Message, app: App):
             deleted_count = period_counts_deleted[city][i]
             total_count = active_count + deleted_count
 
-            deleted_note = f" (из них {deleted_count} удал.)" if deleted_count > 0 else ""
+            deleted_note = (
+                f" (из них {deleted_count} удал.)" if deleted_count > 0 else ""
+            )
             stats_text += f"• {period}: <b>{total_count}</b> человек{deleted_note}\n"
 
     # Convert data to pandas DataFrame for seaborn - ONLY ACTIVE USERS FOR VISUALS
@@ -939,7 +1036,9 @@ async def show_year_stats(message: Message, app: App):
             active_count = city_year_counts[city].get(year, 0)
 
             if active_count > 0:  # Only include non-zero values for active users
-                data.append({"Город": city, "Год выпуска": year, "Количество": active_count})
+                data.append(
+                    {"Город": city, "Год выпуска": year, "Количество": active_count}
+                )
 
     df = pd.DataFrame(data)
 
@@ -959,7 +1058,12 @@ async def show_year_stats(message: Message, app: App):
 
     # Create the bar plot by city (only active users)
     ax = sns.barplot(
-        data=df, x="Год выпуска", y="Количество", hue="Город", palette=city_palette, errorbar=None
+        data=df,
+        x="Год выпуска",
+        y="Количество",
+        hue="Город",
+        palette=city_palette,
+        errorbar=None,
     )
 
     # Add annotations for each bar
@@ -968,7 +1072,9 @@ async def show_year_stats(message: Message, app: App):
 
     # Enhance the plot with better styling
     plt.title(
-        "Количество регистраций по годам выпуска и городам\n(только активные)", fontsize=18, pad=20
+        "Количество регистраций по годам выпуска и городам\n(только активные)",
+        fontsize=18,
+        pad=20,
     )
     plt.xlabel("Год выпуска", fontsize=14, labelpad=10)
     plt.ylabel("Количество человек", fontsize=14, labelpad=10)
@@ -992,7 +1098,9 @@ async def show_year_stats(message: Message, app: App):
 
     # Send the diagrams
     await message.answer_photo(
-        BufferedInputFile(buf_all_cities.getvalue(), filename="registration_stats_by_city.png"),
+        BufferedInputFile(
+            buf_all_cities.getvalue(), filename="registration_stats_by_city.png"
+        ),
         caption="📊 Регистрации по годам выпуска и городам",
     )
 
@@ -1005,7 +1113,9 @@ async def show_five_year_stats(message: Message, app: App):
     """Показать график регистраций по пятилеткам выпуска и городам"""
 
     # Send status message
-    status_msg = await send_safe(message.chat.id, "⏳ Генерация графика по пятилеткам выпуска...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Генерация графика по пятилеткам выпуска..."
+    )
 
     # Get all active registrations
     cursor = app.collection.find(
@@ -1030,7 +1140,9 @@ async def show_five_year_stats(message: Message, app: App):
     deleted_registrations = await deleted_cursor.to_list(length=None)
 
     if not active_registrations:
-        await status_msg.edit_text("❌ Нет данных о регистрациях с указанным годом выпуска.")
+        await status_msg.edit_text(
+            "❌ Нет данных о регистрациях с указанным годом выпуска."
+        )
         return
 
     # Convert MongoDB records to pandas DataFrame - ONLY ACTIVE USERS for visualization
@@ -1039,7 +1151,9 @@ async def show_five_year_stats(message: Message, app: App):
     # Обработка годов выпуска
     df["graduation_year"] = pd.to_numeric(df["graduation_year"], errors="coerce")
     df = df.dropna(subset=["graduation_year"])
-    df["Пятилетка"] = df["graduation_year"].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+    df["Пятилетка"] = df["graduation_year"].apply(
+        lambda y: f"{int(y) // 5 * 5}–{int(y) // 5 * 5 + 4}"
+    )
 
     # Упрощённая категоризация городов
     def simplify_city(city):
@@ -1135,7 +1249,9 @@ async def show_payment_stats(message: Message, app: App):
     """Показать круговую диаграмму оплат по пятилеткам выпуска"""
 
     # Send status message
-    status_msg = await send_safe(message.chat.id, "⏳ Генерация круговой диаграммы оплат...")
+    status_msg = await send_safe(
+        message.chat.id, "⏳ Генерация круговой диаграммы оплат..."
+    )
 
     # Get all registrations with payments from active users
     cursor = app.collection.find(
@@ -1164,7 +1280,9 @@ async def show_payment_stats(message: Message, app: App):
     deleted_registrations = await deleted_cursor.to_list(length=None)
 
     if not active_registrations:
-        await status_msg.edit_text("❌ Нет данных об оплатах с указанным годом выпуска.")
+        await status_msg.edit_text(
+            "❌ Нет данных об оплатах с указанным годом выпуска."
+        )
         return
 
     # Convert MongoDB records to pandas DataFrame - ONLY ACTIVE USERS
@@ -1173,7 +1291,9 @@ async def show_payment_stats(message: Message, app: App):
     # Обработка годов выпуска
     df["graduation_year"] = pd.to_numeric(df["graduation_year"], errors="coerce")
     df = df.dropna(subset=["graduation_year"])
-    df["Пятилетка"] = df["graduation_year"].apply(lambda y: f"{int(y)//5*5}–{int(y)//5*5 + 4}")
+    df["Пятилетка"] = df["graduation_year"].apply(
+        lambda y: f"{int(y) // 5 * 5}–{int(y) // 5 * 5 + 4}"
+    )
 
     # Группировка и сумма по пятилеткам
     donation_by_period = df.groupby("Пятилетка")["payment_amount"].sum()
@@ -1184,7 +1304,9 @@ async def show_payment_stats(message: Message, app: App):
         "active": len(active_registrations),
         "deleted": len(deleted_registrations),
         "active_sum": sum(reg.get("payment_amount", 0) for reg in active_registrations),
-        "deleted_sum": sum(reg.get("payment_amount", 0) for reg in deleted_registrations),
+        "deleted_sum": sum(
+            reg.get("payment_amount", 0) for reg in deleted_registrations
+        ),
     }
 
     # Построение круговой диаграммы
@@ -1196,7 +1318,7 @@ async def show_payment_stats(message: Message, app: App):
     # Add percentage and absolute values to the labels
     total = donation_by_period.sum()
     labels = [
-        f"{period}: {amount:,.0f} ₽ ({amount/total:.1%})"
+        f"{period}: {amount:,.0f} ₽ ({amount / total:.1%})"
         for period, amount in zip(donation_by_period.index, donation_by_period.values)
     ]
 
@@ -1211,7 +1333,9 @@ async def show_payment_stats(message: Message, app: App):
     )
 
     plt.title(
-        "Суммарные оплаты по пятилеткам выпуска\n(только активные участники)", fontsize=16, pad=20
+        "Суммарные оплаты по пятилеткам выпуска\n(только активные участники)",
+        fontsize=16,
+        pad=20,
     )
     plt.tight_layout()
 
@@ -1225,16 +1349,14 @@ async def show_payment_stats(message: Message, app: App):
     await status_msg.delete()
 
     # Create caption with summary info
-    caption = "💰 Суммарные оплаты по пятилеткам выпуска (график: только активные участники)"
+    caption = (
+        "💰 Суммарные оплаты по пятилеткам выпуска (график: только активные участники)"
+    )
 
     if status_stats["deleted"] > 0:
         caption += f"\n\nВсего: {status_stats['active_sum'] + status_stats['deleted_sum']:,.0f} ₽"
-        caption += (
-            f"\n• Активные ({status_stats['active']} чел.): {status_stats['active_sum']:,.0f} ₽"
-        )
-        caption += (
-            f"\n• Удаленные ({status_stats['deleted']} чел.): {status_stats['deleted_sum']:,.0f} ₽"
-        )
+        caption += f"\n• Активные ({status_stats['active']} чел.): {status_stats['active_sum']:,.0f} ₽"
+        caption += f"\n• Удаленные ({status_stats['deleted']} чел.): {status_stats['deleted_sum']:,.0f} ₽"
 
     # Send the diagram
     await message.answer_photo(

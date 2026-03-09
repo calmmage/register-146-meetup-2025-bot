@@ -85,17 +85,26 @@ async def test_start_handler_existing_summer_user(
     from app.router import start_handler
 
     # Configure mock: user has archived summer 2025 registration but no active ones
-    mock_app.get_enabled_events = AsyncMock(return_value=[
-        {"_id": "ev1", "city": "Москва", "date_display": "21 Марта, Сб", "status": "upcoming"},
-    ])
+    mock_app.get_enabled_events = AsyncMock(
+        return_value=[
+            {
+                "_id": "ev1",
+                "city": "Москва",
+                "date_display": "21 Марта, Сб",
+                "status": "upcoming",
+            },
+        ]
+    )
     mock_app.is_event_passed = MagicMock(return_value=False)
     mock_app.get_user_active_registrations = AsyncMock(return_value=[])
-    mock_app.get_user_registration = AsyncMock(return_value={
-        "full_name": "Test User",
-        "graduation_year": 2010,
-        "class_letter": "A",
-        "target_city": "Пермь (Летняя встреча 2025)",
-    })
+    mock_app.get_user_registration = AsyncMock(
+        return_value={
+            "full_name": "Test User",
+            "graduation_year": 2010,
+            "class_letter": "A",
+            "target_city": "Пермь (Летняя встреча 2025)",
+        }
+    )
 
     # Mock ask_user_choice to simulate user cancelling
     with patch("app.router.ask_user_choice") as mock_ask:

@@ -29,7 +29,7 @@ app = App()
 # City code mapping for callback data (to avoid special characters and long names)
 CITY_CODES = {
     TargetCity.MOSCOW.value: "MOSCOW",
-    TargetCity.PERM.value: "PERM", 
+    TargetCity.PERM.value: "PERM",
     TargetCity.SAINT_PETERSBURG.value: "SPB",
     TargetCity.BELGRADE.value: "BELGRADE",
     TargetCity.PERM_SUMMER_2025.value: "PERM_SUMMER",
@@ -39,36 +39,35 @@ CITY_CODES = {
 CITY_CODES_REVERSE = {v: k for k, v in CITY_CODES.items()}
 
 
-
 def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | None]:
     """
     Parse payment callback data into user_id, city_code, and amount.
-    
+
     Args:
         callback_data: The callback data string (e.g., "confirm_payment_123_PERM_SUMMER_1300")
-        
+
     Returns:
         Tuple of (user_id, city_code, amount_str)
-        
+
     Raises:
         ValueError: If the callback data format is invalid
     """
     if not callback_data.startswith(("confirm_payment_", "decline_payment_")):
         raise ValueError("Invalid callback data format")
-    
+
     # Remove the prefix
     if callback_data.startswith("confirm_payment_"):
-        data = callback_data[len("confirm_payment_"):]
+        data = callback_data[len("confirm_payment_") :]
     else:
-        data = callback_data[len("decline_payment_"):]
-    
+        data = callback_data[len("decline_payment_") :]
+
     # Split by underscore
     parts = data.split("_")
     if len(parts) < 2:
         raise ValueError("Invalid callback data structure")
-    
+
     user_id = int(parts[0])
-    
+
     # Handle city codes that might contain underscores
     if len(parts) >= 3:
         # Check if the last part is a number (amount)
@@ -84,7 +83,7 @@ def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | Non
     else:
         city_code = parts[1]
         amount_str = None
-    
+
     return user_id, city_code, amount_str
 
 
@@ -103,18 +102,18 @@ async def process_payment(
     state_data = await state.get_data()
     user_id = state_data.get("original_user_id")
     username = state_data.get("original_username", "")
-    
+
     # Ensure user_id is an integer
     if user_id is not None:
         user_id = int(user_id)
     else:
         # Use message.from_user.id as fallback
         user_id = message.from_user.id if message.from_user else None
-        
+
     # Ensure username is a string
     if username is None:
         username = message.from_user.username or "" if message.from_user else ""
-        
+
     logger.info(f"Using original user information: ID={user_id}, username={username}")
 
     # Get user registration to get graduate_type
@@ -124,19 +123,21 @@ async def process_payment(
             graduate_type = registration["graduate_type"]
 
     # Load event from registration
-    registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    registration_data = await app.collection.find_one(
+        {"user_id": user_id, "target_city": city}
+    )
     event = None
     if registration_data:
         event = await app.get_event_for_registration(registration_data)
 
     # Calculate payment amount — prefer event-based calculation
     if event:
-        regular_amount, discount, discounted_amount, formula_amount = app.calculate_event_payment(
-            event, graduation_year, graduate_type
+        regular_amount, discount, discounted_amount, formula_amount = (
+            app.calculate_event_payment(event, graduation_year, graduate_type)
         )
     else:
-        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
-            city, graduation_year, graduate_type
+        regular_amount, discount, discounted_amount, formula_amount = (
+            app.calculate_payment_amount(city, graduation_year, graduate_type)
         )
 
     # If guests provided, load from state or registration
@@ -170,7 +171,9 @@ async def process_payment(
                 ref_year = event.get("price_formula_reference_year", 2026)
                 step = event.get("price_formula_step", 1)
                 if step > 1:
-                    payment_formula = f"{base}р + {rate} × (({ref_year} − год выпуска) ÷ {step})"
+                    payment_formula = (
+                        f"{base}р + {rate} × (({ref_year} − год выпуска) ÷ {step})"
+                    )
                 else:
                     payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
             else:
@@ -212,13 +215,21 @@ async def process_payment(
         else:
             # Check early bird from event config
             early_bird_deadline = event.get("early_bird_deadline") if event else None
-            early_bird_discount_amount = event.get("early_bird_discount", 0) if event else 0
+            early_bird_discount_amount = (
+                event.get("early_bird_discount", 0) if event else 0
+            )
             today = datetime.now()
-            is_early = early_bird_deadline and today < early_bird_deadline and early_bird_discount_amount > 0
+            is_early = (
+                early_bird_deadline
+                and today < early_bird_deadline
+                and early_bird_discount_amount > 0
+            )
 
             formula_message = ""
             if formula_amount > regular_amount:
-                formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
+                formula_message = (
+                    f"Рекомендованный взнос по формуле: {formula_amount} руб."
+                )
 
             if is_early:
                 # Format deadline for display
@@ -283,18 +294,18 @@ async def process_payment(
     # Wait for response using ask_user_choice_raw (either screenshot or choice)
     # Log payment proof request
     await app.save_event_log(
-        "payment_action", 
+        "payment_action",
         {
             "action": "request_payment_proof",
             "city": city,
             "amount": discounted_amount,
             "regular_amount": regular_amount,
-            "graduate_type": graduate_type
-        }, 
-        user_id, 
-        username
+            "graduate_type": graduate_type,
+        },
+        user_id,
+        username,
     )
-    
+
     response = await ask_user_choice_raw(
         message.chat.id,
         "Пожалуйста, отправьте скриншот подтверждения оплаты (фото или PDF) или выберите опцию ниже:",
@@ -326,59 +337,69 @@ async def process_payment(
             await app.log_registration_step(
                 user_id=user_id, username=username, step="Нажал 'Оплачу позже'"
             )
-            
+
             # Log to event logs
             await app.save_event_log(
-                "payment_action", 
+                "payment_action",
                 {
                     "action": "pay_later_selected",
                     "city": city,
                     "amount": discounted_amount,
                     "regular_amount": regular_amount,
-                    "graduate_type": graduate_type
-                }, 
-                user_id, 
-                username
+                    "graduate_type": graduate_type,
+                },
+                user_id,
+                username,
             )
 
             # Save payment info with pending status
             await app.save_payment_info(
-                user_id, city, discounted_amount, regular_amount, formula_amount=formula_amount
+                user_id,
+                city,
+                discounted_amount,
+                regular_amount,
+                formula_amount=formula_amount,
             )
             return False
         elif response == "too_expensive":
             # User clicked "Too expensive, changed my mind"
             # Log to chat log
-            assert user_id is not None, "User ID cannot be None for payment cancellation"
-            
-            await app.log_registration_step(
-                user_id=user_id, username=username, step="Отказ от оплаты: слишком дорого"
+            assert user_id is not None, (
+                "User ID cannot be None for payment cancellation"
             )
-            
+
+            await app.log_registration_step(
+                user_id=user_id,
+                username=username,
+                step="Отказ от оплаты: слишком дорого",
+            )
+
             # Log to event logs
             await app.save_event_log(
-                "payment_action", 
+                "payment_action",
                 {
                     "action": "too_expensive_selected",
                     "city": city,
                     "amount": discounted_amount,
                     "regular_amount": regular_amount,
-                    "graduate_type": graduate_type
-                }, 
-                user_id, 
-                username
+                    "graduate_type": graduate_type,
+                },
+                user_id,
+                username,
             )
-            
+
             # Get all user registrations
             registrations = await app.get_user_registrations(user_id)
             # Find the registration for this city
-            registration = next((reg for reg in registrations if reg["target_city"] == city), None)
-            
+            registration = next(
+                (reg for reg in registrations if reg["target_city"] == city), None
+            )
+
             if registration:
                 full_name = registration.get("full_name", "Unknown")
                 # Delete the registration for this city
                 await app.delete_user_registration(user_id, city)
-                
+
                 # Log cancellation
                 await app.log_registration_canceled(
                     user_id,
@@ -386,7 +407,7 @@ async def process_payment(
                     full_name,
                     city,
                 )
-                
+
                 await send_safe(
                     message.chat.id,
                     "Понимаем! Ваша регистрация отменена. Если передумаете, вы всегда можете зарегистрироваться снова с помощью команды /start",
@@ -398,7 +419,7 @@ async def process_payment(
                     "Что-то пошло не так. Пожалуйста, используйте команду /cancel_registration для отмены регистрации.",
                     reply_markup=ReplyKeyboardRemove(),
                 )
-            
+
             return False
 
     # Otherwise, it's a message with photo or document
@@ -413,18 +434,18 @@ async def process_payment(
     if has_photo or has_pdf:
         # Log payment proof submission
         await app.save_event_log(
-            "payment_action", 
+            "payment_action",
             {
                 "action": "payment_proof_submitted",
                 "city": city,
                 "amount": discounted_amount,
                 "proof_type": "photo" if has_photo else "pdf",
-                "graduate_type": graduate_type
-            }, 
-            user_id, 
-            username
+                "graduate_type": graduate_type,
+            },
+            user_id,
+            username,
         )
-        
+
         # Save payment info with pending status
         await app.save_payment_info(
             user_id,
@@ -438,15 +459,19 @@ async def process_payment(
 
         # Forward screenshot to events chat (which is used as validation chat)
         try:
-            logger.info(f"Starting payment proof forwarding for user {user_id}, city: {city}")
-            
+            logger.info(
+                f"Starting payment proof forwarding for user {user_id}, city: {city}"
+            )
+
             # Get events chat ID from settings
             events_chat_id = app.settings.events_chat_id
             logger.info(f"Events chat ID: {events_chat_id}")
 
             # Show discounted or regular amount based on early bird
             if discount > 0:
-                needs_to_pay = f"{discounted_amount} руб (без скидки — {regular_amount} руб)"
+                needs_to_pay = (
+                    f"{discounted_amount} руб (без скидки — {regular_amount} руб)"
+                )
             else:
                 needs_to_pay = f"{regular_amount} руб"
 
@@ -465,10 +490,14 @@ async def process_payment(
             # Get user registration for additional info
             user_registration = await app.get_user_registration(user_id)
             if user_registration:
-                user_info += f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
+                user_info += (
+                    f"👤 ФИО: {user_registration.get('full_name', 'Неизвестно')}\n"
+                )
 
                 # Add graduate type info
-                graduate_type = user_registration.get("graduate_type", GraduateType.GRADUATE.value)
+                graduate_type = user_registration.get(
+                    "graduate_type", GraduateType.GRADUATE.value
+                )
                 if graduate_type == GraduateType.TEACHER.value:
                     user_info += "👨‍🏫 Статус: Учитель (бесплатно)\n"
                 elif graduate_type == GraduateType.NON_GRADUATE.value:
@@ -484,15 +513,21 @@ async def process_payment(
             logger.info(f"Got bot instance: {bot}")
 
             # Try to parse payment amount from the screenshot/PDF
-            logger.info(f"Parsing payment info from response: has_photo={has_photo}, has_pdf={has_pdf}")
-            payment_info = await parse_payment_info(response, has_photo, has_pdf, deps.bot)
+            logger.info(
+                f"Parsing payment info from response: has_photo={has_photo}, has_pdf={has_pdf}"
+            )
+            payment_info = await parse_payment_info(
+                response, has_photo, has_pdf, deps.bot
+            )
 
             # Create validation buttons
             validation_buttons = []
-            
+
             # Get city code for callback data
             city_code = CITY_CODES.get(city, city)
-            logger.info(f"Creating validation buttons for user {user_id}, city: {city}, city_code: {city_code}")
+            logger.info(
+                f"Creating validation buttons for user {user_id}, city: {city}, city_code: {city_code}"
+            )
 
             # If we successfully parsed a valid amount, show simplified buttons
             if payment_info.is_valid:
@@ -567,7 +602,9 @@ async def process_payment(
             )
 
             validation_markup = InlineKeyboardMarkup(inline_keyboard=validation_buttons)
-            logger.info(f"Created validation markup with {len(validation_buttons)} buttons")
+            logger.info(
+                f"Created validation markup with {len(validation_buttons)} buttons"
+            )
 
             # Send the photo or document with caption containing user info
             if has_photo:
@@ -582,7 +619,9 @@ async def process_payment(
                     caption=user_info,
                     reply_markup=validation_markup,
                 )
-                logger.info(f"Successfully sent photo to validation chat, message_id: {forwarded_msg.message_id}")
+                logger.info(
+                    f"Successfully sent photo to validation chat, message_id: {forwarded_msg.message_id}"
+                )
             else:  # has_pdf
                 # Send the PDF document with caption
                 logger.info(f"Sending PDF with file_id: {response.document.file_id}")
@@ -592,7 +631,9 @@ async def process_payment(
                     caption=user_info,
                     reply_markup=validation_markup,
                 )
-                logger.info(f"Successfully sent PDF to validation chat, message_id: {forwarded_msg.message_id}")
+                logger.info(
+                    f"Successfully sent PDF to validation chat, message_id: {forwarded_msg.message_id}"
+                )
 
             # Save the screenshot message ID for reference
             await app.save_payment_info(
@@ -604,7 +645,9 @@ async def process_payment(
                 formula_amount=formula_amount,
             )
 
-            logger.info(f"Payment proof from user {user_id} sent to validation chat with caption")
+            logger.info(
+                f"Payment proof from user {user_id} sent to validation chat with caption"
+            )
         except Exception as e:
             logger.error(f"Error forwarding payment proof to validation chat: {e}")
             logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
@@ -632,7 +675,9 @@ async def process_payment(
     return has_photo or has_pdf
 
 
-async def parse_payment_info(response, has_photo: bool, has_pdf: bool, bot) -> PaymentInfo:
+async def parse_payment_info(
+    response, has_photo: bool, has_pdf: bool, bot
+) -> PaymentInfo:
     from app.routers.admin import extract_payment_from_image
 
     # Get the file
@@ -656,17 +701,13 @@ async def pay_handler(message: Message, state: FSMContext):
     if message.from_user is None:
         logger.error("Message from_user is None")
         return
-        
+
     # Log the pay command
     await app.save_event_log(
-        "command", 
-        {
-            "command": "/pay",
-            "content": message.text,
-            "chat_type": message.chat.type
-        }, 
-        message.from_user.id, 
-        message.from_user.username
+        "command",
+        {"command": "/pay", "content": message.text, "chat_type": message.chat.type},
+        message.from_user.id,
+        message.from_user.username,
     )
 
     user_id = message.from_user.id
@@ -707,7 +748,13 @@ async def pay_handler(message: Message, state: FSMContext):
             city = reg["target_city"]
             event = await app.get_event_for_registration(reg)
             status = reg.get("payment_status", "не оплачено")
-            status_emoji = "✅" if status == "confirmed" else "❌" if status == "declined" else "⏳"
+            status_emoji = (
+                "✅"
+                if status == "confirmed"
+                else "❌"
+                if status == "declined"
+                else "⏳"
+            )
             date_str = get_event_date_display(event)
             choices[city] = f"{city} ({date_str}) - {status_emoji} {status}"
 
@@ -718,22 +765,23 @@ async def pay_handler(message: Message, state: FSMContext):
             state=state,
             timeout=None,
         )
-        
+
         # Log the payment city choice
         await app.save_event_log(
-            "button_click", 
+            "button_click",
             {
                 "button": response,
                 "context": "payment_city_selection",
-                "available_cities": list(choices.keys())
-            }, 
-            message.from_user.id, 
-            message.from_user.username
+                "available_cities": list(choices.keys()),
+            },
+            message.from_user.id,
+            message.from_user.username,
         )
 
         # Find the selected registration
         selected_reg = next(
-            (reg for reg in payment_registrations if reg["target_city"] == response), None
+            (reg for reg in payment_registrations if reg["target_city"] == response),
+            None,
         )
     else:
         # Only one registration requiring payment
@@ -788,14 +836,18 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Extract user_id, city and amount from callback data
     try:
-        user_id, city_code, amount_str = parse_payment_callback_data(callback_query.data)
+        user_id, city_code, amount_str = parse_payment_callback_data(
+            callback_query.data
+        )
     except ValueError as e:
         await callback_query.answer(f"Invalid callback data: {e}")
         return
 
     # Convert city code back to full city name
     city = CITY_CODES_REVERSE.get(city_code, city_code)
-    logger.info(f"Processing payment confirmation: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(
+        f"Processing payment confirmation: user_id={user_id}, city_code={city_code}, city={city}"
+    )
     logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
     logger.info(f"Looking for registration: user_id={user_id}, target_city={city}")
 
@@ -804,7 +856,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Get registration
-    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    registration = await app.collection.find_one(
+        {"user_id": user_id, "target_city": city}
+    )
     if not registration:
         await callback_query.answer("Registration not found")
         return
@@ -841,7 +895,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         if amount_response is None or amount_response.text is None:
             await send_safe(chat_id, "Время ожидания истекло. Операция отменена.")
             # Log the timeout event
-            logger.warning(f"Payment amount input timeout for user {user_id} in city {city}")
+            logger.warning(
+                f"Payment amount input timeout for user {user_id} in city {city}"
+            )
             return
 
         # Try to parse the amount
@@ -849,7 +905,8 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             payment_amount = int(amount_response.text)
         except ValueError:
             await send_safe(
-                chat_id, "Некорректная сумма платежа. Пожалуйста, используйте команду снова."
+                chat_id,
+                "Некорректная сумма платежа. Пожалуйста, используйте команду снова.",
             )
             return
     else:
@@ -861,10 +918,14 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             return
 
     # Update payment status
-    await app.update_payment_status(user_id, city, "confirmed", payment_amount=payment_amount)
+    await app.update_payment_status(
+        user_id, city, "confirmed", payment_amount=payment_amount
+    )
 
     # Get updated registration with total payment amount
-    updated_registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    updated_registration = await app.collection.find_one(
+        {"user_id": user_id, "target_city": city}
+    )
     total_payment = updated_registration.get("payment_amount", payment_amount)
 
     # Check if this was an additional payment
@@ -876,15 +937,17 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Determine the relevant recommendation amount
     # Use discounted amount if a discount was applied (i.e., discounted < regular)
-    recommended_amount = discounted_amount if discounted_amount and discounted_amount < regular_amount else regular_amount
+    recommended_amount = (
+        discounted_amount
+        if discounted_amount and discounted_amount < regular_amount
+        else regular_amount
+    )
 
     # Check if the total payment amount is less than the recommended amount
     payment_message = ""
 
     if is_additional_payment:
-        payment_message = (
-            f"✅ Ваш дополнительный платеж на сумму {payment_amount} руб. подтвержден!\n"
-        )
+        payment_message = f"✅ Ваш дополнительный платеж на сумму {payment_amount} руб. подтвержден!\n"
         payment_message += (
             f"Общая сумма внесенных платежей: {total_payment} руб. Спасибо за оплату."
         )
@@ -915,16 +978,16 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
         # Add note about payment being less than recommended if applicable
         if total_payment < recommended_amount:
-            payment_status += (
-                f"\n⚠️ На {recommended_amount - total_payment} руб. меньше рекомендуемой суммы!"
-            )
+            payment_status += f"\n⚠️ На {recommended_amount - total_payment} руб. меньше рекомендуемой суммы!"
 
         # Add payment history if available
         payment_history = updated_registration.get("payment_history", [])
         if len(payment_history) > 1:
             payment_status += "\n\nИстория платежей:"
             for i, payment in enumerate(payment_history):
-                payment_status += f"\n{i+1}. {payment['amount']} руб. ({payment['timestamp'][:10]})"
+                payment_status += (
+                    f"\n{i + 1}. {payment['amount']} руб. ({payment['timestamp'][:10]})"
+                )
 
         if callback_query.message.caption:
             caption = callback_query.message.caption
@@ -934,7 +997,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             if len(new_caption) > 1024:
                 new_caption = new_caption[-1024:]
 
-            await callback_query.message.edit_caption(caption=new_caption, reply_markup=None)
+            await callback_query.message.edit_caption(
+                caption=new_caption, reply_markup=None
+            )
         else:
             text = callback_query.message.text or ""
             new_text = f"{text}\n\n{payment_status} для {user_info}"
@@ -967,7 +1032,9 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Convert city code back to full city name
     city = CITY_CODES_REVERSE.get(city_code, city_code) if city_code else None
-    logger.info(f"Processing payment decline: user_id={user_id}, city_code={city_code}, city={city}")
+    logger.info(
+        f"Processing payment decline: user_id={user_id}, city_code={city_code}, city={city}"
+    )
     logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
 
     if not city:
@@ -977,7 +1044,9 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Save data for the next step
     await state.set_state(PaymentStates.waiting_for_decline_reason)
     await state.update_data(
-        decline_user_id=user_id, decline_city=city, callback_message=callback_query.message
+        decline_user_id=user_id,
+        decline_city=city,
+        callback_message=callback_query.message,
     )
 
     # Ask for decline reason by editing the original message
@@ -991,10 +1060,14 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
             if len(new_caption) > 1024:
                 new_caption = new_caption[-1024:]
 
-            await callback_query.message.edit_caption(caption=new_caption, reply_markup=None)
+            await callback_query.message.edit_caption(
+                caption=new_caption, reply_markup=None
+            )
         else:
             text = callback_query.message.text or ""
-            new_text = f"{text}\n\n⚠️ Укажите причину отклонения платежа в ответном сообщении:"
+            new_text = (
+                f"{text}\n\n⚠️ Укажите причину отклонения платежа в ответном сообщении:"
+            )
 
             await callback_query.message.edit_text(text=new_text, reply_markup=None)
     else:
@@ -1027,7 +1100,9 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
     await app.update_payment_status(user_id, city, "declined", decline_reason)
 
     # Get registration
-    registration = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    registration = await app.collection.find_one(
+        {"user_id": user_id, "target_city": city}
+    )
     if not registration:
         await message.reply(f"Регистрация не найдена для пользователя {user_id}")
         await state.clear()
@@ -1050,20 +1125,22 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
                 caption = callback_message.caption
                 # Remove the prompt if it exists
                 caption = caption.split("\n\n⚠️ Укажите причину")[0]
-                new_caption = f"{caption}\n\n❌ ПЛАТЕЖ ОТКЛОНЕН\nПричина: {decline_reason}"
+                new_caption = (
+                    f"{caption}\n\n❌ ПЛАТЕЖ ОТКЛОНЕН\nПричина: {decline_reason}"
+                )
 
                 # Limit caption length
                 if len(new_caption) > 1024:
                     new_caption = new_caption[-1024:]
 
-                await callback_message.edit_caption(caption=new_caption, reply_markup=None)
+                await callback_message.edit_caption(
+                    caption=new_caption, reply_markup=None
+                )
             elif hasattr(callback_message, "text"):
                 text = callback_message.text or ""
                 # Remove the prompt if it exists
                 text = text.split("\n\n⚠️ Укажите причину")[0]
-                new_text = (
-                    f"{text}\n\n❌ ПЛАТЕЖ ОТКЛОНЕН для {user_info}\nПричина: {decline_reason}"
-                )
+                new_text = f"{text}\n\n❌ ПЛАТЕЖ ОТКЛОНЕН для {user_info}\nПричина: {decline_reason}"
 
                 await callback_message.edit_text(text=new_text, reply_markup=None)
         except Exception as e:

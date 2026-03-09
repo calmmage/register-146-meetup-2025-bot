@@ -1,4 +1,3 @@
-
 from app.app import AppSettings
 
 

@@ -157,6 +157,7 @@ def _make_date_display(dt: datetime) -> str:
 # /create_event
 # ---------------------------------------------------------------------------
 
+
 @commands_menu.add_command(
     "create_event", "Создать новую встречу", visibility=Visibility.ADMIN_ONLY
 )
@@ -207,7 +208,9 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
     try:
         event_date = datetime.strptime(date_resp.text.strip(), "%d.%m.%Y")
     except ValueError:
-        await send_safe(message.chat.id, "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ")
+        await send_safe(
+            message.chat.id, "❌ Неверный формат даты. Используйте ДД.ММ.ГГГГ"
+        )
         return
 
     # Step 4: Name suggestion
@@ -243,7 +246,9 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
     # Parse hour for the event datetime
     try:
         hour = int(time_display.split(":")[0])
-        minute = int(time_display.split(":")[1].split("-")[0]) if ":" in time_display else 0
+        minute = (
+            int(time_display.split(":")[1].split("-")[0]) if ":" in time_display else 0
+        )
         event_date = event_date.replace(hour=hour, minute=minute)
     except (ValueError, IndexError):
         pass  # Keep date without time if parsing fails
@@ -400,7 +405,10 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
                         deadline_resp.text.strip(), "%d.%m.%Y"
                     )
                 except ValueError:
-                    await send_safe(message.chat.id, "⚠️ Неверный формат даты, скидка будет без дедлайна.")
+                    await send_safe(
+                        message.chat.id,
+                        "⚠️ Неверный формат даты, скидка будет без дедлайна.",
+                    )
                     event_data["early_bird_deadline"] = None
             else:
                 event_data["early_bird_deadline"] = None
@@ -472,7 +480,9 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
         return
 
     event_id = await app.create_event(event_data)
-    logger.info(f"Admin {message.from_user.id} created event: {event_name} (id={event_id})")
+    logger.info(
+        f"Admin {message.from_user.id} created event: {event_name} (id={event_id})"
+    )
 
     await app.save_event_log(
         event_type="admin_event_action",
@@ -492,6 +502,7 @@ async def create_event_handler(message: Message, state: FSMContext, app: App):
 # /manage_events
 # ---------------------------------------------------------------------------
 
+
 @commands_menu.add_command(
     "manage_events", "Управление встречами", visibility=Visibility.ADMIN_ONLY
 )
@@ -506,7 +517,9 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
         all_events = await app.get_all_events()
 
         active_events = [
-            e for e in all_events if e.get("status") in ("upcoming", "registration_closed")
+            e
+            for e in all_events
+            if e.get("status") in ("upcoming", "registration_closed")
         ]
         archived_events = [
             e for e in all_events if e.get("status") in ("archived", "passed")
@@ -546,7 +559,9 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
 
             archive_text = "📦 <b>Архив встреч:</b>\n\n"
             for ev in archived_events[:20]:
-                archive_text += f"• {ev.get('name', '?')} ({ev.get('date_display', '?')})\n"
+                archive_text += (
+                    f"• {ev.get('name', '?')} ({ev.get('date_display', '?')})\n"
+                )
             await send_safe(message.chat.id, archive_text)
             continue
 
@@ -694,7 +709,8 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                         await send_safe(message.chat.id, "✅ Дата обновлена.")
                     except ValueError:
                         await send_safe(
-                            message.chat.id, "❌ Неверный формат. Используйте ДД.ММ.ГГГГ"
+                            message.chat.id,
+                            "❌ Неверный формат. Используйте ДД.ММ.ГГГГ",
                         )
 
             elif field == "time":
@@ -705,7 +721,9 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     timeout=None,
                 )
                 if resp and resp.text:
-                    await app.update_event(selection, {"time_display": resp.text.strip()})
+                    await app.update_event(
+                        selection, {"time_display": resp.text.strip()}
+                    )
                     await send_safe(message.chat.id, "✅ Время обновлено.")
 
             elif field == "venue":
@@ -766,8 +784,12 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                         if resp and resp.text:
                             try:
                                 new_base = int(resp.text.strip())
-                                await app.update_event(selection, {"price_formula_base": new_base})
-                                await send_safe(message.chat.id, f"✅ База: {new_base}₽.")
+                                await app.update_event(
+                                    selection, {"price_formula_base": new_base}
+                                )
+                                await send_safe(
+                                    message.chat.id, f"✅ База: {new_base}₽."
+                                )
                             except ValueError:
                                 await send_safe(message.chat.id, "❌ Введите число.")
                     elif pricing_action == "rate":
@@ -780,8 +802,12 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                         if resp and resp.text:
                             try:
                                 new_rate = int(resp.text.strip())
-                                await app.update_event(selection, {"price_formula_rate": new_rate})
-                                await send_safe(message.chat.id, f"✅ Надбавка: {new_rate}₽.")
+                                await app.update_event(
+                                    selection, {"price_formula_rate": new_rate}
+                                )
+                                await send_safe(
+                                    message.chat.id, f"✅ Надбавка: {new_rate}₽."
+                                )
                             except ValueError:
                                 await send_safe(message.chat.id, "❌ Введите число.")
                     elif pricing_action == "step":
@@ -794,17 +820,26 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                         if resp and resp.text:
                             try:
                                 new_step = max(1, int(resp.text.strip()))
-                                await app.update_event(selection, {"price_formula_step": new_step})
+                                await app.update_event(
+                                    selection, {"price_formula_step": new_step}
+                                )
                                 await send_safe(message.chat.id, f"✅ Шаг: {new_step}.")
                             except ValueError:
                                 await send_safe(message.chat.id, "❌ Введите число.")
                 else:
-                    await send_safe(message.chat.id, "Редактирование оплаты доступно только для формульного типа.")
+                    await send_safe(
+                        message.chat.id,
+                        "Редактирование оплаты доступно только для формульного типа.",
+                    )
 
             elif field == "early_bird":
                 current_discount = event.get("early_bird_discount", 0)
                 current_deadline = event.get("early_bird_deadline")
-                deadline_str = current_deadline.strftime("%d.%m.%Y") if current_deadline else "не установлен"
+                deadline_str = (
+                    current_deadline.strftime("%d.%m.%Y")
+                    if current_deadline
+                    else "не установлен"
+                )
 
                 eb_action = await ask_user_choice(
                     message.chat.id,
@@ -831,8 +866,12 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     if resp and resp.text:
                         try:
                             new_discount = max(0, int(resp.text.strip()))
-                            await app.update_event(selection, {"early_bird_discount": new_discount})
-                            await send_safe(message.chat.id, f"✅ Скидка: {new_discount}₽.")
+                            await app.update_event(
+                                selection, {"early_bird_discount": new_discount}
+                            )
+                            await send_safe(
+                                message.chat.id, f"✅ Скидка: {new_discount}₽."
+                            )
                         except ValueError:
                             await send_safe(message.chat.id, "❌ Введите число.")
                 elif eb_action == "deadline":
@@ -844,11 +883,18 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     )
                     if resp and resp.text:
                         try:
-                            new_deadline = datetime.strptime(resp.text.strip(), "%d.%m.%Y")
-                            await app.update_event(selection, {"early_bird_deadline": new_deadline})
+                            new_deadline = datetime.strptime(
+                                resp.text.strip(), "%d.%m.%Y"
+                            )
+                            await app.update_event(
+                                selection, {"early_bird_deadline": new_deadline}
+                            )
                             await send_safe(message.chat.id, "✅ Дедлайн обновлён.")
                         except ValueError:
-                            await send_safe(message.chat.id, "❌ Неверный формат. Используйте ДД.ММ.ГГГГ")
+                            await send_safe(
+                                message.chat.id,
+                                "❌ Неверный формат. Используйте ДД.ММ.ГГГГ",
+                            )
 
             elif field == "guests":
                 current_enabled = event.get("guests_enabled", False)
@@ -889,8 +935,12 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     if resp and resp.text:
                         try:
                             new_max = max(1, int(resp.text.strip()))
-                            await app.update_event(selection, {"max_guests_per_person": new_max})
-                            await send_safe(message.chat.id, f"✅ Максимум гостей: {new_max}.")
+                            await app.update_event(
+                                selection, {"max_guests_per_person": new_max}
+                            )
+                            await send_safe(
+                                message.chat.id, f"✅ Максимум гостей: {new_max}."
+                            )
                         except ValueError:
                             await send_safe(message.chat.id, "❌ Введите число.")
                 elif guest_action == "min_price":
@@ -903,7 +953,11 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
                     if resp and resp.text:
                         try:
                             new_min = max(0, int(resp.text.strip()))
-                            await app.update_event(selection, {"guest_price_minimum": new_min})
-                            await send_safe(message.chat.id, f"✅ Мин. цена гостя: {new_min}₽.")
+                            await app.update_event(
+                                selection, {"guest_price_minimum": new_min}
+                            )
+                            await send_safe(
+                                message.chat.id, f"✅ Мин. цена гостя: {new_min}₽."
+                            )
                         except ValueError:
                             await send_safe(message.chat.id, "❌ Введите число.")

@@ -6,7 +6,12 @@ from aiogram import Bot, F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InaccessibleMessage, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    InaccessibleMessage,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from pydantic import BaseModel, Field
 
 from botspot.utils.internal import get_logger
@@ -122,10 +127,18 @@ async def _ask_user_base(
     await state.set_state(UserInputState.waiting)
     await state.update_data(handler_id=handler_id)
 
-    request = input_manager.add_request(chat_id, handler_id, question, choice_keys=choice_keys, choices_dict=choices_dict)
+    request = input_manager.add_request(
+        chat_id,
+        handler_id,
+        question,
+        choice_keys=choice_keys,
+        choices_dict=choices_dict,
+    )
     assert request.event is not None
 
-    sent_message = await bot.send_message(chat_id, question, reply_markup=reply_markup, **kwargs)
+    sent_message = await bot.send_message(
+        chat_id, question, reply_markup=reply_markup, **kwargs
+    )
     request.sent_message_id = sent_message.message_id
 
     if timeout is None:
@@ -168,7 +181,9 @@ async def ask_user(
     cleanup: bool = False,
     **kwargs,
 ) -> Optional[str]:
-    return await _ask_user_base(chat_id, question, state, timeout, cleanup=cleanup, **kwargs)
+    return await _ask_user_base(
+        chat_id, question, state, timeout, cleanup=cleanup, **kwargs
+    )
 
 
 async def ask_user_raw(
@@ -180,7 +195,13 @@ async def ask_user_raw(
     **kwargs,
 ) -> Optional[Message]:
     return await _ask_user_base(
-        chat_id, question, state, timeout=timeout, return_raw=True, cleanup=cleanup, **kwargs
+        chat_id,
+        question,
+        state,
+        timeout=timeout,
+        return_raw=True,
+        cleanup=cleanup,
+        **kwargs,
     )
 
 
@@ -315,7 +336,9 @@ async def handle_user_input(message: types.Message, state: FSMContext) -> None:
 
     chat_id = message.chat.id
     state_data = await state.get_data()
-    request = input_manager.get_request(chat_id, handler_id=state_data.get("handler_id"))
+    request = input_manager.get_request(
+        chat_id, handler_id=state_data.get("handler_id")
+    )
 
     if not request:
         deps = get_dependency_manager()
@@ -333,7 +356,9 @@ async def handle_user_input(message: types.Message, state: FSMContext) -> None:
     request.event.set()
 
 
-async def handle_choice_callback(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_choice_callback(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     assert callback_query.data is not None
     if not callback_query.data.startswith("choice_"):
         return

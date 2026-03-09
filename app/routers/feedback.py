@@ -70,7 +70,9 @@ async def save_feedback_and_thank(
 
     # Standard thank you message
     thank_you_msg = "Спасибо за ответ! Мы будем ждать новых возможностей чтобы увидеться с тобой в ближайшее время. "
-    thank_you_msg += "Смотри на канал @school146club и общий чат на 713 выпускников 146 "
+    thank_you_msg += (
+        "Смотри на канал @school146club и общий чат на 713 выпускников 146 "
+    )
     thank_you_msg += "(вход модерируется по ссылке https://t.me/+Y5AbalGQBktmOGFi) "
     thank_you_msg += "чтобы узнать о наших следующих мероприятиях.\n\n"
 
@@ -79,19 +81,21 @@ async def save_feedback_and_thank(
 
     city = feedback_data.get("city")
     if city == "perm":
-        thank_you_msg += "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        thank_you_msg += (
+            "• Ваш город - Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
+        )
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
     elif city == "moscow":
-        thank_you_msg += "• Ваш город - Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+        thank_you_msg += (
+            "• Ваш город - Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
+        )
         thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
     else:
         thank_you_msg += "• Пермь: https://disk.yandex.ru/d/bK6dVlNET7Uifg\n"
         thank_you_msg += "• Москва: https://disk.yandex.ru/d/gF_eko0YLslsOQ\n"
 
     if is_cancel:
-        thank_you_msg += (
-            "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
-        )
+        thank_you_msg += "\nНа этом сеанс обратной связи закончен. До скорых встреч на наших мероприятиях! 🎉"
 
     await send_safe(
         message.chat.id,

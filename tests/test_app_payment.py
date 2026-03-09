@@ -174,7 +174,12 @@ class TestAppPayment:
 
         # Call the method
         await self.app.save_payment_info(
-            user_id, city, discounted_amount, regular_amount, screenshot_id, formula_amount
+            user_id,
+            city,
+            discounted_amount,
+            regular_amount,
+            screenshot_id,
+            formula_amount,
         )
 
         # Check that update_one was called with correct parameters
@@ -211,7 +216,9 @@ class TestAppPayment:
         payment_amount = 3000
 
         # Call the method
-        await self.app.update_payment_status(user_id, city, status, admin_comment, payment_amount)
+        await self.app.update_payment_status(
+            user_id, city, status, admin_comment, payment_amount
+        )
 
         # Check that update_one was called with correct parameters
         self.mock_collection.update_one.assert_called_once()
@@ -246,7 +253,11 @@ class TestAppPayment:
         existing_payment = {
             "payment_amount": 2000,
             "payment_history": [
-                {"amount": 2000, "timestamp": "2025-02-01T12:00:00", "total_after": 2000}
+                {
+                    "amount": 2000,
+                    "timestamp": "2025-02-01T12:00:00",
+                    "total_after": 2000,
+                }
             ],
         }
         self.mock_collection.find_one.return_value = existing_payment
@@ -258,7 +269,9 @@ class TestAppPayment:
         payment_amount = 1000  # Additional payment
 
         # Call the method
-        await self.app.update_payment_status(user_id, city, status, admin_comment, payment_amount)
+        await self.app.update_payment_status(
+            user_id, city, status, admin_comment, payment_amount
+        )
 
         # Check that update_one was called with correct parameters
         self.mock_collection.update_one.assert_called_once()

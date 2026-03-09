@@ -84,7 +84,9 @@ class TestApp:
     @pytest.mark.asyncio
     @patch("app.app.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
-    async def test_log_to_chat_events(self, mock_get_dependency_manager, mock_send_safe):
+    async def test_log_to_chat_events(
+        self, mock_get_dependency_manager, mock_send_safe
+    ):
         """Test logging to the events chat"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321
@@ -106,7 +108,9 @@ class TestApp:
     @pytest.mark.asyncio
     @patch("app.app.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
-    async def test_log_to_chat_invalid_type(self, mock_get_dependency_manager, mock_send_safe):
+    async def test_log_to_chat_invalid_type(
+        self, mock_get_dependency_manager, mock_send_safe
+    ):
         """Test logging with an invalid chat type"""
         # Explicitly set the logs and events chat IDs to None
         self.app.settings.logs_chat_id = None
@@ -126,7 +130,9 @@ class TestApp:
     @pytest.mark.asyncio
     @patch("app.app.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
-    async def test_log_registration_step(self, mock_get_dependency_manager, mock_send_safe):
+    async def test_log_registration_step(
+        self, mock_get_dependency_manager, mock_send_safe
+    ):
         """Test logging a registration step"""
         # Set logs chat ID
         self.app.settings.logs_chat_id = 123456
@@ -157,7 +163,9 @@ class TestApp:
     @pytest.mark.asyncio
     @patch("app.app.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
-    async def test_log_registration_completed(self, mock_get_dependency_manager, mock_send_safe):
+    async def test_log_registration_completed(
+        self, mock_get_dependency_manager, mock_send_safe
+    ):
         """Test logging a completed registration"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321
@@ -195,7 +203,9 @@ class TestApp:
     @pytest.mark.asyncio
     @patch("app.app.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
-    async def test_log_registration_canceled(self, mock_get_dependency_manager, mock_send_safe):
+    async def test_log_registration_canceled(
+        self, mock_get_dependency_manager, mock_send_safe
+    ):
         """Test logging a canceled registration"""
         # Set events chat ID
         self.app.settings.events_chat_id = 654321

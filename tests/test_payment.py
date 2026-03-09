@@ -18,7 +18,10 @@ def mock_message():
 @pytest.fixture
 def mock_state():
     state = AsyncMock(spec=FSMContext)
-    state.get_data.return_value = {"original_user_id": 12345, "original_username": "test_user"}
+    state.get_data.return_value = {
+        "original_user_id": 12345,
+        "original_username": "test_user",
+    }
     return state
 
 
@@ -51,14 +54,16 @@ def mock_app():
         mock_app.save_event_log = AsyncMock()
         mock_app.log_registration_step = AsyncMock()
         mock_app.export_registered_users_to_google_sheets = AsyncMock()
-        mock_app.get_event_for_registration = AsyncMock(return_value={
-            "pricing_type": "formula",
-            "price_formula_base": 1000,
-            "price_formula_rate": 200,
-            "price_formula_reference_year": 2026,
-            "free_for_types": ["TEACHER", "ORGANIZER"],
-            "city": "Москва",
-        })
+        mock_app.get_event_for_registration = AsyncMock(
+            return_value={
+                "pricing_type": "formula",
+                "price_formula_base": 1000,
+                "price_formula_rate": 200,
+                "price_formula_reference_year": 2026,
+                "free_for_types": ["TEACHER", "ORGANIZER"],
+                "city": "Москва",
+            }
+        )
         mock_app.calculate_event_payment = MagicMock(
             return_value=(2000, 200, 1800, 3000)
         )
@@ -148,7 +153,9 @@ def mock_admin_check():
 
 
 @pytest.mark.asyncio
-async def test_pay_handler_no_registrations(mock_message, mock_state, mock_app, mock_send_safe):
+async def test_pay_handler_no_registrations(
+    mock_message, mock_state, mock_app, mock_send_safe
+):
     # Configure the mock for a user with no registrations
     mock_app.get_user_registrations.return_value = []
     from app.routers.payment import (
