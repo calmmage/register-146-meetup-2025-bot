@@ -308,14 +308,14 @@ class App:
             base = event.get("price_formula_base", 0)
             rate = event.get("price_formula_rate", 0)
             ref_year = event.get("price_formula_reference_year", 2026)
+            step = event.get("price_formula_step", 1)
             years_since = max(0, ref_year - graduation_year)
-            formula_amount = base + rate * years_since
+            formula_amount = base + rate * (years_since // step)
 
             # Cap for old graduates (15+ years)
             regular_amount = formula_amount
             if years_since > 15:
-                # Cap at what 15-year grad would pay
-                regular_amount = base + rate * 15
+                regular_amount = base + rate * (15 // step)
 
             # Non-graduates get fixed recommended amount
             if graduate_type == GraduateType.NON_GRADUATE.value:
@@ -324,7 +324,17 @@ class App:
                 else:
                     return 2000, 0, 2000, 2000
 
-            return regular_amount, 0, regular_amount, formula_amount
+            # Early bird discount
+            early_bird_discount = event.get("early_bird_discount", 0)
+            early_bird_deadline = event.get("early_bird_deadline")
+            if early_bird_deadline and datetime.now() < early_bird_deadline and early_bird_discount > 0:
+                discount = early_bird_discount
+                discounted_amount = max(0, regular_amount - discount)
+            else:
+                discount = 0
+                discounted_amount = regular_amount
+
+            return regular_amount, discount, discounted_amount, formula_amount
 
         return 0, 0, 0, 0
 
@@ -716,8 +726,6 @@ class App:
             message += f"💰 Оплата: Бесплатно (учитель)\n"
         elif graduate_type == GraduateType.ORGANIZER.value:
             message += f"💰 Оплата: Бесплатно (организатор)\n"
-        elif city == TargetCity.SAINT_PETERSBURG.value:
-            message += f"💰 Оплата: За свой счет (Санкт-Петербург)\n"
         elif city == TargetCity.BELGRADE.value:
             message += f"💰 Оплата: За свой счет (Белград)\n"
 
@@ -768,10 +776,9 @@ class App:
         Returns:
             Tuple of (regular_amount, discount, discounted_amount)
         """
-        # Teachers and Saint Petersburg/Belgrade attendees are free
+        # Teachers are free (legacy method — Belgrade still free via event config)
         if (
             graduate_type == GraduateType.TEACHER.value
-            or city == TargetCity.SAINT_PETERSBURG.value
             or city == TargetCity.BELGRADE.value
         ):
             return 0, 0, 0, 0
@@ -1154,31 +1161,19 @@ class App:
     async def _fix_database(self) -> Dict[str, int]:
         """
         Fix the database by setting payment_status to "confirmed" for:
-        1. All users in Saint Petersburg (free event)
-        2. All users in Belgrade (free event)
-        3. All users with graduate_type=TEACHER (free for teachers)
-        4. All users with graduate_type=ORGANIZER (free for organizers)
+        1. All users in Belgrade (free event)
+        2. All users with graduate_type=TEACHER (free for teachers)
+        3. All users with graduate_type=ORGANIZER (free for organizers)
 
         Returns:
             Dictionary with counts of fixed records for each category
         """
         results = {
-            "spb_fixed": 0,
             "belgrade_fixed": 0,
             "teachers_fixed": 0,
             "organizers_fixed": 0,
             "total_fixed": 0,
         }
-
-        # Fix Saint Petersburg registrations
-        spb_result = await self.collection.update_many(
-            {
-                "target_city": TargetCity.SAINT_PETERSBURG.value,
-                "payment_status": {"$ne": "confirmed"},
-            },
-            {"$set": {"payment_status": "confirmed"}},
-        )
-        results["spb_fixed"] = spb_result.modified_count
 
         # Fix Belgrade registrations
         belgrade_result = await self.collection.update_many(
@@ -1203,8 +1198,7 @@ class App:
 
         # Calculate total fixed
         results["total_fixed"] = (
-            results["spb_fixed"]
-            + results["belgrade_fixed"]
+            results["belgrade_fixed"]
             + results["teachers_fixed"]
             + results["organizers_fixed"]
         )
@@ -1214,7 +1208,6 @@ class App:
             log_data = {
                 "action": "fix_database",
                 "modified_count": results["total_fixed"],
-                "spb_fixed": results["spb_fixed"],
                 "belgrade_fixed": results["belgrade_fixed"],
                 "teachers_fixed": results["teachers_fixed"],
                 "organizers_fixed": results["organizers_fixed"],

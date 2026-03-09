@@ -38,9 +38,6 @@ CITY_CODES = {
 # Reverse mapping
 CITY_CODES_REVERSE = {v: k for k, v in CITY_CODES.items()}
 
-# Early registration for old events only (not applicable to summer 2025)
-EARLY_REGISTRATION_DATE = datetime.strptime("2025-07-15", "%Y-%m-%d")
-EARLY_REGISTRATION_DATE_HUMAN = "15 Июля"
 
 
 def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | None]:
@@ -126,18 +123,26 @@ async def process_payment(
         if registration and "graduate_type" in registration:
             graduate_type = registration["graduate_type"]
 
-    # Calculate payment amount
-    regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
-        city, graduation_year, graduate_type
-    )
+    # Load event from registration
+    registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
+    event = None
+    if registration_data:
+        event = await app.get_event_for_registration(registration_data)
+
+    # Calculate payment amount — prefer event-based calculation
+    if event:
+        regular_amount, discount, discounted_amount, formula_amount = app.calculate_event_payment(
+            event, graduation_year, graduate_type
+        )
+    else:
+        regular_amount, discount, discounted_amount, formula_amount = app.calculate_payment_amount(
+            city, graduation_year, graduate_type
+        )
 
     # If guests provided, load from state or registration
     if guests is None:
-        # Try to load guest info from the registration
-        if user_id:
-            reg_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
-            if reg_data:
-                guests = reg_data.get("guests", [])
+        if registration_data:
+            guests = registration_data.get("guests", [])
     guests = guests or []
 
     # Calculate guest total
@@ -152,13 +157,7 @@ async def process_payment(
         await deps.bot.send_chat_action(chat_id=message.chat.id, action="typing")
         await asyncio.sleep(3)  # 3 second delay
 
-        # Prepare payment message - get formula from event data or fallback
-        # Try to load event from registration
-        registration_data = await app.collection.find_one({"user_id": user_id, "target_city": city})
-        event = None
-        if registration_data:
-            event = await app.get_event_for_registration(registration_data)
-
+        # Prepare formula text for display
         if event:
             pricing_type = event.get("pricing_type", "formula")
             if pricing_type == "free":
@@ -169,11 +168,15 @@ async def process_payment(
                 base = event.get("price_formula_base", 0)
                 rate = event.get("price_formula_rate", 0)
                 ref_year = event.get("price_formula_reference_year", 2026)
-                payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
+                step = event.get("price_formula_step", 1)
+                if step > 1:
+                    payment_formula = f"{base}р + {rate} × (({ref_year} − год выпуска) ÷ {step})"
+                else:
+                    payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
             else:
                 payment_formula = "за свой счет"
         elif city == TargetCity.MOSCOW.value:
-            payment_formula = "1000р + 200 × (2025 − год выпуска)"
+            payment_formula = "1500р + 500 × ((2025 − год выпуска) ÷ 3)"
         elif city == TargetCity.PERM.value:
             payment_formula = "500р + 100 × (2025 − год выпуска)"
         else:
@@ -184,9 +187,9 @@ async def process_payment(
             payment_msg_part1 = dedent(
                 f"""
                 💰 Оплата мероприятия
-                
+
                 Для оплаты мероприятия используется следующая формула:
-                
+
                 {city} → {payment_formula}
             """
             )
@@ -202,27 +205,31 @@ async def process_payment(
             payment_msg_part2 = dedent(
                 f"""
                 Стоимость билета для вашего года выпуска: {regular_amount} руб.
-                
+
                 Приятно будет увидеть вас на летней встрече! 😊
                 """
             )
         else:
-            # Check if we're before the early registration deadline (for old events)
+            # Check early bird from event config
+            early_bird_deadline = event.get("early_bird_deadline") if event else None
+            early_bird_discount_amount = event.get("early_bird_discount", 0) if event else 0
             today = datetime.now()
-            is_early_registration_period = today < EARLY_REGISTRATION_DATE
+            is_early = early_bird_deadline and today < early_bird_deadline and early_bird_discount_amount > 0
 
             formula_message = ""
             if formula_amount > regular_amount:
                 formula_message = f"Рекомендованный взнос по формуле: {formula_amount} руб."
 
-            if is_early_registration_period:
+            if is_early:
+                # Format deadline for display
+                deadline_display = early_bird_deadline.strftime("%d.%m")
                 payment_msg_part2 = dedent(
                     f"""
                     Для вас минимальный взнос: {regular_amount} руб. {formula_message}
-                    
-                    При ранней оплате (до {EARLY_REGISTRATION_DATE_HUMAN}) - скидка. 
-                    Минимальный взнос при ранней оплате - {discounted_amount} руб.
-                    
+
+                    При ранней регистрации (до {deadline_display}) — скидка {early_bird_discount_amount}₽!
+                    Минимальный взнос при ранней регистрации — {discounted_amount} руб.
+
                     Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
                     """
                 )
@@ -231,7 +238,7 @@ async def process_payment(
                     f"""
                     Для вас минимальный взнос: {regular_amount} руб.
                     {formula_message}
-                    
+
                     Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
                     """
                 )
@@ -437,11 +444,9 @@ async def process_payment(
             events_chat_id = app.settings.events_chat_id
             logger.info(f"Events chat ID: {events_chat_id}")
 
-            # if today is before early registration -> "discounted_amount (later {regular amount}}" else "regular_amount"
-
-            today = datetime.now()
-            if today < EARLY_REGISTRATION_DATE:
-                needs_to_pay = f"{discounted_amount} руб (после {EARLY_REGISTRATION_DATE_HUMAN} - {regular_amount} руб)"
+            # Show discounted or regular amount based on early bird
+            if discount > 0:
+                needs_to_pay = f"{discounted_amount} руб (без скидки — {regular_amount} руб)"
             else:
                 needs_to_pay = f"{regular_amount} руб"
 
@@ -512,11 +517,11 @@ async def process_payment(
                 )
             else:
                 # Add standard buttons for different amounts
-                if today < EARLY_REGISTRATION_DATE:
+                if discount > 0:
                     validation_buttons.append(
                         [
                             InlineKeyboardButton(
-                                text=f"✅ {discounted_amount} руб. - Подтвердить оплату по скидке",
+                                text=f"✅ {discounted_amount} руб. - Подтвердить оплату со скидкой",
                                 callback_data=f"confirm_payment_{user_id}_{city_code}_{discounted_amount}",
                             )
                         ]
@@ -869,9 +874,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     discounted_amount = registration.get("discounted_payment_amount", 0)
     regular_amount = registration.get("regular_payment_amount", 0)
 
-    # Determine the relevant recommendation amount based on the current date
-    today = datetime.now()
-    recommended_amount = discounted_amount if today < EARLY_REGISTRATION_DATE else regular_amount
+    # Determine the relevant recommendation amount
+    # Use discounted amount if a discount was applied (i.e., discounted < regular)
+    recommended_amount = discounted_amount if discounted_amount and discounted_amount < regular_amount else regular_amount
 
     # Check if the total payment amount is less than the recommended amount
     payment_message = ""

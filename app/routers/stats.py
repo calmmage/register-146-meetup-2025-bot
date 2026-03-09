@@ -172,7 +172,7 @@ async def show_stats(message: Message, app: App):
     # Active users
     active_payment_cursor = app.collection.aggregate(
         [
-            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+
             {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
             {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {
@@ -230,7 +230,7 @@ async def show_stats(message: Message, app: App):
     # Deleted users
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
-            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+
             {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
             {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {
@@ -572,7 +572,7 @@ async def show_simple_stats(message: Message, app: App):
     # 3. Basic payment status distribution (active users)
     active_payment_cursor = app.collection.aggregate(
         [
-            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+
             {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
             {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {
@@ -622,7 +622,7 @@ async def show_simple_stats(message: Message, app: App):
     # Deleted users payment stats
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
-            {"$match": {"target_city": {"$ne": "Санкт-Петербург"}}},  # Exclude SPb as it's free
+
             {"$match": {"target_city": {"$ne": "Белград"}}},  # Exclude Belgrade as it's free
             {"$match": {"graduate_type": {"$ne": "TEACHER"}}},  # Exclude teachers as they don't pay
             {

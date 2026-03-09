@@ -27,6 +27,7 @@ class PendingRequest(BaseModel):
     raw_response: Optional[Message] = None
     sent_message_id: Optional[int] = None
     choice_keys: List[str] = Field(default_factory=list)
+    choices_dict: Dict[str, str] = Field(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True
@@ -47,6 +48,7 @@ class UserInputManager:
         handler_id: str,
         question: str,
         choice_keys: Optional[List[str]] = None,
+        choices_dict: Optional[Dict[str, str]] = None,
     ) -> PendingRequest:
         if chat_id not in self._pending_requests:
             self._pending_requests[chat_id] = {}
@@ -55,6 +57,7 @@ class UserInputManager:
             question=question,
             handler_id=handler_id,
             choice_keys=choice_keys or [],
+            choices_dict=choices_dict or {},
         )
         self._pending_requests[chat_id][handler_id] = request
         return request
@@ -100,6 +103,7 @@ async def _ask_user_base(
     return_raw: bool = False,
     cleanup: bool = False,
     choice_keys: Optional[List[str]] = None,
+    choices_dict: Optional[Dict[str, str]] = None,
     **kwargs,
 ) -> Optional[Union[str, Message]]:
     from botspot.core.dependency_manager import get_dependency_manager
@@ -118,7 +122,7 @@ async def _ask_user_base(
     await state.set_state(UserInputState.waiting)
     await state.update_data(handler_id=handler_id)
 
-    request = input_manager.add_request(chat_id, handler_id, question, choice_keys=choice_keys)
+    request = input_manager.add_request(chat_id, handler_id, question, choice_keys=choice_keys, choices_dict=choices_dict)
     assert request.event is not None
 
     sent_message = await bot.send_message(chat_id, question, reply_markup=reply_markup, **kwargs)
@@ -233,6 +237,7 @@ async def ask_user_choice(
         default_choice=default_choice,
         cleanup=cleanup,
         choice_keys=list(choices.keys()),
+        choices_dict=choices,
         **kwargs,
     )
 
@@ -297,6 +302,7 @@ async def ask_user_choice_raw(
         return_raw=True,
         cleanup=cleanup,
         choice_keys=list(choices.keys()),
+        choices_dict=choices,
         **kwargs,
     )
 
@@ -361,7 +367,8 @@ async def handle_choice_callback(callback_query: types.CallbackQuery, state: FSM
     await callback_query.answer()
     assert not isinstance(callback_query.message, InaccessibleMessage)
 
-    new_text = f"{callback_query.message.text}\n\nSelected: {choice}"
+    label = request.choices_dict.get(choice, choice)
+    new_text = f"{callback_query.message.text}\n\nВыбрано: {label}"
     try:
         await callback_query.message.edit_text(new_text)
     except TelegramBadRequest as e:
