@@ -388,3 +388,56 @@ async def update_pricing_and_early_bird(app):
         logger.info(
             f"Added default early bird fields to {eb_result.modified_count} events."
         )
+
+
+# ============================================================
+# Migration: Update venue/time details for all 2026 events + Perm pricing
+# ============================================================
+@migration("005_update_event_details_and_perm_pricing")
+async def update_event_details_and_perm_pricing(app):
+    """Update venue/address/time for 2026 spring events and fix Perm pricing."""
+    # Moscow: add venue and address, update time display
+    moscow_result = await app.events_col.update_one(
+        {"city": "Москва", "date": datetime(2026, 3, 21, 18, 0)},
+        {
+            "$set": {
+                "venue": 'Лофт «Мультирум»',
+                "address": "ул. Смирновская, 25с3",
+                "time_display": "18:00-00:00",
+            }
+        },
+    )
+    if moscow_result.modified_count > 0:
+        logger.info("Updated Moscow event: venue, address, time.")
+
+    # SPb: add venue and address, update time display
+    spb_result = await app.events_col.update_one(
+        {"city": "Санкт-Петербург", "date": datetime(2026, 3, 28, 17, 0)},
+        {
+            "$set": {
+                "venue": 'Лофт «МыВместе»',
+                "address": "ул. Дивенская, 5",
+                "time_display": "18:00-23:00",
+            }
+        },
+    )
+    if spb_result.modified_count > 0:
+        logger.info("Updated SPb event: venue, address, time.")
+
+    # Perm: update time, pricing formula (base 500->1500), add early bird
+    perm_result = await app.events_col.update_one(
+        {"city": "Пермь", "date": datetime(2026, 3, 28, 17, 0)},
+        {
+            "$set": {
+                "time_display": "18:00-00:00",
+                "price_formula_base": 1500,
+                "price_formula_rate": 100,
+                "price_formula_reference_year": 2026,
+                "price_formula_step": 1,
+                "early_bird_discount": 500,
+                "early_bird_deadline": datetime(2026, 3, 25),
+            }
+        },
+    )
+    if perm_result.modified_count > 0:
+        logger.info("Updated Perm event: time, pricing, early bird.")
