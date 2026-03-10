@@ -243,6 +243,7 @@ class TestCalculateEventPayment:
         assert result[0] == 1500
 
     def test_non_graduate_formula(self, app):
+        """Non-graduate uses formula with ref_years=12 when no guest_price_minimum."""
         event = {
             "pricing_type": "formula",
             "price_formula_base": 1500,
@@ -251,10 +252,26 @@ class TestCalculateEventPayment:
             "price_formula_step": 1,
             "free_for_types": [],
         }
+        # base + rate * 15 = 1500 + 500*15 = 9000
         result = app.calculate_event_payment(event, 2020, "NON_GRADUATE")
-        assert result == (4000, 0, 4000, 4000)
+        assert result == (9000, 0, 9000, 9000)
+
+    def test_non_graduate_with_guest_minimum(self, app):
+        """Non-graduate uses guest_price_minimum when set."""
+        event = {
+            "pricing_type": "formula",
+            "price_formula_base": 1500,
+            "price_formula_rate": 500,
+            "price_formula_reference_year": 2025,
+            "price_formula_step": 1,
+            "free_for_types": [],
+            "guest_price_minimum": 3000,
+        }
+        result = app.calculate_event_payment(event, 2020, "NON_GRADUATE")
+        assert result == (3000, 0, 3000, 3000)
 
     def test_non_graduate_low_base(self, app):
+        """Non-graduate with low base formula."""
         event = {
             "pricing_type": "formula",
             "price_formula_base": 500,
@@ -263,10 +280,12 @@ class TestCalculateEventPayment:
             "price_formula_step": 1,
             "free_for_types": [],
         }
+        # base + rate * 15 = 500 + 100*15 = 2000
         result = app.calculate_event_payment(event, 2020, "NON_GRADUATE")
         assert result == (2000, 0, 2000, 2000)
 
-    def test_old_graduate_cap(self, app):
+    def test_old_graduate_no_cap(self, app):
+        """No cap — price grows with years_since graduation."""
         event = {
             "pricing_type": "formula",
             "price_formula_base": 1000,
@@ -275,11 +294,11 @@ class TestCalculateEventPayment:
             "price_formula_step": 1,
             "free_for_types": [],
         }
-        # 1995 grad: 31 years, formula=1000+200*31=7200, but capped at 15 years=1000+200*15=4000
+        # 1995 grad: 31 years, formula=1000+200*31=7200, no cap
         regular, discount, discounted, formula = app.calculate_event_payment(
             event, 1995
         )
-        assert regular == 4000
+        assert regular == 7200
         assert formula == 7200
 
     def test_unknown_pricing_type(self, app):
