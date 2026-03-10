@@ -137,9 +137,7 @@ class TestDeleteUserRegistration:
         app.collection.find_one = AsyncMock(
             return_value={"user_id": 123, "target_city": "Москва"}
         )
-        app.collection.delete_one = AsyncMock(
-            return_value=MagicMock(deleted_count=1)
-        )
+        app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
         app.deleted_users.insert_one = AsyncMock()
         app.event_logs.insert_one = AsyncMock()
 
@@ -203,9 +201,7 @@ class TestEventMethods:
 
     @pytest.mark.asyncio
     async def test_update_event(self, app):
-        app.events_col.update_one = AsyncMock(
-            return_value=MagicMock(modified_count=1)
-        )
+        app.events_col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
         result = await app.update_event("507f1f77bcf86cd799439011", {"venue": "New"})
         assert result is True
 
@@ -342,9 +338,7 @@ class TestSaveEventLog:
 class TestSaveFeedback:
     @pytest.mark.asyncio
     async def test_save_dict(self, app):
-        app.collection.find_one = AsyncMock(
-            return_value={"full_name": "Иванов Иван"}
-        )
+        app.collection.find_one = AsyncMock(return_value={"full_name": "Иванов Иван"})
         app.event_logs.insert_one = AsyncMock()
 
         with patch("app.app.get_database") as mock_db:
@@ -375,11 +369,11 @@ class TestSaveFeedback:
 class TestNormalizeGraduateTypes:
     @pytest.mark.asyncio
     async def test_normalize(self, app):
-        app.collection.update_many = AsyncMock(
-            return_value=MagicMock(modified_count=3)
-        )
+        app.collection.update_many = AsyncMock(return_value=MagicMock(modified_count=3))
         app.event_logs.insert_one = AsyncMock()
-        result = await app.normalize_graduate_types(admin_id=999, admin_username="admin")
+        result = await app.normalize_graduate_types(
+            admin_id=999, admin_username="admin"
+        )
         assert result == 3
 
 
@@ -425,9 +419,7 @@ class TestGetUsersBase:
 class TestFixDatabase:
     @pytest.mark.asyncio
     async def test_fix_with_changes(self, app):
-        app.collection.update_many = AsyncMock(
-            return_value=MagicMock(modified_count=2)
-        )
+        app.collection.update_many = AsyncMock(return_value=MagicMock(modified_count=2))
         app.event_logs.insert_one = AsyncMock()
 
         result = await app._fix_database()
@@ -436,9 +428,7 @@ class TestFixDatabase:
 
     @pytest.mark.asyncio
     async def test_fix_no_changes(self, app):
-        app.collection.update_many = AsyncMock(
-            return_value=MagicMock(modified_count=0)
-        )
+        app.collection.update_many = AsyncMock(return_value=MagicMock(modified_count=0))
         app.event_logs.insert_one = AsyncMock()
 
         result = await app._fix_database()
@@ -455,9 +445,7 @@ class TestMoveUserToDeleted:
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.deleted_users.insert_one = AsyncMock()
-        app.collection.delete_one = AsyncMock(
-            return_value=MagicMock(deleted_count=1)
-        )
+        app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
         result = await app.move_user_to_deleted(123, city="Москва")
         assert result is True
@@ -474,9 +462,7 @@ class TestMoveUserToDeleted:
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.deleted_users.insert_many = AsyncMock()
-        app.collection.delete_many = AsyncMock(
-            return_value=MagicMock(deleted_count=2)
-        )
+        app.collection.delete_many = AsyncMock(return_value=MagicMock(deleted_count=2))
 
         result = await app.move_user_to_deleted(123)
         assert result is True

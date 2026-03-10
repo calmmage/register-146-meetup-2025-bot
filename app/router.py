@@ -293,9 +293,7 @@ async def _edit_guests(
     )
 
     guest_count = (
-        int(guest_count_resp)
-        if guest_count_resp and guest_count_resp.isdigit()
-        else 0
+        int(guest_count_resp) if guest_count_resp and guest_count_resp.isdigit() else 0
     )
 
     if guest_count == 0:

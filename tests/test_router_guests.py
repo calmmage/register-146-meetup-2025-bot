@@ -64,8 +64,11 @@ def base_event():
 
 # --- Test 1: _edit_guests adds new guests correctly ---
 
+
 @pytest.mark.asyncio
-async def test_edit_guests_add_new(mock_message, mock_state, mock_app, base_reg, base_event):
+async def test_edit_guests_add_new(
+    mock_message, mock_state, mock_app, base_reg, base_event
+):
     """_edit_guests adds new guests when user selects count and provides names."""
     mock_name_resp = MagicMock()
     mock_name_resp.text = "Иван Иванов"
@@ -73,9 +76,14 @@ async def test_edit_guests_add_new(mock_message, mock_state, mock_app, base_reg,
     with (
         patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="2"),
         patch("app.router.send_safe", new_callable=AsyncMock),
-        patch("app.user_interactions.ask_user_raw", new_callable=AsyncMock, return_value=mock_name_resp),
+        patch(
+            "app.user_interactions.ask_user_raw",
+            new_callable=AsyncMock,
+            return_value=mock_name_resp,
+        ),
     ):
         from app.router import _edit_guests
+
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
     mock_app.save_registration_guests.assert_awaited_once()
@@ -92,8 +100,11 @@ async def test_edit_guests_add_new(mock_message, mock_state, mock_app, base_reg,
 
 # --- Test 2: _edit_guests removes all guests ---
 
+
 @pytest.mark.asyncio
-async def test_edit_guests_remove_all(mock_message, mock_state, mock_app, base_reg, base_event):
+async def test_edit_guests_remove_all(
+    mock_message, mock_state, mock_app, base_reg, base_event
+):
     """_edit_guests removes all guests when user selects 0."""
     base_reg["guests"] = [{"name": "Гость", "price": 3000}]
 
@@ -102,6 +113,7 @@ async def test_edit_guests_remove_all(mock_message, mock_state, mock_app, base_r
         patch("app.router.send_safe", new_callable=AsyncMock) as mock_send,
     ):
         from app.router import _edit_guests
+
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
     mock_app.save_registration_guests.assert_awaited_once_with(12345, "Москва", [])
@@ -114,8 +126,11 @@ async def test_edit_guests_remove_all(mock_message, mock_state, mock_app, base_r
 
 # --- Test 3: _edit_guests updates existing guests ---
 
+
 @pytest.mark.asyncio
-async def test_edit_guests_update_existing(mock_message, mock_state, mock_app, base_reg, base_event):
+async def test_edit_guests_update_existing(
+    mock_message, mock_state, mock_app, base_reg, base_event
+):
     """_edit_guests shows hints for existing names and saves updated list."""
     base_reg["guests"] = [{"name": "Старый Гость", "price": 2000}]
 
@@ -134,6 +149,7 @@ async def test_edit_guests_update_existing(mock_message, mock_state, mock_app, b
         patch("app.user_interactions.ask_user_raw", side_effect=_capture_ask_raw),
     ):
         from app.router import _edit_guests
+
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
     # Verify hint with old name was shown
@@ -146,8 +162,11 @@ async def test_edit_guests_update_existing(mock_message, mock_state, mock_app, b
 
 # --- Test 4: _edit_guests calculates guest prices with early bird discount ---
 
+
 @pytest.mark.asyncio
-async def test_edit_guests_early_bird_price(mock_message, mock_state, mock_app, base_reg, base_event):
+async def test_edit_guests_early_bird_price(
+    mock_message, mock_state, mock_app, base_reg, base_event
+):
     """Guest price reflects early bird discount via calculate_guest_price."""
     base_event["early_bird_discount"] = 500
     base_event["early_bird_deadline"] = datetime.now() + timedelta(days=7)
@@ -162,13 +181,20 @@ async def test_edit_guests_early_bird_price(mock_message, mock_state, mock_app, 
     with (
         patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="1"),
         patch("app.router.send_safe", new_callable=AsyncMock) as mock_send,
-        patch("app.user_interactions.ask_user_raw", new_callable=AsyncMock, return_value=name_resp),
+        patch(
+            "app.user_interactions.ask_user_raw",
+            new_callable=AsyncMock,
+            return_value=name_resp,
+        ),
     ):
         from app.router import _edit_guests
+
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
     # Verify calculate_guest_price was called with reg_amount (regular, not discounted)
-    mock_app.calculate_event_payment.assert_called_once_with(base_event, 2010, "GRADUATE")
+    mock_app.calculate_event_payment.assert_called_once_with(
+        base_event, 2010, "GRADUATE"
+    )
     mock_app.calculate_guest_price.assert_called_once_with(base_event, 3000)
 
     saved_guests = mock_app.save_registration_guests.call_args[0][2]
@@ -180,6 +206,7 @@ async def test_edit_guests_early_bird_price(mock_message, mock_state, mock_app, 
 
 
 # --- Test 5: manage_registrations displays guest info ---
+
 
 @pytest.mark.asyncio
 async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_app):
@@ -220,6 +247,7 @@ async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_
         patch("app.router.handle_registered_user", new_callable=AsyncMock),
     ):
         from app.router import manage_registrations
+
         await manage_registrations(mock_message, mock_state, [reg], mock_app)
 
     # Second ask_user_choice call shows city detail — should contain guest names
