@@ -511,6 +511,12 @@ async def manage_registrations(
             )
 
         if action == "guests":
+            if event is None:
+                await send_safe(
+                    message.chat.id,
+                    "Произошла ошибка: не удалось найти мероприятие.",
+                )
+                return
             await _edit_guests(message, state, reg, event, app)
             # Refresh registrations and return to management
             remaining = await app.get_user_active_registrations(message.from_user.id)
@@ -969,6 +975,7 @@ async def register_user(
             log_messages[user_id].append(log_msg)
 
     # Determine the target_city value
+    target_city_value = ""
     if location:
         target_city_value = location
     elif selected_event:
@@ -985,7 +992,10 @@ async def register_user(
         )
 
     # Save the registration with event_id
-    event_id = str(selected_event["_id"]) if selected_event else None
+    event_id = str(selected_event["_id"]) if selected_event else ""
+    assert full_name is not None, "full_name must be set by this point"
+    assert graduation_year is not None, "graduation_year must be set by this point"
+    assert class_letter is not None, "class_letter must be set by this point"
     registered_user = RegisteredUser(
         full_name=full_name,
         graduation_year=graduation_year,
@@ -1082,7 +1092,7 @@ async def register_user(
     # Log to events chat
     await app.log_registration_completed(
         user_id,
-        username,
+        username or "",
         full_name,
         graduation_year,
         class_letter,
@@ -1095,7 +1105,7 @@ async def register_user(
     await delete_log_messages(user_id)
 
     # Determine event_id for DB operations
-    event_id_for_db = str(selected_event["_id"]) if selected_event else None
+    event_id_for_db = str(selected_event["_id"]) if selected_event else ""
 
     # Save guest data to registration
     if guests:

@@ -146,7 +146,7 @@ async def export_handler(message: Message, state: FSMContext, app: App):
         if export_format_response == "sheets":
             await notif.edit_text("Экспорт данных в Google Таблицы...")
             result = await app.export_registered_users_to_google_sheets()
-            await send_safe(message.chat.id, result)
+            await send_safe(message.chat.id, result or "")
         else:
             # Export to CSV
             await notif.edit_text("Экспорт данных в CSV файл...")
@@ -186,7 +186,7 @@ async def export_handler(message: Message, state: FSMContext, app: App):
         if export_format_response == "sheets":
             await notif.edit_text("Экспорт отзывов в Google Таблицы...")
             result = await app.export_feedback_to_sheets()
-            await send_safe(message.chat.id, result)
+            await send_safe(message.chat.id, result or "")
         else:
             # Export to CSV
             await notif.edit_text("Экспорт отзывов в CSV файл...")
@@ -285,7 +285,7 @@ async def extract_payment_from_image(
             response_format=PaymentInfo,
         )
 
-        return PaymentInfo(**json.loads(response.choices[0].message.content))
+        return PaymentInfo(**json.loads(response.choices[0].message.content))  # type: ignore[union-attr]
     except Exception as e:
         logger.error(f"Error extracting payment amount: {e}")
         return PaymentInfo(amount=None, is_valid=False)

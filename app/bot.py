@@ -32,7 +32,7 @@ def main(debug=False) -> None:
     dp.include_router(feedback_router)
     dp.include_router(main_router)
 
-    setup_logger(logger, level="DEBUG" if debug else "INFO")
+    setup_logger(logger, level="DEBUG" if debug else "INFO")  # type: ignore[arg-type]
 
     app = App()
     dp["app"] = app

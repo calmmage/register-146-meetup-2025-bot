@@ -153,7 +153,7 @@ async def _ask_user_base(
             if request.raw_response:
                 await request.raw_response.delete()
         elif sent_message.reply_markup:
-            await sent_message.edit_text(text=sent_message.text, reply_markup=None)
+            await sent_message.edit_text(text=sent_message.text or "", reply_markup=None)
 
         return (
             request.raw_response
@@ -181,9 +181,10 @@ async def ask_user(
     cleanup: bool = False,
     **kwargs,
 ) -> Optional[str]:
-    return await _ask_user_base(
+    result = await _ask_user_base(
         chat_id, question, state, timeout, cleanup=cleanup, **kwargs
     )
+    return result  # type: ignore[return-value]
 
 
 async def ask_user_raw(
@@ -194,7 +195,7 @@ async def ask_user_raw(
     cleanup: bool = False,
     **kwargs,
 ) -> Optional[Message]:
-    return await _ask_user_base(
+    result = await _ask_user_base(
         chat_id,
         question,
         state,
@@ -203,6 +204,7 @@ async def ask_user_raw(
         cleanup=cleanup,
         **kwargs,
     )
+    return result  # type: ignore[return-value]
 
 
 def _build_keyboard(
@@ -249,7 +251,7 @@ async def ask_user_choice(
 
     keyboard = _build_keyboard(choices, default_choice, highlight_default, columns)
 
-    return await _ask_user_base(
+    result = await _ask_user_base(
         chat_id=chat_id,
         question=question,
         state=state,
@@ -261,6 +263,7 @@ async def ask_user_choice(
         choices_dict=choices,
         **kwargs,
     )
+    return result  # type: ignore[return-value]
 
 
 async def ask_user_confirmation(
@@ -314,7 +317,7 @@ async def ask_user_choice_raw(
         else question
     )
 
-    return await _ask_user_base(
+    result = await _ask_user_base(
         chat_id=chat_id,
         question=displayed_question,
         state=state,
@@ -326,6 +329,7 @@ async def ask_user_choice_raw(
         choices_dict=choices,
         **kwargs,
     )
+    return result  # type: ignore[return-value]
 
 
 async def handle_user_input(message: types.Message, state: FSMContext) -> None:

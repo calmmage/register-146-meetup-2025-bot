@@ -96,7 +96,7 @@ async def process_payment(
     graduation_year: int,
     skip_instructions=False,
     graduate_type: str = GraduateType.GRADUATE.value,
-    guests: list = None,
+    guests: list | None = None,
 ):
     """Process payment for an event registration"""
     # Check if we have original user information in the state
@@ -117,6 +117,7 @@ async def process_payment(
         username = message.from_user.username or "" if message.from_user else ""
 
     logger.info(f"Using original user information: ID={user_id}, username={username}")
+    assert user_id is not None, "user_id must be resolved before processing payment"
 
     # Get user registration to get graduate_type
     if user_id:
@@ -224,6 +225,7 @@ async def process_payment(
 
         if is_early:
             # Format deadline for display
+            assert early_bird_deadline is not None
             deadline_display = early_bird_deadline.strftime("%d.%m")
             payment_msg_part2 = dedent(
                 f"""
@@ -354,10 +356,6 @@ async def process_payment(
         elif response == "too_expensive":
             # User clicked "Too expensive, changed my mind"
             # Log to chat log
-            assert user_id is not None, (
-                "User ID cannot be None for payment cancellation"
-            )
-
             await app.log_registration_step(
                 user_id=user_id,
                 username=username,
@@ -507,7 +505,7 @@ async def process_payment(
                 f"Parsing payment info from response: has_photo={has_photo}, has_pdf={has_pdf}"
             )
             payment_info = await parse_payment_info(
-                response, has_photo, has_pdf, deps.bot
+                response, bool(has_photo), bool(has_pdf), deps.bot
             )
 
             # Create validation buttons
@@ -598,6 +596,7 @@ async def process_payment(
             # Send the photo or document with caption containing user info
             if has_photo:
                 # Get the photo file_id from the message
+                assert response.photo, "has_photo is truthy but response.photo is empty"
                 photo = response.photo[-1]  # Get the largest photo
                 logger.info(f"Sending photo with file_id: {photo.file_id}")
 
@@ -613,6 +612,7 @@ async def process_payment(
                 )
             else:  # has_pdf
                 # Send the PDF document with caption
+                assert response.document is not None, "has_pdf is truthy but response.document is None"
                 logger.info(f"Sending PDF with file_id: {response.document.file_id}")
                 forwarded_msg = await bot.send_document(
                     chat_id=events_chat_id,
@@ -681,10 +681,13 @@ async def parse_payment_info(
         file_bytes = await bot.download_file(file.file_path)
         return await extract_payment_from_image(file_bytes.read(), "image/jpeg")
     elif has_pdf:
+        assert response.document is not None
         file_id = response.document.file_id
         file = await bot.get_file(file_id)
         file_bytes = await bot.download_file(file.file_path)
         return await extract_payment_from_image(file_bytes.read(), "application/pdf")
+    else:
+        return PaymentInfo(amount=None, is_valid=False)
 
 
 # Add payment command handler
@@ -830,6 +833,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id, event_id and amount from callback data
+    assert callback_query.data is not None
     try:
         user_id, event_id, amount_str = parse_payment_callback_data(callback_query.data)
     except ValueError as e:
@@ -871,6 +875,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         class_letter = registration.get("class_letter", "")
         graduate_type_info = f"🎓 Выпускник {graduation_year} {class_letter}"
 
+    assert callback_query.message is not None, "callback_query.message is None"
     chat_id = callback_query.message.chat.id
 
     # Handle different amount cases
@@ -923,6 +928,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     updated_registration = await app.collection.find_one(
         {"user_id": user_id, "event_id": event_id_for_update}
     )
+    assert updated_registration is not None, "Registration not found after payment update"
     total_payment = updated_registration.get("payment_amount", payment_amount)
 
     # Check if this was an additional payment
@@ -986,22 +992,22 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
                     f"\n{i + 1}. {payment['amount']} руб. ({payment['timestamp'][:10]})"
                 )
 
-        if callback_query.message.caption:
-            caption = callback_query.message.caption
+        if callback_query.message.caption:  # type: ignore[union-attr]
+            caption = callback_query.message.caption  # type: ignore[union-attr]
             new_caption = f"{caption}\n\n{payment_status}"
 
             # Limit caption length
             if len(new_caption) > 1024:
                 new_caption = new_caption[-1024:]
 
-            await callback_query.message.edit_caption(
+            await callback_query.message.edit_caption(  # type: ignore[union-attr]
                 caption=new_caption, reply_markup=None
             )
         else:
-            text = callback_query.message.text or ""
+            text = callback_query.message.text or ""  # type: ignore[union-attr]
             new_text = f"{text}\n\n{payment_status} для {user_info}"
 
-            await callback_query.message.edit_text(text=new_text, reply_markup=None)
+            await callback_query.message.edit_text(text=new_text, reply_markup=None)  # type: ignore[union-attr]
 
     # Confirm to admin with a brief notification
     await callback_query.answer("Платеж подтвержден")
@@ -1021,6 +1027,7 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
         return
 
     # Extract user_id and event_id from callback data
+    assert callback_query.data is not None
     try:
         user_id, event_id, _ = parse_payment_callback_data(callback_query.data)
     except ValueError as e:
@@ -1055,24 +1062,24 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Ask for decline reason by editing the original message
     if callback_query.message:
         # Keep the original caption/text but add a prompt
-        if callback_query.message.caption:
-            caption = callback_query.message.caption
+        if callback_query.message.caption:  # type: ignore[union-attr]
+            caption = callback_query.message.caption  # type: ignore[union-attr]
             new_caption = f"{caption}\n\n⚠️ Укажите причину отклонения платежа в ответном сообщении:"
 
             # Limit caption length
             if len(new_caption) > 1024:
                 new_caption = new_caption[-1024:]
 
-            await callback_query.message.edit_caption(
+            await callback_query.message.edit_caption(  # type: ignore[union-attr]
                 caption=new_caption, reply_markup=None
             )
         else:
-            text = callback_query.message.text or ""
+            text = callback_query.message.text or ""  # type: ignore[union-attr]
             new_text = (
                 f"{text}\n\n⚠️ Укажите причину отклонения платежа в ответном сообщении:"
             )
 
-            await callback_query.message.edit_text(text=new_text, reply_markup=None)
+            await callback_query.message.edit_text(text=new_text, reply_markup=None)  # type: ignore[union-attr]
     else:
         # Fallback if message is not available
         await callback_query.answer("Укажите причину отклонения в следующем сообщении")
@@ -1082,7 +1089,7 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
 async def payment_decline_reason_handler(message: Message, state: FSMContext):
     """Handle payment decline reason"""
     # Check if user is admin
-    if not is_admin(message.from_user):
+    if not message.from_user or not is_admin(message.from_user):
         return
 
     # Get data from state

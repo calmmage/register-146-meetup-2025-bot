@@ -1111,7 +1111,7 @@ async def show_year_stats(message: Message, app: App):
 
     # Add annotations for each bar
     for container in ax.containers:
-        ax.bar_label(container, fontsize=9, fontweight="bold", padding=3)
+        ax.bar_label(container, fontsize=9, fontweight="bold", padding=3)  # type: ignore[arg-type]
 
     # Enhance the plot with better styling
     plt.title(
@@ -1203,7 +1203,7 @@ async def show_five_year_stats(message: Message, app: App):
     )
 
     # Resolve city name from event_id
-    df["Город"] = df["event_id"].map(event_name_map).fillna("Другие")
+    df["Город"] = df["event_id"].map(event_name_map).fillna("Другие")  # type: ignore[arg-type]
 
     # Группировка по пятилеткам и городам
     pivot = (
@@ -1224,7 +1224,8 @@ async def show_five_year_stats(message: Message, app: App):
 
     # Построение графика
     plt.figure(figsize=(12, 7), dpi=100)
-    ax = pivot.plot(kind="bar", stacked=True, figsize=(12, 7), colormap="Set2")
+    pivot_df: pd.DataFrame = pivot  # type: ignore[assignment]
+    ax = pivot_df.plot(kind="bar", stacked=True, figsize=(12, 7), colormap="Set2")
 
     plt.title("Зарегистрировавшиеся по пятилеткам выпуска (только активные)")
     plt.xlabel("Пятилетка")
@@ -1235,15 +1236,15 @@ async def show_five_year_stats(message: Message, app: App):
     plt.grid(axis="y")
 
     # Подписи на графике
-    for bar_idx, (idx, row) in enumerate(pivot.iterrows()):
+    for bar_idx, (idx, row) in enumerate(pivot_df.iterrows()):
         cumulative = 0
-        for city in pivot.columns:
+        for city in pivot_df.columns:
             value = row[city]
             if value > 0:
                 ax.text(
                     x=bar_idx,
                     y=cumulative + value / 2,
-                    s=int(value),
+                    s=str(int(value)),  # type: ignore[arg-type]
                     ha="center",
                     va="center",
                     fontsize=9,
@@ -1331,7 +1332,7 @@ async def show_payment_stats(message: Message, app: App):
 
     # Группировка и сумма по пятилеткам
     donation_by_period = df.groupby("Пятилетка")["payment_amount"].sum()
-    donation_by_period = donation_by_period[donation_by_period > 0].sort_index()
+    donation_by_period = donation_by_period[donation_by_period > 0].sort_index()  # type: ignore[assignment]
 
     # Calculate statistics including deleted users for reporting
     status_stats = {
@@ -1347,7 +1348,7 @@ async def show_payment_stats(message: Message, app: App):
     plt.figure(figsize=(10, 10), dpi=100)
 
     # Get a nicer color palette
-    colors = plt.cm.Set3.colors[: len(donation_by_period)]
+    colors = plt.colormaps["Set3"].colors[: len(donation_by_period)]  # type: ignore[attr-defined]
 
     # Add percentage and absolute values to the labels
     total = donation_by_period.sum()
@@ -1357,7 +1358,7 @@ async def show_payment_stats(message: Message, app: App):
     ]
 
     plt.pie(
-        donation_by_period.values,
+        donation_by_period.values,  # type: ignore[arg-type]
         labels=labels,
         autopct="",  # We already added percentages to labels
         startangle=90,

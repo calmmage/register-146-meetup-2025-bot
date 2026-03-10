@@ -80,7 +80,7 @@ def _format_event_summary(event: dict, reg_count: int = 0) -> str:
     if free_for:
         type_names = {"TEACHER": "Учителя", "ORGANIZER": "Организаторы"}
         names = [type_names.get(t, t) for t in free_for]
-        lines.append(f"🎓 Бесплатно для: {', '.join(names)}")
+        lines.append(f"🎓 Бесплатно для: {', '.join(n for n in names if n is not None)}")
 
     # Early bird info
     eb_discount = event.get("early_bird_discount", 0)
@@ -566,6 +566,8 @@ async def manage_events_handler(message: Message, state: FSMContext, app: App):
             continue
 
         # User selected a specific event
+        if not selection:
+            continue
         event = await app.get_event_by_id(selection)
         if not event:
             await send_safe(message.chat.id, "❌ Встреча не найдена.")

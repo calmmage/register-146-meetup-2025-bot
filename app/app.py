@@ -133,7 +133,7 @@ class App:
         from app.export import SheetExporter
 
         self.settings = AppSettings(**kwargs)
-        self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id, app=self)
+        self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id or "", app=self)
 
         self._collection = None
         self._event_logs = None
@@ -721,7 +721,7 @@ class App:
         class_letter: str,
         city: str,
         graduate_type: str = GraduateType.GRADUATE.value,
-        guests: List[Dict] = None,
+        guests: Optional[List[Dict]] = None,
     ) -> None:
         """
         Log a completed registration to the events chat
@@ -959,7 +959,7 @@ class App:
         )
 
     async def normalize_graduate_types(
-        self, admin_id: int = None, admin_username: str = None
+        self, admin_id: Optional[int] = None, admin_username: Optional[str] = None
     ):
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
@@ -1221,7 +1221,7 @@ class App:
             Boolean indicating whether any records were moved
         """
         # Build query
-        query = {"user_id": user_id}
+        query: dict[str, int | str] = {"user_id": user_id}
         if event_id:
             query["event_id"] = event_id
 
