@@ -426,5 +426,3 @@ class TestAppSettings:
         )
         assert settings.telegram_bot_token.get_secret_value() == "token"
         assert settings.events_chat_id == -123
-
-

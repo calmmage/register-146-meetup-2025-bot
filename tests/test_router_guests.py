@@ -117,7 +117,9 @@ async def test_edit_guests_remove_all(
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
-    mock_app.save_registration_guests.assert_awaited_once_with(12345, "aabbccddeeff00112233aabb", [])
+    mock_app.save_registration_guests.assert_awaited_once_with(
+        12345, "aabbccddeeff00112233aabb", []
+    )
     mock_send.assert_awaited_once()
     assert "убраны" in mock_send.call_args[0][1].lower()
 

@@ -299,7 +299,9 @@ class TestAppRegistration:
         self.mock_deleted_users.insert_one = AsyncMock()
 
         # Call the method
-        result = await self.app.move_user_to_deleted(123456, event_id="aabbccddeeff00112233aabb")
+        result = await self.app.move_user_to_deleted(
+            123456, event_id="aabbccddeeff00112233aabb"
+        )
 
         # Verify that the record was retrieved with correct query
         self.mock_collection.find.assert_called_once_with(

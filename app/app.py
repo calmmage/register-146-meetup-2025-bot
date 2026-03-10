@@ -1020,13 +1020,9 @@ class App:
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
 
-    async def get_unpaid_users(
-        self, event_id: Optional[str] = None
-    ) -> List[Dict]:
+    async def get_unpaid_users(self, event_id: Optional[str] = None) -> List[Dict]:
         """Get all users who have not paid yet (payment_status is not "confirmed")"""
-        return await self._get_users_base(
-            payment_status="unpaid", event_id=event_id
-        )
+        return await self._get_users_base(payment_status="unpaid", event_id=event_id)
 
     async def get_users_without_feedback(
         self, event_id: Optional[str] = None
@@ -1041,7 +1037,9 @@ class App:
 
         return users_without_feedback
 
-    async def get_users_with_feedback(self, event_id: Optional[str] = None) -> List[Dict]:
+    async def get_users_with_feedback(
+        self, event_id: Optional[str] = None
+    ) -> List[Dict]:
         """Get all users who have provided feedback."""
         all_users = await self._get_users_base(event_id=event_id)
         users_with_feedback = []
@@ -1052,17 +1050,11 @@ class App:
 
         return users_with_feedback
 
-    async def get_paid_users(
-        self, event_id: Optional[str] = None
-    ) -> List[Dict]:
+    async def get_paid_users(self, event_id: Optional[str] = None) -> List[Dict]:
         """Get all users who have paid (payment_status is "confirmed")."""
-        return await self._get_users_base(
-            payment_status="paid", event_id=event_id
-        )
+        return await self._get_users_base(payment_status="paid", event_id=event_id)
 
-    async def get_all_users(
-        self, event_id: Optional[str] = None
-    ) -> List[Dict]:
+    async def get_all_users(self, event_id: Optional[str] = None) -> List[Dict]:
         """Get all users regardless of payment status."""
         return await self._get_users_base(event_id=event_id)
 

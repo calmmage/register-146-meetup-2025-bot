@@ -53,9 +53,9 @@ def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | Non
 
     # Remove the prefix
     if callback_data.startswith("confirm_payment_"):
-        data = callback_data[len("confirm_payment_"):]
+        data = callback_data[len("confirm_payment_") :]
     else:
-        data = callback_data[len("decline_payment_"):]
+        data = callback_data[len("decline_payment_") :]
 
     # Split by underscore
     parts = data.split("_")
@@ -214,9 +214,7 @@ async def process_payment(
 
         # Check early bird from event config
         early_bird_deadline = event.get("early_bird_deadline") if event else None
-        early_bird_discount_amount = (
-            event.get("early_bird_discount", 0) if event else 0
-        )
+        early_bird_discount_amount = event.get("early_bird_discount", 0) if event else 0
         today = datetime.now()
         is_early = (
             early_bird_deadline
@@ -660,7 +658,12 @@ async def process_payment(
         )
 
         # Save payment info with pending status
-        await app.save_payment_info(user_id, event_id=event_id, discounted_amount=discounted_amount, regular_amount=regular_amount)
+        await app.save_payment_info(
+            user_id,
+            event_id=event_id,
+            discounted_amount=discounted_amount,
+            regular_amount=regular_amount,
+        )
 
     # Return True if payment was processed (screenshot or PDF received)
     return has_photo or has_pdf
@@ -828,9 +831,7 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
 
     # Extract user_id, event_id and amount from callback data
     try:
-        user_id, event_id, amount_str = parse_payment_callback_data(
-            callback_query.data
-        )
+        user_id, event_id, amount_str = parse_payment_callback_data(callback_query.data)
     except ValueError as e:
         await callback_query.answer(f"Invalid callback data: {e}")
         return
@@ -843,7 +844,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             {"user_id": user_id, "target_city": city}
         )
     else:
-        logger.info(f"Processing payment confirmation: user_id={user_id}, event_id={event_id}")
+        logger.info(
+            f"Processing payment confirmation: user_id={user_id}, event_id={event_id}"
+        )
         registration = await app.collection.find_one(
             {"user_id": user_id, "event_id": event_id}
         )
@@ -910,7 +913,10 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     # Update payment status
     event_id_for_update = registration.get("event_id", event_id)
     await app.update_payment_status(
-        user_id, event_id=event_id_for_update, status="confirmed", payment_amount=payment_amount
+        user_id,
+        event_id=event_id_for_update,
+        status="confirmed",
+        payment_amount=payment_amount,
     )
 
     # Get updated registration with total payment amount
@@ -1030,7 +1036,9 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
         )
         event_id = registration.get("event_id", event_id) if registration else event_id
     else:
-        logger.info(f"Processing payment decline: user_id={user_id}, event_id={event_id}")
+        logger.info(
+            f"Processing payment decline: user_id={user_id}, event_id={event_id}"
+        )
 
     if not event_id:
         await callback_query.answer("Missing event information")
@@ -1092,7 +1100,9 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
     decline_reason = message.text or "Причина не указана"
 
     # Update payment status
-    await app.update_payment_status(user_id, event_id=event_id, status="declined", admin_comment=decline_reason)
+    await app.update_payment_status(
+        user_id, event_id=event_id, status="declined", admin_comment=decline_reason
+    )
 
     # Get registration
     registration = await app.collection.find_one(

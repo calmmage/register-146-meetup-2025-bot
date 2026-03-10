@@ -133,11 +133,21 @@ class TestDeleteUserRegistration:
     async def test_delete_with_event_id(self, app):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"user_id": 123, "target_city": "Москва", "event_id": "aabbccddeeff00112233aabb"}]
+            return_value=[
+                {
+                    "user_id": 123,
+                    "target_city": "Москва",
+                    "event_id": "aabbccddeeff00112233aabb",
+                }
+            ]
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.collection.find_one = AsyncMock(
-            return_value={"user_id": 123, "target_city": "Москва", "event_id": "aabbccddeeff00112233aabb"}
+            return_value={
+                "user_id": 123,
+                "target_city": "Москва",
+                "event_id": "aabbccddeeff00112233aabb",
+            }
         )
         app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
         app.deleted_users.insert_one = AsyncMock()
@@ -443,13 +453,21 @@ class TestMoveUserToDeleted:
     async def test_move_with_event_id(self, app):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"user_id": 123, "target_city": "Москва", "event_id": "aabbccddeeff00112233aabb"}]
+            return_value=[
+                {
+                    "user_id": 123,
+                    "target_city": "Москва",
+                    "event_id": "aabbccddeeff00112233aabb",
+                }
+            ]
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.deleted_users.insert_one = AsyncMock()
         app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
-        result = await app.move_user_to_deleted(123, event_id="aabbccddeeff00112233aabb")
+        result = await app.move_user_to_deleted(
+            123, event_id="aabbccddeeff00112233aabb"
+        )
         assert result is True
         app.deleted_users.insert_one.assert_called_once()
 
