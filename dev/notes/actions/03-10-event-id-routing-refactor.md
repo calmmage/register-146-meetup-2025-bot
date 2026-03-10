@@ -93,3 +93,52 @@ Incremental:
 - `target_city` stays in documents as display data
 - Old Telegram callback buttons get temporary fallback (check if parsed "event_id" matches old CITY_CODES format)
 - Run migration before deploying to ensure all records have event_id
+
+---
+
+## Progress
+
+### Done
+- Step 1: Migration verified (32e8e36)
+- Step 2: `app/app.py` — all DB filters, method signatures, `RegisteredUser.event_id` required (c1d93ca)
+- Step 3: `app/router.py` — `event_id` routing, duplicate check, NoneType guard (c1d93ca)
+- Step 4: `app/routers/payment.py` — CITY_CODES deleted, callback format, legacy fallback (c1d93ca)
+- Step 9 (partial): tests updated for steps 2-4 (c1d93ca)
+
+### Remaining
+
+**Step 5: `app/routers/stats.py`** ← main remaining work
+- ~10 aggregation pipelines group by `$target_city` → group by `$event_id`
+- After aggregation, resolve display names from events collection
+- `$match: {"target_city": {"$ne": "Белград"}}` → exclude by event_id or pricing_type
+- Hardcoded city lists → dynamic event loading
+- `simplify_city` function (line 1159) → replace with event-based grouping
+- Charts and labels: keep city display names, just source them from events
+
+**Step 6: `app/routers/crm.py`** ✅ verified clean
+- Already uses `event_id` params from step 2
+- `target_city` reads are display-only (templates, user lists) — no changes needed
+
+**Step 7: `app/routers/events.py`** ✅ verified clean
+- `CITY_PREPOSITIONAL_MAP` used only for event creation convenience (not routing)
+- No routing logic depends on city name
+
+**Step 8: `app/export.py`** ✅ verified clean
+- `target_city` reads are display data for export columns — no changes needed
+
+**Step 9: Tests (remaining)**
+- Any test files touching stats need event_id in fixtures
+- crm/events/export tests already clean
+
+**Step 10: Cleanup** (deferred, post-production stabilization)
+- Remove `CITY_PREPOSITIONAL_MAP` from `app/app.py` (now in event docs)
+- Remove `_LEGACY_CITY_CODES_REVERSE` from `payment.py` (after ~1 week in production)
+- Remove legacy fallback in `get_event_for_registration` (app.py lines 274-278)
+- Final grep: `target_city` should only appear in display/export contexts
+
+## Production bugs (fixed in c1d93ca)
+- Moscow event not showing: city-name duplicate check collided 2025/2026 events → now uses event_id
+- `calculate_event_payment` NoneType crash: added guard when `selected_event` is None
+
+## New features (separate from refactor)
+- Admin `/wipe_registrations` command: select event → double confirm → export JSON dump → delete registrations
