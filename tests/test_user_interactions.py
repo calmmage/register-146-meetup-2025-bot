@@ -2,10 +2,7 @@
 
 import asyncio
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiogram.types import InlineKeyboardButton
 
 from app.user_interactions import (
     PendingRequest,

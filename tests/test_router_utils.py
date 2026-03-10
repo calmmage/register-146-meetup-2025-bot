@@ -1,6 +1,5 @@
 """Tests for pure helper functions in routers."""
 
-import pytest
 from datetime import datetime
 
 from app.routers.events import (
@@ -15,7 +14,6 @@ from app.routers.events import (
 from app.routers.admin import _format_graduate_type
 from app.routers.crm import apply_message_templates
 from app.routers.stats import get_median
-from app.app import PricingType
 
 
 class TestSuggestEventName:

@@ -1,7 +1,6 @@
 """Tests for migration framework (not individual migrations)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.migrations import Migration, MIGRATION_REGISTRY
 

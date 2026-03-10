@@ -72,7 +72,7 @@ async def test_edit_guests_add_new(mock_message, mock_state, mock_app, base_reg,
 
     with (
         patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="2"),
-        patch("app.router.send_safe", new_callable=AsyncMock) as mock_send,
+        patch("app.router.send_safe", new_callable=AsyncMock),
         patch("app.user_interactions.ask_user_raw", new_callable=AsyncMock, return_value=mock_name_resp),
     ):
         from app.router import _edit_guests

@@ -15,7 +15,6 @@ from app.app import (
     PAYMENT_STATUS_MAP,
     CITY_PREPOSITIONAL_MAP,
     FeedbackData,
-    RegisteredUser,
     AppSettings,
 )
 

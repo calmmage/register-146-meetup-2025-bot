@@ -1,10 +1,9 @@
 """Tests for async App methods with mocked database."""
 
 import pytest
-from datetime import datetime
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, TargetCity, GraduateType, RegisteredUser, FeedbackData
+from app.app import App, TargetCity, RegisteredUser, FeedbackData
 
 
 @pytest.fixture
@@ -418,7 +417,7 @@ class TestGetUsersBase:
         mock_cursor.to_list = AsyncMock(return_value=[])
         app.collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await app.get_all_users(city="PERM")
+        await app.get_all_users(city="PERM")
         query = app.collection.find.call_args[0][0]
         assert "$and" in query
 
