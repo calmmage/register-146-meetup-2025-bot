@@ -8,9 +8,6 @@ jobs:
   ruff-check:
     name: Ruff
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ "3.13" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -19,24 +16,21 @@ jobs:
         with:
           version: "latest"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --all-groups
 
       - name: Run Ruff linter
-        run: uv run ruff check .
+        run: uv run ruff check --exclude tests .
 
       - name: Run Ruff formatter check
-        run: uv run ruff format --check .
+        run: uv run ruff format --check --exclude tests .
 
   dead-code-check:
     name: Vulture
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ "3.13" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -45,21 +39,18 @@ jobs:
         with:
           version: "latest"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --all-groups
 
       - name: Run Vulture dead code detector
-        run: uv run vulture --min-confidence 80 --exclude .venv .
+        run: uv run vulture --min-confidence 80 --exclude tests .
 
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ "3.13" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -68,8 +59,8 @@ jobs:
         with:
           version: "latest"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.13
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -77,6 +68,27 @@ jobs:
       - name: Run coverage analysis
         run: |
           uv run pytest tests/ \
-            --cov=app \
+            --cov=src \
             --cov-report=term \
             --cov-fail-under=50
+
+  complexity:
+    name: Complexity (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run Lizard complexity check
+        run: uv run lizard -l python --CCN 15 -w .

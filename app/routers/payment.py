@@ -612,7 +612,9 @@ async def process_payment(
                 )
             else:  # has_pdf
                 # Send the PDF document with caption
-                assert response.document is not None, "has_pdf is truthy but response.document is None"
+                assert response.document is not None, (
+                    "has_pdf is truthy but response.document is None"
+                )
                 logger.info(f"Sending PDF with file_id: {response.document.file_id}")
                 forwarded_msg = await bot.send_document(
                     chat_id=events_chat_id,
@@ -928,7 +930,9 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
     updated_registration = await app.collection.find_one(
         {"user_id": user_id, "event_id": event_id_for_update}
     )
-    assert updated_registration is not None, "Registration not found after payment update"
+    assert updated_registration is not None, (
+        "Registration not found after payment update"
+    )
     total_payment = updated_registration.get("payment_amount", payment_amount)
 
     # Check if this was an additional payment

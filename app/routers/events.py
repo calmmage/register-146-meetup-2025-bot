@@ -80,7 +80,9 @@ def _format_event_summary(event: dict, reg_count: int = 0) -> str:
     if free_for:
         type_names = {"TEACHER": "Учителя", "ORGANIZER": "Организаторы"}
         names = [type_names.get(t, t) for t in free_for]
-        lines.append(f"🎓 Бесплатно для: {', '.join(n for n in names if n is not None)}")
+        lines.append(
+            f"🎓 Бесплатно для: {', '.join(n for n in names if n is not None)}"
+        )
 
     # Early bird info
     eb_discount = event.get("early_bird_discount", 0)

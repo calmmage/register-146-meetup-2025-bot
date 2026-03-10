@@ -133,7 +133,9 @@ class App:
         from app.export import SheetExporter
 
         self.settings = AppSettings(**kwargs)
-        self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id or "", app=self)
+        self.sheet_exporter = SheetExporter(
+            self.settings.spreadsheet_id or "", app=self
+        )
 
         self._collection = None
         self._event_logs = None

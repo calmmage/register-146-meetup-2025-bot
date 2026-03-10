@@ -153,7 +153,9 @@ async def _ask_user_base(
             if request.raw_response:
                 await request.raw_response.delete()
         elif sent_message.reply_markup:
-            await sent_message.edit_text(text=sent_message.text or "", reply_markup=None)
+            await sent_message.edit_text(
+                text=sent_message.text or "", reply_markup=None
+            )
 
         return (
             request.raw_response

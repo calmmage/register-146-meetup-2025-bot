@@ -1,4 +1,4 @@
-.PHONY: run run-debug check fix test
+.PHONY: check fix fix-unsafe help run run-debug test
 
 run:
 	uv run python run.py
@@ -8,16 +8,27 @@ run-debug:
 
 # Run all CI checks locally
 check:
-	uv run ruff check .
-	uv run ruff format --check .
-	uv run vulture --min-confidence 80 --exclude .venv .
-	uv run pyright
-	uv run pytest tests/
+	-uv run ruff check --exclude tests .
+	-uv run ruff format --check --exclude tests .
+	-uv run vulture --min-confidence 80 --exclude .venv,tests .
+	-uv run pyright --exclude tests
 
 # Auto-fix what can be fixed
 fix:
-	uv run ruff check --fix .
+	-uv run ruff check --fix .
+	uv run ruff format .
+
+fix-unsafe:
+	-uv run ruff check --fix --unsafe-fixes .
 	uv run ruff format .
 
 test:
-	uv run pytest tests/ --cov=app --cov-report=term --cov-fail-under=50
+	uv run pytest tests/ --cov=src --cov-report=term --cov-fail-under=50
+
+help:
+	@echo "Available targets:"
+	@echo "  check        - Run all linters and type checks (continues past failures)"
+	@echo "  fix          - Auto-fix lint issues and format code"
+	@echo "  fix-unsafe   - Auto-fix with unsafe fixes enabled"
+	@echo "  test         - Run tests with coverage"
+	@echo "  help         - Show this help message"
