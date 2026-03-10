@@ -35,7 +35,7 @@ def main(debug=False) -> None:
     setup_logger(logger, level="DEBUG" if debug else "INFO")  # type: ignore[arg-type]
 
     app = App()
-    dp["src"] = app
+    dp["app"] = app
     # Initialize Bot instance with a default parse mode
     bot = Bot(
         token=app.settings.telegram_bot_token.get_secret_value(),
