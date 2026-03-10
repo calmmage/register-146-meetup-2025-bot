@@ -58,7 +58,7 @@ def mock_ask_user():
 
 
 @pytest.fixture
-def mock_botspot_dependencies():
+def _mock_botspot_dependencies():
     with patch("botspot.core.dependency_manager.get_dependency_manager") as mock_deps:
         mock_manager = MagicMock()
         mock_manager.bot = AsyncMock()
@@ -79,7 +79,7 @@ async def test_start_handler_existing_summer_user(
     mock_state,
     mock_app,
     mock_send_safe,
-    mock_botspot_dependencies,
+    _mock_botspot_dependencies,
     mock_is_admin,
 ):
     from app.router import start_handler
@@ -129,7 +129,7 @@ async def test_start_handler_existing_summer_user(
 #     mock_send_safe,
 #     mock_ask_user_choice,
 #     mock_ask_user,
-#     mock_botspot_dependencies
+#     _mock_botspot_dependencies
 # ):
 #     # This test has issues with deep call chains and nested async methods
 #     # Commenting out for now to allow tests to pass
@@ -138,7 +138,7 @@ async def test_start_handler_existing_summer_user(
 
 @pytest.mark.asyncio
 async def test_cancel_registration_handler_no_registrations(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
+    mock_message, mock_state, mock_app, mock_send_safe, _mock_botspot_dependencies
 ):
     from app.router import cancel_registration_handler
 

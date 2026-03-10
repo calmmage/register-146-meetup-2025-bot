@@ -52,7 +52,7 @@ jobs:
         run: uv sync --all-groups
 
       - name: Run Vulture dead code detector
-        run: uv run vulture --min-confidence 80 .
+        run: uv run vulture --min-confidence 80 --exclude .venv .
 
   coverage:
     name: Coverage Report
@@ -77,6 +77,6 @@ jobs:
       - name: Run coverage analysis
         run: |
           uv run pytest tests/ \
-            --cov=src \
+            --cov=app \
             --cov-report=term \
             --cov-fail-under=50

@@ -401,7 +401,7 @@ async def update_event_details_and_perm_pricing(app):
         {"city": "Москва", "date": datetime(2026, 3, 21, 18, 0)},
         {
             "$set": {
-                "venue": 'Лофт «Мультирум»',
+                "venue": "Лофт «Мультирум»",
                 "address": "ул. Смирновская, 25с3",
                 "time_display": "18:00-00:00",
             }
@@ -415,7 +415,7 @@ async def update_event_details_and_perm_pricing(app):
         {"city": "Санкт-Петербург", "date": datetime(2026, 3, 28, 17, 0)},
         {
             "$set": {
-                "venue": 'Лофт «МыВместе»',
+                "venue": "Лофт «МыВместе»",
                 "address": "ул. Дивенская, 5",
                 "time_display": "18:00-23:00",
             }
