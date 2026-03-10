@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, TargetCity, GraduateType
+from app.app import App, GraduateType
 
 
 class TestApp:
@@ -184,7 +184,7 @@ class TestApp:
             full_name="Иванов Иван",
             graduation_year=2010,
             class_letter="А",
-            city=TargetCity.MOSCOW.value,
+            city="Москва",
             graduate_type=GraduateType.GRADUATE.value,
         )
 
@@ -222,7 +222,7 @@ class TestApp:
             user_id=98765,
             username="test_user",
             full_name="Иванов Иван",
-            city=TargetCity.MOSCOW.value,
+            city="Москва",
         )
 
         # Verify the call

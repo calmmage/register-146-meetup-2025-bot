@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, TargetCity, RegisteredUser, FeedbackData
+from app.app import App, RegisteredUser, FeedbackData
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ class TestSaveRegisteredUser:
             full_name="Иванов Иван",
             graduation_year=2010,
             class_letter="А",
-            target_city=TargetCity.MOSCOW,
+            target_city="Москва",
         )
         await app.save_registered_user(user, user_id=12345, username="ivan")
         app.collection.insert_one.assert_called_once()
@@ -75,7 +75,7 @@ class TestSaveRegisteredUser:
             full_name="Иванов Иван",
             graduation_year=2010,
             class_letter="А",
-            target_city=TargetCity.MOSCOW,
+            target_city="Москва",
         )
         await app.save_registered_user(user, user_id=12345, username="ivan")
         app.collection.update_one.assert_called_once()

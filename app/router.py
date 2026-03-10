@@ -10,7 +10,7 @@ from loguru import logger
 from textwrap import dedent
 from typing import Dict, List, Optional
 
-from app.app import App, TargetCity, RegisteredUser, GraduateType
+from app.app import App, RegisteredUser, GraduateType
 from app.routers.admin import admin_handler
 from botspot import commands_menu
 from app.user_interactions import ask_user, ask_user_choice
@@ -605,7 +605,7 @@ async def register_user(
 
     if preselected_city:
         # Use preselected city if provided - find matching event
-        location = next((c for c in TargetCity if c.value == preselected_city), None)
+        location = preselected_city
         selected_event = next(
             (
                 e
@@ -625,12 +625,6 @@ async def register_user(
                 reply_markup=ReplyKeyboardRemove(),
             )
             return
-
-        if not selected_event:
-            # Try matching by TargetCity value (legacy)
-            location = next(
-                (c for c in TargetCity if c.value == preselected_city), None
-            )
 
         # Log preselected city
         log_msg = await app.log_registration_step(
@@ -702,21 +696,14 @@ async def register_user(
         # Response is an event_id
         selected_event = event_map.get(response)
         if selected_event:
-            # Set location from event city for backward compat
-            location = next(
-                (c for c in TargetCity if c.value == selected_event["city"]), None
-            )
-            if not location:
-                # Create a dynamic target - use city name directly
-                location = None  # Will handle below
+            location = selected_event["city"]
         else:
-            # Fallback: try as TargetCity value
-            location = next((c for c in TargetCity if c.value == response), None)
+            location = response
 
         city_name = (
             selected_event["city"]
             if selected_event
-            else (location.value if location else response)
+            else (location if location else response)
         )
         log_msg = await app.log_registration_step(
             user_id, username, "Выбор города", f"Выбранный город: {city_name}"
@@ -740,7 +727,7 @@ async def register_user(
     reg_city_name = (
         selected_event["city"]
         if selected_event
-        else (location.value if location else "")
+        else (location if location else "")
     )
 
     # If we have info to reuse, skip asking for name and class
@@ -978,20 +965,11 @@ async def register_user(
         if log_msg:
             log_messages[user_id].append(log_msg)
 
-    # Determine the target_city value for backward compat
+    # Determine the target_city value
     if location:
         target_city_value = location
     elif selected_event:
-        # For new events not in TargetCity enum, find best match or use city name
-        target_city_value = next(
-            (c for c in TargetCity if c.value == selected_event["city"]), None
-        )
-        if not target_city_value:
-            # Use PERM as fallback for Пермь, MOSCOW for Москва, etc.
-            target_city_value = next(
-                (c for c in TargetCity if c.value == selected_event["city"]),
-                TargetCity.PERM,
-            )
+        target_city_value = selected_event["city"]
 
     # Internal validation - log error but don't expose to user
     if not all([full_name, graduation_year is not None, class_letter, graduate_type]):
@@ -1114,11 +1092,7 @@ async def register_user(
     await delete_log_messages(user_id)
 
     # Determine the city string for DB operations
-    city_for_db = (
-        target_city_value.value
-        if isinstance(target_city_value, TargetCity)
-        else reg_city_name
-    )
+    city_for_db = reg_city_name
 
     # Save guest data to registration
     if guests:
@@ -1131,7 +1105,7 @@ async def register_user(
     elif location:
         from app.app import CITY_PREPOSITIONAL_MAP
 
-        city_prep = CITY_PREPOSITIONAL_MAP.get(location.value, location.value)
+        city_prep = CITY_PREPOSITIONAL_MAP.get(location, location)
 
     date_display = get_event_date_display(selected_event) if selected_event else ""
 
@@ -1213,18 +1187,11 @@ async def register_user(
             await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow - needs payment
-        if selected_event:
-            regular_amount, discount, discounted_amount, formula_amount = (
-                app.calculate_event_payment(
-                    selected_event, graduation_year, graduate_type.value
-                )
+        regular_amount, discount, discounted_amount, formula_amount = (
+            app.calculate_event_payment(
+                selected_event, graduation_year, graduate_type.value
             )
-        else:
-            regular_amount, discount, discounted_amount, formula_amount = (
-                app.calculate_payment_amount(
-                    city_for_db, graduation_year, graduate_type.value
-                )
-            )
+        )
 
         # Add guest total to payment amounts
         guest_total = sum(g["price"] for g in guests) if guests else 0

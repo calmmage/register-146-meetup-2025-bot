@@ -46,9 +46,6 @@ def mock_app():
         # Configure app mocks with AsyncMock for async methods
         mock_app.get_user_registrations = AsyncMock(return_value=[])
         mock_app.get_user_registration = AsyncMock(return_value=None)
-        mock_app.calculate_payment_amount = MagicMock(
-            return_value=(2000, 200, 1800, 3000)
-        )  # regular, discount, discounted, formula
         mock_app.save_payment_info = AsyncMock()
         mock_app.update_payment_status = AsyncMock()
         mock_app.save_event_log = AsyncMock()
@@ -175,7 +172,7 @@ async def test_pay_handler_no_registrations(
 async def test_pay_handler_with_registration(
     mock_message, mock_state, mock_app, mock_send_safe, _mock_botspot_dependencies
 ):
-    from app.app import TargetCity, GraduateType
+    from app.app import GraduateType
     from app.routers.payment import (
         pay_handler,
     )
@@ -185,7 +182,7 @@ async def test_pay_handler_with_registration(
         "full_name": "Test User",
         "graduation_year": 2010,
         "class_letter": "A",
-        "target_city": TargetCity.MOSCOW.value,
+        "target_city": "Москва",
         "graduate_type": GraduateType.GRADUATE.value,
     }
     mock_app.get_user_registrations.return_value = [mock_registration]
@@ -200,7 +197,7 @@ async def test_pay_handler_with_registration(
         # Verify process_payment was called with correct args
         mock_process.assert_called_once()
         args = mock_process.call_args[0]
-        assert args[2] == TargetCity.MOSCOW.value
+        assert args[2] == "Москва"
         assert args[3] == 2010
 
 

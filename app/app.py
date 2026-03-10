@@ -11,16 +11,6 @@ from botspot import get_database
 from botspot.utils import send_safe
 
 
-class TargetCity(Enum):
-    """Legacy city enum. Kept for backward compatibility with existing DB records."""
-
-    PERM = "Пермь"
-    MOSCOW = "Москва"
-    SAINT_PETERSBURG = "Санкт-Петербург"
-    BELGRADE = "Белград"
-    PERM_SUMMER_2025 = "Пермь (Летняя встреча 2025)"
-
-
 class EventStatus(str, Enum):
     UPCOMING = "upcoming"
     REGISTRATION_CLOSED = "registration_closed"
@@ -100,7 +90,7 @@ class RegisteredUser(BaseModel):
     full_name: str
     graduation_year: int
     class_letter: str
-    target_city: TargetCity
+    target_city: str
     event_id: Optional[str] = None
     user_id: Optional[int] = None
     username: Optional[str] = None
@@ -333,11 +323,11 @@ class App:
             if graduate_type == GraduateType.NON_GRADUATE.value:
                 guest_min = event.get("guest_price_minimum", 0)
                 if guest_min > 0:
-                    non_grad_amount = guest_min
+                    regular_amount = guest_min
                 else:
                     ref_years = 15
-                    non_grad_amount = base + rate * (ref_years // step)
-                return non_grad_amount, 0, non_grad_amount, non_grad_amount
+                    regular_amount = base + rate * (ref_years // step)
+                formula_amount = regular_amount
 
             # Early bird discount
             early_bird_discount = event.get("early_bird_discount", 0)
@@ -408,10 +398,9 @@ class App:
         username: Optional[str] = None,
     ):
         """Save a user registration with optional user_id and username"""
-        # Convert the model to a dict and extract the enum value before saving
+        # Convert the model to a dict for MongoDB storage
         data = registered_user.model_dump()
         # Convert the enums to their string values for MongoDB storage
-        data["target_city"] = data["target_city"].value
         if "graduate_type" in data and isinstance(data["graduate_type"], GraduateType):
             data["graduate_type"] = data[
                 "graduate_type"
@@ -767,7 +756,7 @@ class App:
             message += "💰 Оплата: Бесплатно (учитель)\n"
         elif graduate_type == GraduateType.ORGANIZER.value:
             message += "💰 Оплата: Бесплатно (организатор)\n"
-        elif city == TargetCity.BELGRADE.value:
+        elif city == "Белград":
             message += "💰 Оплата: За свой счет (Белград)\n"
 
         if guests:
@@ -802,111 +791,6 @@ class App:
             message += "🏙️ Все города\n"
 
         await self.log_to_chat(message, "events")
-
-    def calculate_payment_amount(
-        self,
-        city: str,
-        graduation_year: int,
-        graduate_type: str = GraduateType.GRADUATE.value,
-    ) -> tuple[int, int, int, int]:
-        """
-        Calculate the payment amount based on city, graduation year, and graduate type
-
-        Args:
-            city: The city of the event
-            graduation_year: The user's graduation year
-            graduate_type: The type of participant (graduate, teacher, non_graduate)
-
-        Returns:
-            Tuple of (regular_amount, discount, discounted_amount)
-        """
-        # Teachers are free (legacy method — Belgrade still free via event config)
-        if (
-            graduate_type == GraduateType.TEACHER.value
-            or city == TargetCity.BELGRADE.value
-        ):
-            return 0, 0, 0, 0
-
-        # Special pricing for summer 2025 event in Perm
-        if city == TargetCity.PERM_SUMMER_2025.value:
-            # New formula: 2200 - 100 * (((graduation_year - 1999) // 3) + 1)
-            # But let's use the exact table provided by Maria
-            year_price_map = {
-                2025: 1300,
-                2024: 1300,
-                2023: 1300,
-                2022: 1400,
-                2021: 1400,
-                2020: 1400,
-                2019: 1500,
-                2018: 1500,
-                2017: 1500,
-                2016: 1600,
-                2015: 1600,
-                2014: 1600,
-                2013: 1700,
-                2012: 1700,
-                2011: 1700,
-                2010: 1800,
-                2009: 1800,
-                2008: 1800,
-                2007: 1900,
-                2006: 1900,
-                2005: 1900,
-                2004: 2000,
-                2003: 2000,
-                2002: 2000,
-                2001: 2100,
-                2000: 2100,
-                1999: 2100,
-            }
-
-            # For years before 1999, use 2200
-            amount = year_price_map.get(graduation_year, 2200)
-
-            # No early registration discount for summer event
-            return amount, 0, amount, amount
-
-        # For non-graduates, use fixed recommended amounts (old events)
-        if graduate_type == GraduateType.NON_GRADUATE.value:
-            if city == TargetCity.MOSCOW.value:
-                return 4000, 1000, 3000, 4000
-            elif city == TargetCity.PERM.value:
-                return 2000, 500, 1500, 2000
-            else:
-                return 0, 0, 0, 0
-
-        # Regular payment calculation for graduates (old events)
-        current_year = 2025
-        years_since_graduation = max(0, current_year - graduation_year)
-
-        formula_amount = 0
-        if city == TargetCity.MOSCOW.value:
-            formula_amount = 1000 + (200 * years_since_graduation)
-        elif city == TargetCity.PERM.value:
-            formula_amount = 500 + (100 * years_since_graduation)
-
-        regular_amount = 0
-        if years_since_graduation <= 15:
-            regular_amount = formula_amount
-        else:
-            if city == TargetCity.MOSCOW.value:
-                regular_amount = 4000
-            elif city == TargetCity.PERM.value:
-                regular_amount = 2000
-
-        # Early registration discount (old events only)
-        discount = 0
-        # if early_registration:
-        if city == TargetCity.MOSCOW.value:
-            discount = 1000
-        elif city == TargetCity.PERM.value:
-            discount = 500
-
-        # Final amount after discount
-        discounted_amount = max(0, regular_amount - discount)
-
-        return regular_amount, discount, discounted_amount, formula_amount
 
     async def save_payment_info(
         self,
@@ -1133,11 +1017,11 @@ class App:
         elif city and city != "all":
             # Legacy: map city key to actual value
             city_mapping = {
-                "MOSCOW": TargetCity.MOSCOW.value,
-                "PERM": TargetCity.PERM.value,
-                "SAINT_PETERSBURG": TargetCity.SAINT_PETERSBURG.value,
-                "BELGRADE": TargetCity.BELGRADE.value,
-                "PERM_SUMMER_2025": TargetCity.PERM_SUMMER_2025.value,
+                "MOSCOW": "Москва",
+                "PERM": "Пермь",
+                "SAINT_PETERSBURG": "Санкт-Петербург",
+                "BELGRADE": "Белград",
+                "PERM_SUMMER_2025": "Пермь (Летняя встреча 2025)",
             }
             if city in city_mapping:
                 and_conditions.append({"target_city": city_mapping[city]})
@@ -1258,7 +1142,7 @@ class App:
         # Fix Belgrade registrations
         belgrade_result = await self.collection.update_many(
             {
-                "target_city": TargetCity.BELGRADE.value,
+                "target_city": "Белград",
                 "payment_status": {"$ne": "confirmed"},
             },
             {"$set": {"payment_status": "confirmed"}},
