@@ -333,11 +333,11 @@ class App:
             if graduate_type == GraduateType.NON_GRADUATE.value:
                 guest_min = event.get("guest_price_minimum", 0)
                 if guest_min > 0:
-                    non_grad_amount = guest_min
+                    regular_amount = guest_min
                 else:
                     ref_years = 15
-                    non_grad_amount = base + rate * (ref_years // step)
-                return non_grad_amount, 0, non_grad_amount, non_grad_amount
+                    regular_amount = base + rate * (ref_years // step)
+                formula_amount = regular_amount
 
             # Early bird discount
             early_bird_discount = event.get("early_bird_discount", 0)

@@ -269,6 +269,22 @@ class TestCalculateEventPayment:
         result = app.calculate_event_payment(event, 2020, "NON_GRADUATE")
         assert result == (3000, 0, 3000, 3000)
 
+    def test_non_graduate_early_bird(self, app):
+        """Non-graduate gets early bird discount."""
+        event = {
+            "pricing_type": "formula",
+            "price_formula_base": 1500,
+            "price_formula_rate": 500,
+            "price_formula_reference_year": 2025,
+            "price_formula_step": 3,
+            "free_for_types": [],
+            "early_bird_discount": 500,
+            "early_bird_deadline": datetime(2099, 1, 1),
+        }
+        # base + rate * (15 // 3) = 1500 + 500*5 = 4000, early bird → 3500
+        result = app.calculate_event_payment(event, 2020, "NON_GRADUATE")
+        assert result == (4000, 500, 3500, 4000)
+
     def test_non_graduate_low_base(self, app):
         """Non-graduate with low base formula."""
         event = {
