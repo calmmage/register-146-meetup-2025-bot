@@ -33,39 +33,48 @@ async def show_stats(message: Message, app: App):
     # Initialize stats text
     stats_text = "<b>📊 Статистика регистраций</b> (включая удаленных)\n\n"
 
-    # 1. Count registrations by city for both active and deleted users
+    # Build event_id → display name map
+    all_events = await app.get_all_events()
+    event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+    free_event_ids = {
+        str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
+    }
+
+    # 1. Count registrations by event for both active and deleted users
     # Active users
     city_cursor = app.collection.aggregate(
-        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+        [{"$group": {"_id": "$event_id", "count": {"$sum": 1}}}]
     )
     active_city_stats = await city_cursor.to_list(length=None)
 
     # Deleted users
     deleted_city_cursor = app.deleted_users.aggregate(
-        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+        [{"$group": {"_id": "$event_id", "count": {"$sum": 1}}}]
     )
     deleted_city_stats = await deleted_city_cursor.to_list(length=None)
 
-    # Combine city statistics
+    # Combine event statistics
     city_stats_combined = {}
     for stat in active_city_stats:
-        city = stat["_id"]
+        eid = stat["_id"]
         count = stat["count"]
-        city_stats_combined[city] = {"active": count, "deleted": 0}
+        city_stats_combined[eid] = {"active": count, "deleted": 0}
 
     for stat in deleted_city_stats:
-        city = stat["_id"]
+        eid = stat["_id"]
         count = stat["count"]
-        if city in city_stats_combined:
-            city_stats_combined[city]["deleted"] = count
+        if eid in city_stats_combined:
+            city_stats_combined[eid]["deleted"] = count
         else:
-            city_stats_combined[city] = {"active": 0, "deleted": count}
+            city_stats_combined[eid] = {"active": 0, "deleted": count}
 
     stats_text += "<b>🌆 По городам:</b>\n"
     total_active = 0
     total_deleted = 0
 
-    for city, counts in sorted(city_stats_combined.items()):
+    for eid, counts in sorted(
+        city_stats_combined.items(), key=lambda x: event_name_map.get(x[0], x[0] or "")
+    ):
         active_count = counts["active"]
         deleted_count = counts["deleted"]
         total_count = active_count + deleted_count
@@ -73,8 +82,9 @@ async def show_stats(message: Message, app: App):
         total_active += active_count
         total_deleted += deleted_count
 
+        city_name = event_name_map.get(eid, eid or "Неизвестно")
         deleted_note = f" (из них {deleted_count} удал.)" if deleted_count > 0 else ""
-        stats_text += f"• {city}: <b>{total_count}</b> человек{deleted_note}\n"
+        stats_text += f"• {city_name}: <b>{total_count}</b> человек{deleted_note}\n"
 
     total = total_active + total_deleted
     deleted_percentage = (
@@ -189,19 +199,19 @@ async def show_stats(message: Message, app: App):
         stats_text += f"• {text}: <b>{total_count}</b>{deleted_note}\n"
     stats_text += "\n"
 
-    # 3. Payment statistics by city
+    # 3. Payment statistics by event
     # Active users
     active_payment_cursor = app.collection.aggregate(
         [
             {
-                "$match": {"target_city": {"$ne": "Белград"}}
-            },  # Exclude Belgrade as it's free
+                "$match": {"event_id": {"$nin": list(free_event_ids)}}
+            },  # Exclude free events
             {
                 "$match": {"graduate_type": {"$ne": "TEACHER"}}
             },  # Exclude teachers as they don't pay
             {
                 "$group": {
-                    "_id": "$target_city",
+                    "_id": "$event_id",
                     "payments": {
                         "$push": {
                             "payment": {"$ifNull": ["$payment_amount", 0]},
@@ -263,14 +273,14 @@ async def show_stats(message: Message, app: App):
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
             {
-                "$match": {"target_city": {"$ne": "Белград"}}
-            },  # Exclude Belgrade as it's free
+                "$match": {"event_id": {"$nin": list(free_event_ids)}}
+            },  # Exclude free events
             {
                 "$match": {"graduate_type": {"$ne": "TEACHER"}}
             },  # Exclude teachers as they don't pay
             {
                 "$group": {
-                    "_id": "$target_city",
+                    "_id": "$event_id",
                     "payments": {
                         "$push": {
                             "payment": {"$ifNull": ["$payment_amount", 0]},
@@ -333,16 +343,16 @@ async def show_stats(message: Message, app: App):
 
     # Process active payment stats
     for stat in active_payment_stats:
-        city = stat["_id"]
-        payment_stats_combined[city] = {"active": stat, "deleted": None}
+        eid = stat["_id"]
+        payment_stats_combined[eid] = {"active": stat, "deleted": None}
 
     # Process deleted payment stats
     for stat in deleted_payment_stats:
-        city = stat["_id"]
-        if city in payment_stats_combined:
-            payment_stats_combined[city]["deleted"] = stat
+        eid = stat["_id"]
+        if eid in payment_stats_combined:
+            payment_stats_combined[eid]["deleted"] = stat
         else:
-            payment_stats_combined[city] = {"active": None, "deleted": stat}
+            payment_stats_combined[eid] = {"active": None, "deleted": stat}
 
     stats_text += "<b>💰 Статистика оплат:</b>\n"
     total_paid_active = 0
@@ -359,7 +369,10 @@ async def show_stats(message: Message, app: App):
     all_ratios_regular = []
     all_ratios_discounted = []
 
-    for city, stats in sorted(payment_stats_combined.items()):
+    for eid, stats in sorted(
+        payment_stats_combined.items(),
+        key=lambda x: event_name_map.get(x[0], x[0] or ""),
+    ):
         active_stat = stats["active"]
         deleted_stat = stats["deleted"]
 
@@ -419,13 +432,14 @@ async def show_stats(message: Message, app: App):
         total_discounted_active += active_discounted_total
         total_discounted_deleted += deleted_discounted_total
 
-        # Display city statistics
+        # Display event statistics
         total_paid = active_paid + deleted_paid
         deleted_note = (
             f" (из них {deleted_paid:,} от удал.)" if deleted_paid > 0 else ""
         )
 
-        stats_text += f"\n<b>{city}:</b>\n"
+        city_name = event_name_map.get(eid, eid or "Неизвестно")
+        stats_text += f"\n<b>{city_name}:</b>\n"
         stats_text += f"💵 Собрано: <b>{total_paid:,}</b> руб.{deleted_note}\n"
         stats_text += f"📊 Медиана % от формулы: <i>{median_formula:.1f}%</i>\n"
         stats_text += f"📊 Медиана % от регулярной: <i>{median_regular:.1f}%</i>\n"
@@ -490,39 +504,49 @@ async def show_simple_stats(message: Message, app: App):
 
     stats_text = "<b>📊 Краткая статистика регистраций</b> (включая удаленных)\n\n"
 
-    # 1. Count registrations by city for both active and deleted users
+    # Build event_id → display name map
+    all_events = await app.get_all_events()
+    event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+    free_event_ids = {
+        str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
+    }
+
+    # 1. Count registrations by event for both active and deleted users
     # Active users
     city_cursor = app.collection.aggregate(
-        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+        [{"$group": {"_id": "$event_id", "count": {"$sum": 1}}}]
     )
     active_city_stats = await city_cursor.to_list(length=None)
 
     # Deleted users
     deleted_city_cursor = app.deleted_users.aggregate(
-        [{"$group": {"_id": "$target_city", "count": {"$sum": 1}}}]
+        [{"$group": {"_id": "$event_id", "count": {"$sum": 1}}}]
     )
     deleted_city_stats = await deleted_city_cursor.to_list(length=None)
 
-    # Combine city statistics
+    # Combine event statistics
     city_stats_combined = {}
     for stat in active_city_stats:
-        city = stat["_id"]
+        eid = stat["_id"]
         count = stat["count"]
-        city_stats_combined[city] = {"active": count, "deleted": 0}
+        city_stats_combined[eid] = {"active": count, "deleted": 0}
 
     for stat in deleted_city_stats:
-        city = stat["_id"]
+        eid = stat["_id"]
         count = stat["count"]
-        if city in city_stats_combined:
-            city_stats_combined[city]["deleted"] = count
+        if eid in city_stats_combined:
+            city_stats_combined[eid]["deleted"] = count
         else:
-            city_stats_combined[city] = {"active": 0, "deleted": count}
+            city_stats_combined[eid] = {"active": 0, "deleted": count}
 
     stats_text += "<b>🌆 По городам:</b>\n"
     total_active = 0
     total_deleted = 0
 
-    for city, counts in sorted(city_stats_combined.items()):
+    for eid, counts in sorted(
+        city_stats_combined.items(),
+        key=lambda x: event_name_map.get(x[0], x[0] or ""),
+    ):
         active_count = counts["active"]
         deleted_count = counts["deleted"]
         total_count = active_count + deleted_count
@@ -530,8 +554,9 @@ async def show_simple_stats(message: Message, app: App):
         total_active += active_count
         total_deleted += deleted_count
 
+        city_name = event_name_map.get(eid, eid or "Неизвестно")
         deleted_note = f" (из них {deleted_count} удал.)" if deleted_count > 0 else ""
-        stats_text += f"• {city}: <b>{total_count}</b> человек{deleted_note}\n"
+        stats_text += f"• {city_name}: <b>{total_count}</b> человек{deleted_note}\n"
 
     total = total_active + total_deleted
     deleted_percentage = (
@@ -632,14 +657,14 @@ async def show_simple_stats(message: Message, app: App):
     active_payment_cursor = app.collection.aggregate(
         [
             {
-                "$match": {"target_city": {"$ne": "Белград"}}
-            },  # Exclude Belgrade as it's free
+                "$match": {"event_id": {"$nin": list(free_event_ids)}}
+            },  # Exclude free events
             {
                 "$match": {"graduate_type": {"$ne": "TEACHER"}}
             },  # Exclude teachers as they don't pay
             {
                 "$group": {
-                    "_id": "$target_city",
+                    "_id": "$event_id",
                     "confirmed_count": {
                         "$sum": {
                             "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
@@ -691,14 +716,14 @@ async def show_simple_stats(message: Message, app: App):
     deleted_payment_cursor = app.deleted_users.aggregate(
         [
             {
-                "$match": {"target_city": {"$ne": "Белград"}}
-            },  # Exclude Belgrade as it's free
+                "$match": {"event_id": {"$nin": list(free_event_ids)}}
+            },  # Exclude free events
             {
                 "$match": {"graduate_type": {"$ne": "TEACHER"}}
             },  # Exclude teachers as they don't pay
             {
                 "$group": {
-                    "_id": "$target_city",
+                    "_id": "$event_id",
                     "confirmed_count": {
                         "$sum": {
                             "$cond": [{"$eq": ["$payment_status", "confirmed"]}, 1, 0]
@@ -751,16 +776,16 @@ async def show_simple_stats(message: Message, app: App):
 
     # Process active payment stats
     for stat in active_payment_stats:
-        city = stat["_id"]
-        payment_stats_combined[city] = {"active": stat, "deleted": None}
+        eid = stat["_id"]
+        payment_stats_combined[eid] = {"active": stat, "deleted": None}
 
     # Process deleted payment stats
     for stat in deleted_payment_stats:
-        city = stat["_id"]
-        if city in payment_stats_combined:
-            payment_stats_combined[city]["deleted"] = stat
+        eid = stat["_id"]
+        if eid in payment_stats_combined:
+            payment_stats_combined[eid]["deleted"] = stat
         else:
-            payment_stats_combined[city] = {"active": None, "deleted": stat}
+            payment_stats_combined[eid] = {"active": None, "deleted": stat}
 
     stats_text += "<b>💰 Статусы оплат:</b>\n"
     total_active_confirmed = 0
@@ -774,7 +799,10 @@ async def show_simple_stats(message: Message, app: App):
     total_paid_active = 0
     total_paid_deleted = 0
 
-    for city, stats in sorted(payment_stats_combined.items()):
+    for eid, stats in sorted(
+        payment_stats_combined.items(),
+        key=lambda x: event_name_map.get(x[0], x[0] or ""),
+    ):
         active_stat = stats["active"]
         deleted_stat = stats["deleted"]
 
@@ -799,8 +827,9 @@ async def show_simple_stats(message: Message, app: App):
         total_paid_active += active_paid
         total_paid_deleted += deleted_paid
 
-        # Display for each city
-        stats_text += f"\n<b>{city}:</b>\n"
+        # Display for each event
+        city_name = event_name_map.get(eid, eid or "Неизвестно")
+        stats_text += f"\n<b>{city_name}:</b>\n"
 
         # Active users payment status
         total_active_statuses = (
@@ -932,8 +961,13 @@ async def show_year_stats(message: Message, app: App):
         )
         return
 
-    # Group registrations by city and year for text stats
-    cities = ["Москва", "Пермь", "Санкт-Петербург", "Белград"]
+    # Build event_id → display name map
+    all_events = await app.get_all_events()
+    event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+
+    # Group registrations by city (from event) and year for text stats
+    # Collect unique city names dynamically from events
+    cities = sorted({e.get("city", str(e["_id"])) for e in all_events})
     city_year_counts = {}
     city_year_counts_deleted = {}
 
@@ -944,7 +978,7 @@ async def show_year_stats(message: Message, app: App):
     all_years = set()
 
     for reg in all_registrations:
-        city = reg.get("target_city")
+        city = event_name_map.get(reg.get("event_id"), reg.get("target_city"))
         year = reg.get("graduation_year")
         is_deleted = reg.get("is_deleted", False)
 
@@ -1046,12 +1080,21 @@ async def show_year_stats(message: Message, app: App):
     plt.figure(figsize=(15, 8), dpi=100)
 
     # Define the color palette for cities
-    city_palette = {
-        "Москва": "#FF6666",  # stronger red
-        "Пермь": "#5599FF",  # stronger blue
-        "Санкт-Петербург": "#66CC66",  # stronger green
-        "Белград": "#FF00FF",  # stronger purple
+    _known_colors = {
+        "Москва": "#FF6666",
+        "Пермь": "#5599FF",
+        "Санкт-Петербург": "#66CC66",
+        "Белград": "#FF00FF",
     }
+    _extra_colors = ["#FFB347", "#77DD77", "#AEC6CF", "#FDFD96"]
+    _extra_idx = 0
+    city_palette = {}
+    for c in df["Город"].unique():
+        if c in _known_colors:
+            city_palette[c] = _known_colors[c]
+        else:
+            city_palette[c] = _extra_colors[_extra_idx % len(_extra_colors)]
+            _extra_idx += 1
 
     # Use seaborn with custom styling
     sns.set_style("whitegrid")
@@ -1145,6 +1188,10 @@ async def show_five_year_stats(message: Message, app: App):
         )
         return
 
+    # Build event_id → city name map
+    all_events = await app.get_all_events()
+    event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+
     # Convert MongoDB records to pandas DataFrame - ONLY ACTIVE USERS for visualization
     df = pd.DataFrame(active_registrations)
 
@@ -1155,36 +1202,23 @@ async def show_five_year_stats(message: Message, app: App):
         lambda y: f"{int(y) // 5 * 5}–{int(y) // 5 * 5 + 4}"
     )
 
-    # Упрощённая категоризация городов
-    def simplify_city(city):
-        if pd.isna(city):
-            return "Другие"
-        city = str(city).strip().lower()
-        if "перм" in city:
-            return "Пермь"
-        elif "моск" in city:
-            return "Москва"
-        elif "спб" in city or "питер" in city or "санкт" in city:
-            return "Санкт-Петербург"
-        elif "белград" in city:
-            return "Белград"
-        else:
-            return "Другие"
-
-    df["Город (укрупнённо)"] = df["target_city"].apply(simplify_city)
+    # Resolve city name from event_id
+    df["Город"] = df["event_id"].map(event_name_map).fillna("Другие")
 
     # Группировка по пятилеткам и городам
     pivot = (
-        df.groupby(["Пятилетка", "Город (укрупнённо)"])["full_name"]
+        df.groupby(["Пятилетка", "Город"])["full_name"]
         .count()
         .unstack()
         .fillna(0)
         .sort_index()
     )
 
-    # Упорядочим колонки
-    city_order = ["Пермь", "Москва", "Санкт-Петербург", "Белград", "Другие"]
-    available_cities = [c for c in city_order if c in pivot.columns]
+    # Упорядочим колонки — dynamic from events, "Другие" last
+    known_cities = sorted(pivot.columns.difference(["Другие"]))
+    available_cities = list(known_cities)
+    if "Другие" in pivot.columns:
+        available_cities.append("Другие")
     if available_cities:
         pivot = pivot[available_cities]
 
