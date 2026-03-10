@@ -26,40 +26,36 @@ from botspot.utils import send_safe
 router = Router()
 app = App()
 
-# City code mapping for callback data (to avoid special characters and long names)
-CITY_CODES = {
-    "Москва": "MOSCOW",
-    "Пермь": "PERM",
-    "Санкт-Петербург": "SPB",
-    "Белград": "BELGRADE",
-    "Пермь (Летняя встреча 2025)": "PERM_SUMMER",
+# Legacy city code mapping — only used for parsing old-format callback buttons
+_LEGACY_CITY_CODES_REVERSE = {
+    "MOSCOW": "Москва",
+    "PERM": "Пермь",
+    "SPB": "Санкт-Петербург",
+    "BELGRADE": "Белград",
+    "PERM_SUMMER": "Пермь (Летняя встреча 2025)",
 }
-
-# Reverse mapping
-CITY_CODES_REVERSE = {v: k for k, v in CITY_CODES.items()}
 
 
 def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | None]:
     """
-    Parse payment callback data into user_id, city_code, and amount.
+    Parse payment callback data into user_id, event_id, and amount.
 
-    Args:
-        callback_data: The callback data string (e.g., "confirm_payment_123_PERM_SUMMER_1300")
+    New format: confirm_payment_{user_id}_{event_id}_{amount}
+    event_id is a 24-char hex MongoDB ObjectId (no underscores).
+
+    Old format (temporary fallback): confirm_payment_{user_id}_{CITY_CODE}_{amount}
 
     Returns:
-        Tuple of (user_id, city_code, amount_str)
-
-    Raises:
-        ValueError: If the callback data format is invalid
+        Tuple of (user_id, event_id, amount_str)
     """
     if not callback_data.startswith(("confirm_payment_", "decline_payment_")):
         raise ValueError("Invalid callback data format")
 
     # Remove the prefix
     if callback_data.startswith("confirm_payment_"):
-        data = callback_data[len("confirm_payment_") :]
+        data = callback_data[len("confirm_payment_"):]
     else:
-        data = callback_data[len("decline_payment_") :]
+        data = callback_data[len("decline_payment_"):]
 
     # Split by underscore
     parts = data.split("_")
@@ -68,29 +64,35 @@ def parse_payment_callback_data(callback_data: str) -> tuple[int, str, str | Non
 
     user_id = int(parts[0])
 
-    # Handle city codes that might contain underscores
+    # New format: {user_id}_{event_id} or {user_id}_{event_id}_{amount}
+    # event_id is 24-char hex with no underscores
+    if len(parts[1]) == 24 and all(c in "0123456789abcdef" for c in parts[1]):
+        event_id = parts[1]
+        amount_str = parts[2] if len(parts) >= 3 else None
+        return user_id, event_id, amount_str
+
+    # Old format fallback: city codes may contain underscores (e.g. PERM_SUMMER)
+    logger.warning(f"Parsing old-format callback data: {callback_data}")
     if len(parts) >= 3:
-        # Check if the last part is a number (amount)
         try:
             amount_str = parts[-1]
-            int(amount_str)  # Test if it's a number
-            # If it's a number, everything in between is the city code
+            int(amount_str)
             city_code = "_".join(parts[1:-1])
         except ValueError:
-            # Last part is not a number, so it's part of the city code
             city_code = "_".join(parts[1:])
             amount_str = None
     else:
         city_code = parts[1]
         amount_str = None
 
+    # Return the city code as-is — callers handle legacy lookup
     return user_id, city_code, amount_str
 
 
 async def process_payment(
     message: Message,
     state: FSMContext,
-    city: str,
+    event_id: str,
     graduation_year: int,
     skip_instructions=False,
     graduate_type: str = GraduateType.GRADUATE.value,
@@ -124,7 +126,7 @@ async def process_payment(
 
     # Load event from registration
     registration_data = await app.collection.find_one(
-        {"user_id": user_id, "target_city": city}
+        {"user_id": user_id, "event_id": event_id}
     )
     event = None
     if registration_data:
@@ -137,6 +139,13 @@ async def process_payment(
         )
     else:
         regular_amount, discount, discounted_amount, formula_amount = 0, 0, 0, 0
+
+    # Get city display name from event or registration
+    city = (
+        event.get("city", "")
+        if event
+        else (registration_data.get("target_city", "") if registration_data else "")
+    )
 
     # If guests provided, load from state or registration
     if guests is None:
@@ -338,9 +347,9 @@ async def process_payment(
             # Save payment info with pending status
             await app.save_payment_info(
                 user_id,
-                city,
-                discounted_amount,
-                regular_amount,
+                event_id=event_id,
+                discounted_amount=discounted_amount,
+                regular_amount=regular_amount,
                 formula_amount=formula_amount,
             )
             return False
@@ -373,15 +382,15 @@ async def process_payment(
 
             # Get all user registrations
             registrations = await app.get_user_registrations(user_id)
-            # Find the registration for this city
+            # Find the registration for this event
             registration = next(
-                (reg for reg in registrations if reg["target_city"] == city), None
+                (reg for reg in registrations if reg.get("event_id") == event_id), None
             )
 
             if registration:
                 full_name = registration.get("full_name", "Unknown")
-                # Delete the registration for this city
-                await app.delete_user_registration(user_id, city)
+                # Delete the registration for this event
+                await app.delete_user_registration(user_id, event_id)
 
                 # Log cancellation
                 await app.log_registration_canceled(
@@ -432,10 +441,10 @@ async def process_payment(
         # Save payment info with pending status
         await app.save_payment_info(
             user_id,
-            city,
-            discounted_amount,
-            regular_amount,
-            response.message_id,
+            event_id=event_id,
+            discounted_amount=discounted_amount,
+            regular_amount=regular_amount,
+            screenshot_message_id=response.message_id,
             formula_amount=formula_amount,
             username=username,
         )
@@ -506,10 +515,9 @@ async def process_payment(
             # Create validation buttons
             validation_buttons = []
 
-            # Get city code for callback data
-            city_code = CITY_CODES.get(city, city)
+            # Use event_id for callback data (24-char hex, no underscores)
             logger.info(
-                f"Creating validation buttons for user {user_id}, city: {city}, city_code: {city_code}"
+                f"Creating validation buttons for user {user_id}, city: {city}, event_id: {event_id}"
             )
 
             # If we successfully parsed a valid amount, show simplified buttons
@@ -519,7 +527,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text=f"✅ {payment_info.amount} руб. - Подтвердить распознанную сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city_code}_{payment_info.amount}",
+                            callback_data=f"confirm_payment_{user_id}_{event_id}_{payment_info.amount}",
                         )
                     ]
                 )
@@ -529,7 +537,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text="✅ Подтвердить другую сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city_code}_custom",
+                            callback_data=f"confirm_payment_{user_id}_{event_id}_custom",
                         )
                     ]
                 )
@@ -540,7 +548,7 @@ async def process_payment(
                         [
                             InlineKeyboardButton(
                                 text=f"✅ {discounted_amount} руб. - Подтвердить оплату со скидкой",
-                                callback_data=f"confirm_payment_{user_id}_{city_code}_{discounted_amount}",
+                                callback_data=f"confirm_payment_{user_id}_{event_id}_{discounted_amount}",
                             )
                         ]
                     )
@@ -549,7 +557,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text=f"✅ {regular_amount} руб. - Подтвердить оплату",
-                            callback_data=f"confirm_payment_{user_id}_{city_code}_{regular_amount}",
+                            callback_data=f"confirm_payment_{user_id}_{event_id}_{regular_amount}",
                         )
                     ]
                 )
@@ -559,7 +567,7 @@ async def process_payment(
                         [
                             InlineKeyboardButton(
                                 text=f"✅ {formula_amount} руб. - Подтвердить оплату по формуле",
-                                callback_data=f"confirm_payment_{user_id}_{city_code}_{formula_amount}",
+                                callback_data=f"confirm_payment_{user_id}_{event_id}_{formula_amount}",
                             )
                         ]
                     )
@@ -569,7 +577,7 @@ async def process_payment(
                     [
                         InlineKeyboardButton(
                             text="✅ Подтвердить другую сумму",
-                            callback_data=f"confirm_payment_{user_id}_{city_code}_custom",
+                            callback_data=f"confirm_payment_{user_id}_{event_id}_custom",
                         )
                     ]
                 )
@@ -579,7 +587,7 @@ async def process_payment(
                 [
                     InlineKeyboardButton(
                         text="❌ Отклонить",
-                        callback_data=f"decline_payment_{user_id}_{city_code}",
+                        callback_data=f"decline_payment_{user_id}_{event_id}",
                     )
                 ]
             )
@@ -621,10 +629,10 @@ async def process_payment(
             # Save the screenshot message ID for reference
             await app.save_payment_info(
                 user_id,
-                city,
-                discounted_amount,
-                regular_amount,
-                forwarded_msg.message_id,
+                event_id=event_id,
+                discounted_amount=discounted_amount,
+                regular_amount=regular_amount,
+                screenshot_message_id=forwarded_msg.message_id,
                 formula_amount=formula_amount,
             )
 
@@ -652,7 +660,7 @@ async def process_payment(
         )
 
         # Save payment info with pending status
-        await app.save_payment_info(user_id, city, discounted_amount, regular_amount)
+        await app.save_payment_info(user_id, event_id=event_id, discounted_amount=discounted_amount, regular_amount=regular_amount)
 
     # Return True if payment was processed (screenshot or PDF received)
     return has_photo or has_pdf
@@ -728,7 +736,8 @@ async def pay_handler(message: Message, state: FSMContext):
     if len(payment_registrations) > 1:
         choices = {}
         for reg in payment_registrations:
-            city = reg["target_city"]
+            eid = reg["event_id"]
+            city = reg.get("target_city", "")
             event = await app.get_event_for_registration(reg)
             status = reg.get("payment_status", "не оплачено")
             status_emoji = (
@@ -739,7 +748,7 @@ async def pay_handler(message: Message, state: FSMContext):
                 else "⏳"
             )
             date_str = get_event_date_display(event)
-            choices[city] = f"{city} ({date_str}) - {status_emoji} {status}"
+            choices[eid] = f"{city} ({date_str}) - {status_emoji} {status}"
 
         response = await ask_user_choice(
             message.chat.id,
@@ -749,13 +758,13 @@ async def pay_handler(message: Message, state: FSMContext):
             timeout=None,
         )
 
-        # Log the payment city choice
+        # Log the payment event choice
         await app.save_event_log(
             "button_click",
             {
                 "button": response,
-                "context": "payment_city_selection",
-                "available_cities": list(choices.keys()),
+                "context": "payment_event_selection",
+                "available_event_ids": list(choices.keys()),
             },
             message.from_user.id,
             message.from_user.username,
@@ -763,7 +772,7 @@ async def pay_handler(message: Message, state: FSMContext):
 
         # Find the selected registration
         selected_reg = next(
-            (reg for reg in payment_registrations if reg["target_city"] == response),
+            (reg for reg in payment_registrations if reg["event_id"] == response),
             None,
         )
     else:
@@ -787,7 +796,7 @@ async def pay_handler(message: Message, state: FSMContext):
         await process_payment(
             message,
             state,
-            selected_reg["target_city"],
+            selected_reg["event_id"],
             selected_reg["graduation_year"],
             skip_instructions,
             graduate_type=graduate_type,
@@ -817,31 +826,29 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Дождитесь завершения текущей операции...")
         return
 
-    # Extract user_id, city and amount from callback data
+    # Extract user_id, event_id and amount from callback data
     try:
-        user_id, city_code, amount_str = parse_payment_callback_data(
+        user_id, event_id, amount_str = parse_payment_callback_data(
             callback_query.data
         )
     except ValueError as e:
         await callback_query.answer(f"Invalid callback data: {e}")
         return
 
-    # Convert city code back to full city name
-    city = CITY_CODES_REVERSE.get(city_code, city_code)
-    logger.info(
-        f"Processing payment confirmation: user_id={user_id}, city_code={city_code}, city={city}"
-    )
-    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
-    logger.info(f"Looking for registration: user_id={user_id}, target_city={city}")
+    # Handle legacy city-code format
+    if event_id in _LEGACY_CITY_CODES_REVERSE:
+        city = _LEGACY_CITY_CODES_REVERSE[event_id]
+        logger.warning(f"Legacy callback format, resolved city: {city}")
+        registration = await app.collection.find_one(
+            {"user_id": user_id, "target_city": city}
+        )
+    else:
+        logger.info(f"Processing payment confirmation: user_id={user_id}, event_id={event_id}")
+        registration = await app.collection.find_one(
+            {"user_id": user_id, "event_id": event_id}
+        )
 
-    if not city:
-        await callback_query.answer("Missing city information")
-        return
-
-    # Get registration
-    registration = await app.collection.find_one(
-        {"user_id": user_id, "target_city": city}
-    )
+    city = registration.get("target_city", "") if registration else ""
     if not registration:
         await callback_query.answer("Registration not found")
         return
@@ -901,13 +908,14 @@ async def confirm_payment_callback(callback_query: CallbackQuery, state: FSMCont
             return
 
     # Update payment status
+    event_id_for_update = registration.get("event_id", event_id)
     await app.update_payment_status(
-        user_id, city, "confirmed", payment_amount=payment_amount
+        user_id, event_id=event_id_for_update, status="confirmed", payment_amount=payment_amount
     )
 
     # Get updated registration with total payment amount
     updated_registration = await app.collection.find_one(
-        {"user_id": user_id, "target_city": city}
+        {"user_id": user_id, "event_id": event_id_for_update}
     )
     total_payment = updated_registration.get("payment_amount", payment_amount)
 
@@ -1006,29 +1014,33 @@ async def decline_payment_callback(callback_query: CallbackQuery, state: FSMCont
         await callback_query.answer("Дождитесь завершения текущей операции...")
         return
 
-    # Extract user_id and city from callback data
+    # Extract user_id and event_id from callback data
     try:
-        user_id, city_code, _ = parse_payment_callback_data(callback_query.data)
+        user_id, event_id, _ = parse_payment_callback_data(callback_query.data)
     except ValueError as e:
         await callback_query.answer(f"Invalid callback data: {e}")
         return
 
-    # Convert city code back to full city name
-    city = CITY_CODES_REVERSE.get(city_code, city_code) if city_code else None
-    logger.info(
-        f"Processing payment decline: user_id={user_id}, city_code={city_code}, city={city}"
-    )
-    logger.info(f"Available city codes: {list(CITY_CODES_REVERSE.keys())}")
+    # Handle legacy city-code format
+    if event_id in _LEGACY_CITY_CODES_REVERSE:
+        city = _LEGACY_CITY_CODES_REVERSE[event_id]
+        logger.warning(f"Legacy callback format, resolved city: {city}")
+        registration = await app.collection.find_one(
+            {"user_id": user_id, "target_city": city}
+        )
+        event_id = registration.get("event_id", event_id) if registration else event_id
+    else:
+        logger.info(f"Processing payment decline: user_id={user_id}, event_id={event_id}")
 
-    if not city:
-        await callback_query.answer("Missing city information")
+    if not event_id:
+        await callback_query.answer("Missing event information")
         return
 
     # Save data for the next step
     await state.set_state(PaymentStates.waiting_for_decline_reason)
     await state.update_data(
         decline_user_id=user_id,
-        decline_city=city,
+        decline_event_id=event_id,
         callback_message=callback_query.message,
     )
 
@@ -1068,10 +1080,10 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
     # Get data from state
     data = await state.get_data()
     user_id = data.get("decline_user_id")
-    city = data.get("decline_city")
+    event_id = data.get("decline_event_id")
     callback_message = data.get("callback_message")
 
-    if not user_id or not city:
+    if not user_id or not event_id:
         await message.reply("Ошибка: не найдена информация о платеже")
         await state.clear()
         return
@@ -1080,11 +1092,11 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
     decline_reason = message.text or "Причина не указана"
 
     # Update payment status
-    await app.update_payment_status(user_id, city, "declined", decline_reason)
+    await app.update_payment_status(user_id, event_id=event_id, status="declined", admin_comment=decline_reason)
 
     # Get registration
     registration = await app.collection.find_one(
-        {"user_id": user_id, "target_city": city}
+        {"user_id": user_id, "event_id": event_id}
     )
     if not registration:
         await message.reply(f"Регистрация не найдена для пользователя {user_id}")
@@ -1092,6 +1104,7 @@ async def payment_decline_reason_handler(message: Message, state: FSMContext):
         return
 
     # Notify user
+    city = registration.get("target_city", "") if registration else ""
     await send_safe(
         user_id,
         f"❌ Ваш платеж для участия во встрече в городе {city} отклонен.\n\nПричина: {decline_reason}\n\nПожалуйста, используйте команду /pay для повторной оплаты.",

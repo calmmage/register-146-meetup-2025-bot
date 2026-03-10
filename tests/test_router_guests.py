@@ -38,6 +38,7 @@ def mock_app():
 def base_reg():
     return {
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "graduation_year": 2010,
         "class_letter": "А",
         "graduate_type": "GRADUATE",
@@ -116,7 +117,7 @@ async def test_edit_guests_remove_all(
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
-    mock_app.save_registration_guests.assert_awaited_once_with(12345, "Москва", [])
+    mock_app.save_registration_guests.assert_awaited_once_with(12345, "aabbccddeeff00112233aabb", [])
     mock_send.assert_awaited_once()
     assert "убраны" in mock_send.call_args[0][1].lower()
 
@@ -213,6 +214,7 @@ async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_
     """manage_registrations shows guest names for a selected city registration."""
     reg = {
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "full_name": "Тест Тестов",
         "graduation_year": 2010,
         "class_letter": "А",
@@ -238,7 +240,7 @@ async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_
         ask_choice_calls.append(text)
         call_count += 1
         if call_count == 1:
-            return "Москва"  # select city
+            return "aabbccddeeff00112233aabb"  # select event by event_id
         return "back"  # then go back
 
     with (

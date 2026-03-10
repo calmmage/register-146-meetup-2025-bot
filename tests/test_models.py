@@ -14,6 +14,7 @@ class TestRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
         )
 
         assert user.full_name == "Иванов Иван"
@@ -32,6 +33,7 @@ class TestRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             user_id=123456,
             username="ivan_ivanov",
             graduate_type=GraduateType.TEACHER,
@@ -52,6 +54,7 @@ class TestRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             user_id=123456,
             username="ivan_ivanov",
         )
@@ -81,6 +84,7 @@ class TestRegisteredUser:
             graduation_year=1500,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
         )
         assert user.graduation_year == 1500
 
@@ -91,6 +95,7 @@ class TestRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
         )
         assert user.target_city == "Москва"
         assert isinstance(user.target_city, str)

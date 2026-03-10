@@ -183,6 +183,7 @@ async def test_pay_handler_with_registration(
         "graduation_year": 2010,
         "class_letter": "A",
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "graduate_type": GraduateType.GRADUATE.value,
     }
     mock_app.get_user_registrations.return_value = [mock_registration]
@@ -194,10 +195,10 @@ async def test_pay_handler_with_registration(
         # Call the handler
         await pay_handler(mock_message, mock_state)
 
-        # Verify process_payment was called with correct args
+        # Verify process_payment was called with correct args (event_id instead of city)
         mock_process.assert_called_once()
         args = mock_process.call_args[0]
-        assert args[2] == "Москва"
+        assert args[2] == "aabbccddeeff00112233aabb"
         assert args[3] == 2010
 
 
