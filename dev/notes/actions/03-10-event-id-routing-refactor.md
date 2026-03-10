@@ -103,17 +103,15 @@ Incremental:
 - Step 2: `app/app.py` — all DB filters, method signatures, `RegisteredUser.event_id` required (c1d93ca)
 - Step 3: `app/router.py` — `event_id` routing, duplicate check, NoneType guard (c1d93ca)
 - Step 4: `app/routers/payment.py` — CITY_CODES deleted, callback format, legacy fallback (c1d93ca)
+- Step 5: `app/routers/stats.py` — all pipelines group by `$event_id`, dynamic event loading, `simplify_city` removed (a0b555b)
 - Step 9 (partial): tests updated for steps 2-4 (c1d93ca)
 
-### Remaining
+### Production bugs fixed
+- `existing_cities` NameError in `register_user` log — missed rename (8f96e7d)
+- Moscow event not showing: city-name duplicate check collided 2025/2026 events → now uses event_id (c1d93ca)
+- `calculate_event_payment` NoneType crash: added guard when `selected_event` is None (c1d93ca)
 
-**Step 5: `app/routers/stats.py`** ← main remaining work
-- ~10 aggregation pipelines group by `$target_city` → group by `$event_id`
-- After aggregation, resolve display names from events collection
-- `$match: {"target_city": {"$ne": "Белград"}}` → exclude by event_id or pricing_type
-- Hardcoded city lists → dynamic event loading
-- `simplify_city` function (line 1159) → replace with event-based grouping
-- Charts and labels: keep city display names, just source them from events
+### Remaining
 
 **Step 6: `app/routers/crm.py`** ✅ verified clean
 - Already uses `event_id` params from step 2
@@ -135,10 +133,6 @@ Incremental:
 - Remove `_LEGACY_CITY_CODES_REVERSE` from `payment.py` (after ~1 week in production)
 - Remove legacy fallback in `get_event_for_registration` (app.py lines 274-278)
 - Final grep: `target_city` should only appear in display/export contexts
-
-## Production bugs (fixed in c1d93ca)
-- Moscow event not showing: city-name duplicate check collided 2025/2026 events → now uses event_id
-- `calculate_event_payment` NoneType crash: added guard when `selected_event` is None
 
 ## New features (separate from refactor)
 - Admin `/wipe_registrations` command: select event → double confirm → export JSON dump → delete registrations
