@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 
 from app.app import (
     App,
-    TargetCity,
     GraduateType,
     EventStatus,
     PricingType,
@@ -429,61 +428,3 @@ class TestAppSettings:
         assert settings.events_chat_id == -123
 
 
-class TestCalculatePaymentAmount:
-    """Tests for legacy calculate_payment_amount method."""
-
-    def test_teacher_free(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.MOSCOW.value, 2010, GraduateType.TEACHER.value
-        )
-        assert result == (0, 0, 0, 0)
-
-    def test_belgrade_free(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.BELGRADE.value, 2010, GraduateType.GRADUATE.value
-        )
-        assert result == (0, 0, 0, 0)
-
-    def test_moscow_graduate(self, app):
-        regular, discount, discounted, formula = app.calculate_payment_amount(
-            TargetCity.MOSCOW.value, 2020, GraduateType.GRADUATE.value
-        )
-        assert formula == 1000 + 200 * 5
-        assert discount == 1000
-
-    def test_perm_graduate(self, app):
-        regular, discount, discounted, formula = app.calculate_payment_amount(
-            TargetCity.PERM.value, 2020, GraduateType.GRADUATE.value
-        )
-        assert formula == 500 + 100 * 5
-        assert discount == 500
-
-    def test_non_graduate_moscow(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.MOSCOW.value, 2020, GraduateType.NON_GRADUATE.value
-        )
-        assert result == (4000, 1000, 3000, 4000)
-
-    def test_non_graduate_perm(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.PERM.value, 2020, GraduateType.NON_GRADUATE.value
-        )
-        assert result == (2000, 500, 1500, 2000)
-
-    def test_perm_summer_2025(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.PERM_SUMMER_2025.value, 2020, GraduateType.GRADUATE.value
-        )
-        assert result == (1400, 0, 1400, 1400)
-
-    def test_perm_summer_old_year(self, app):
-        result = app.calculate_payment_amount(
-            TargetCity.PERM_SUMMER_2025.value, 1990, GraduateType.GRADUATE.value
-        )
-        assert result == (2200, 0, 2200, 2200)
-
-    def test_old_graduate_cap_moscow(self, app):
-        regular, discount, discounted, formula = app.calculate_payment_amount(
-            TargetCity.MOSCOW.value, 1995, GraduateType.GRADUATE.value
-        )
-        assert regular == 4000  # capped

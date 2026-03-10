@@ -16,7 +16,7 @@ from datetime import datetime
 from loguru import logger
 from textwrap import dedent
 
-from app.app import App, TargetCity, GraduateType
+from app.app import App, GraduateType
 from app.router import is_admin, commands_menu, get_event_date_display
 from app.routers.admin import PaymentInfo
 from app.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
@@ -28,11 +28,11 @@ app = App()
 
 # City code mapping for callback data (to avoid special characters and long names)
 CITY_CODES = {
-    TargetCity.MOSCOW.value: "MOSCOW",
-    TargetCity.PERM.value: "PERM",
-    TargetCity.SAINT_PETERSBURG.value: "SPB",
-    TargetCity.BELGRADE.value: "BELGRADE",
-    TargetCity.PERM_SUMMER_2025.value: "PERM_SUMMER",
+    "Москва": "MOSCOW",
+    "Пермь": "PERM",
+    "Санкт-Петербург": "SPB",
+    "Белград": "BELGRADE",
+    "Пермь (Летняя встреча 2025)": "PERM_SUMMER",
 }
 
 # Reverse mapping
@@ -130,15 +130,13 @@ async def process_payment(
     if registration_data:
         event = await app.get_event_for_registration(registration_data)
 
-    # Calculate payment amount — prefer event-based calculation
+    # Calculate payment amount from event config
     if event:
         regular_amount, discount, discounted_amount, formula_amount = (
             app.calculate_event_payment(event, graduation_year, graduate_type)
         )
     else:
-        regular_amount, discount, discounted_amount, formula_amount = (
-            app.calculate_payment_amount(city, graduation_year, graduate_type)
-        )
+        regular_amount, discount, discounted_amount, formula_amount = 0, 0, 0, 0
 
     # If guests provided, load from state or registration
     if guests is None:
@@ -178,10 +176,6 @@ async def process_payment(
                     payment_formula = f"{base}р + {rate} × ({ref_year} − год выпуска)"
             else:
                 payment_formula = "за свой счет"
-        elif city == TargetCity.MOSCOW.value:
-            payment_formula = "1500р + 500 × ((2025 − год выпуска) ÷ 3)"
-        elif city == TargetCity.PERM.value:
-            payment_formula = "500р + 100 × (2025 − год выпуска)"
         else:
             payment_formula = "за свой счет"
 
@@ -209,49 +203,39 @@ async def process_payment(
             else "Стоимость билета для вашего года выпуска"
         )
 
-        # For summer 2025 event, no early registration discount
-        if city == TargetCity.PERM_SUMMER_2025.value:
+        # Check early bird from event config
+        early_bird_deadline = event.get("early_bird_deadline") if event else None
+        early_bird_discount_amount = (
+            event.get("early_bird_discount", 0) if event else 0
+        )
+        today = datetime.now()
+        is_early = (
+            early_bird_deadline
+            and today < early_bird_deadline
+            and early_bird_discount_amount > 0
+        )
+
+        if is_early:
+            # Format deadline for display
+            deadline_display = early_bird_deadline.strftime("%d.%m")
             payment_msg_part2 = dedent(
                 f"""
                 {price_label}: {regular_amount} руб.
 
-                Приятно будет увидеть вас на летней встрече! 😊
+                При ранней регистрации (до {deadline_display}) скидка {early_bird_discount_amount} руб!
+                Стоимость билета при ранней регистрации - {discounted_amount} руб.
+
+                Очень ждём вас на весенней встрече! 😊
                 """
             )
         else:
-            # Check early bird from event config
-            early_bird_deadline = event.get("early_bird_deadline") if event else None
-            early_bird_discount_amount = (
-                event.get("early_bird_discount", 0) if event else 0
+            payment_msg_part2 = dedent(
+                f"""
+                {price_label}: {regular_amount} руб.
+
+                Очень ждём вас на весенней встрече! 😊
+                """
             )
-            today = datetime.now()
-            is_early = (
-                early_bird_deadline
-                and today < early_bird_deadline
-                and early_bird_discount_amount > 0
-            )
-
-            if is_early:
-                # Format deadline for display
-                deadline_display = early_bird_deadline.strftime("%d.%m")
-                payment_msg_part2 = dedent(
-                    f"""
-                    {price_label}: {regular_amount} руб.
-
-                    При ранней регистрации (до {deadline_display}) скидка {early_bird_discount_amount} руб!
-                    Стоимость билета при ранней регистрации - {discounted_amount} руб.
-
-                    Очень ждём вас на весенней встрече! 😊
-                    """
-                )
-            else:
-                payment_msg_part2 = dedent(
-                    f"""
-                    {price_label}: {regular_amount} руб.
-
-                    Очень ждём вас на весенней встрече! 😊
-                    """
-                )
 
         # Send part 2
         await send_safe(message.chat.id, payment_msg_part2)

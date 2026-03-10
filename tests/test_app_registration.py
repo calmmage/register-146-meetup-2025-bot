@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, RegisteredUser, TargetCity, GraduateType
+from app.app import App, RegisteredUser, GraduateType
 
 
 class TestAppRegistration:
@@ -45,7 +45,7 @@ class TestAppRegistration:
             full_name="Иванов Иван",
             graduation_year=2010,
             class_letter="А",
-            target_city=TargetCity.MOSCOW,
+            target_city="Москва",
             user_id=123456,
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
@@ -82,7 +82,7 @@ class TestAppRegistration:
         assert insert_data["full_name"] == "Иванов Иван"
         assert insert_data["graduation_year"] == 2010
         assert insert_data["class_letter"] == "А"
-        assert insert_data["target_city"] == TargetCity.MOSCOW.value
+        assert insert_data["target_city"] == "Москва"
         assert insert_data["user_id"] == 123456
         assert insert_data["username"] == "ivan_ivanov"
         assert insert_data["graduate_type"] == GraduateType.GRADUATE.value
@@ -96,7 +96,7 @@ class TestAppRegistration:
             "full_name": "Иванов Иван",
             "graduation_year": 2010,
             "class_letter": "Б",  # Different class letter
-            "target_city": TargetCity.MOSCOW.value,
+            "target_city": "Москва",
             "user_id": 123456,
             "username": "ivan_ivanov",
             "graduate_type": GraduateType.GRADUATE.value,
@@ -108,7 +108,7 @@ class TestAppRegistration:
             full_name="Иванов Иван",
             graduation_year=2010,
             class_letter="А",  # Changed from Б to А
-            target_city=TargetCity.MOSCOW,
+            target_city="Москва",
             user_id=123456,
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
@@ -141,7 +141,7 @@ class TestAppRegistration:
                 "full_name": "Иванов Иван",
                 "graduation_year": 2010,
                 "class_letter": "А",
-                "target_city": TargetCity.MOSCOW.value,
+                "target_city": "Москва",
                 "user_id": 123456,
                 "username": "ivan_ivanov",
                 "graduate_type": GraduateType.GRADUATE.value,
@@ -150,7 +150,7 @@ class TestAppRegistration:
                 "full_name": "Иванов Иван",
                 "graduation_year": 2010,
                 "class_letter": "А",
-                "target_city": TargetCity.PERM.value,
+                "target_city": "Пермь",
                 "user_id": 123456,
                 "username": "ivan_ivanov",
                 "graduate_type": GraduateType.GRADUATE.value,
@@ -170,8 +170,8 @@ class TestAppRegistration:
 
         # Verify the results
         assert len(registrations) == 2
-        assert registrations[0]["target_city"] == TargetCity.MOSCOW.value
-        assert registrations[1]["target_city"] == TargetCity.PERM.value
+        assert registrations[0]["target_city"] == "Москва"
+        assert registrations[1]["target_city"] == "Пермь"
 
     @pytest.mark.asyncio
     async def test_get_user_registration_exists(self):
@@ -182,7 +182,7 @@ class TestAppRegistration:
                 "full_name": "Иванов Иван",
                 "graduation_year": 2010,
                 "class_letter": "А",
-                "target_city": TargetCity.MOSCOW.value,
+                "target_city": "Москва",
                 "user_id": 123456,
                 "username": "ivan_ivanov",
                 "graduate_type": GraduateType.GRADUATE.value,
@@ -203,7 +203,7 @@ class TestAppRegistration:
 
             # Verify the result
             assert registration is not None
-            assert registration["target_city"] == TargetCity.MOSCOW.value
+            assert registration["target_city"] == "Москва"
 
     @pytest.mark.asyncio
     async def test_get_user_registration_not_exists(self):
@@ -230,11 +230,11 @@ class TestAppRegistration:
         ) as mock_move:
             # Call the method
             result = await self.app.delete_user_registration(
-                123456, city=TargetCity.MOSCOW.value
+                123456, city="Москва"
             )
 
             # Verify the move_user_to_deleted was called with correct parameters
-            mock_move.assert_called_once_with(123456, TargetCity.MOSCOW.value)
+            mock_move.assert_called_once_with(123456, "Москва")
 
             # Verify the result
             assert result is True
@@ -278,7 +278,7 @@ class TestAppRegistration:
         user_record = {
             "_id": "mock_id",
             "user_id": 123456,
-            "target_city": TargetCity.MOSCOW.value,
+            "target_city": "Москва",
             "full_name": "Test User",
         }
 
@@ -296,11 +296,11 @@ class TestAppRegistration:
         self.mock_deleted_users.insert_one = AsyncMock()
 
         # Call the method
-        result = await self.app.move_user_to_deleted(123456, TargetCity.MOSCOW.value)
+        result = await self.app.move_user_to_deleted(123456, "Москва")
 
         # Verify that the record was retrieved with correct query
         self.mock_collection.find.assert_called_once_with(
-            {"user_id": 123456, "target_city": TargetCity.MOSCOW.value}
+            {"user_id": 123456, "target_city": "Москва"}
         )
 
         # Verify that the record was inserted into deleted_users
@@ -308,7 +308,7 @@ class TestAppRegistration:
 
         # Verify deletion was called with the right parameters
         self.mock_collection.delete_one.assert_called_once_with(
-            {"user_id": 123456, "target_city": TargetCity.MOSCOW.value}
+            {"user_id": 123456, "target_city": "Москва"}
         )
 
         # Verify the result
@@ -322,13 +322,13 @@ class TestAppRegistration:
             {
                 "_id": "mock_id1",
                 "user_id": 123456,
-                "target_city": TargetCity.MOSCOW.value,
+                "target_city": "Москва",
                 "full_name": "Test User",
             },
             {
                 "_id": "mock_id2",
                 "user_id": 123456,
-                "target_city": TargetCity.PERM.value,
+                "target_city": "Пермь",
                 "full_name": "Test User",
             },
         ]
