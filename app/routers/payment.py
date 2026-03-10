@@ -203,11 +203,17 @@ async def process_payment(
             # Delay between messages
             await asyncio.sleep(5)
 
+        price_label = (
+            "Стоимость билета для вас"
+            if graduate_type == GraduateType.NON_GRADUATE.value
+            else "Стоимость билета для вашего года выпуска"
+        )
+
         # For summer 2025 event, no early registration discount
         if city == TargetCity.PERM_SUMMER_2025.value:
             payment_msg_part2 = dedent(
                 f"""
-                Стоимость билета для вашего года выпуска: {regular_amount} руб.
+                {price_label}: {regular_amount} руб.
 
                 Приятно будет увидеть вас на летней встрече! 😊
                 """
@@ -230,7 +236,7 @@ async def process_payment(
                 deadline_display = early_bird_deadline.strftime("%d.%m")
                 payment_msg_part2 = dedent(
                     f"""
-                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
+                    {price_label}: {regular_amount} руб.
 
                     При ранней регистрации (до {deadline_display}) скидка {early_bird_discount_amount} руб!
                     Стоимость билета при ранней регистрации - {discounted_amount} руб.
@@ -241,7 +247,7 @@ async def process_payment(
             else:
                 payment_msg_part2 = dedent(
                     f"""
-                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
+                    {price_label}: {regular_amount} руб.
 
                     Очень ждём вас на весенней встрече! 😊
                     """
