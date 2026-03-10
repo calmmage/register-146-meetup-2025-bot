@@ -8,14 +8,18 @@ run-debug:
 
 # Run all CI checks locally
 check:
-	-uv run ruff check --exclude tests .
-	-uv run ruff format --check --exclude tests .
-	-uv run vulture --min-confidence 80 --exclude .venv,tests .
+	-uv run ruff check src
+	-uv run ruff format --check src
+	-uv run vulture --min-confidence 80 src
 	-uv run pyright src
 
 # Auto-fix what can be fixed
 fix:
 	-uv run ruff check --fix .
+	uv run ruff format .
+
+fix-unsafe:
+	-uv run ruff check --fix --unsafe-fixes .
 	uv run ruff format .
 
 fix-unsafe:
