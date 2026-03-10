@@ -8,8 +8,8 @@ from calmlib.logging import setup_logger
 from dotenv import load_dotenv
 from loguru import logger
 
-from app.app import App
-from app.user_interactions import setup_dispatcher as setup_user_interactions
+from src.app import App
+from src.user_interactions import setup_dispatcher as setup_user_interactions
 
 from .router import router as main_router
 from .routers.events import events_router
@@ -20,7 +20,7 @@ from .routers.stats import router as admin_router
 # Initialize bot and dispatcher
 
 
-# @heartbeat_for_sync(app.name)
+# @heartbeat_for_sync(src.name)
 def main(debug=False) -> None:
     # Load environment variables
     load_dotenv(Path(__file__).parent.parent / ".env")
@@ -35,7 +35,7 @@ def main(debug=False) -> None:
     setup_logger(logger, level="DEBUG" if debug else "INFO")  # type: ignore[arg-type]
 
     app = App()
-    dp["app"] = app
+    dp["src"] = app
     # Initialize Bot instance with a default parse mode
     bot = Bot(
         token=app.settings.telegram_bot_token.get_secret_value(),

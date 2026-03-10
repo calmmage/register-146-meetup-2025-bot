@@ -29,7 +29,7 @@ def event_from_message():
 def mock_router():
     """Create a basic router for testing"""
     router = Router()
-    from app.router import start_handler
+    from src.router import start_handler
 
     @router.message(CommandStart())
     async def test_start_handler(message: Message, state: FSMContext):

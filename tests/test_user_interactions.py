@@ -3,7 +3,7 @@
 import asyncio
 
 
-from app.user_interactions import (
+from src.user_interactions import (
     PendingRequest,
     UserInputManager,
     _build_keyboard,

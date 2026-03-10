@@ -11,7 +11,7 @@ check:
 	-uv run ruff check --exclude tests .
 	-uv run ruff format --check --exclude tests .
 	-uv run vulture --min-confidence 80 --exclude .venv,tests .
-	-uv run pyright --exclude tests
+	-uv run pyright src
 
 # Auto-fix what can be fixed
 fix:

@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from loguru import logger
 
-from app.app import (
+from src.app import (
     App,
     CITY_PREPOSITIONAL_MAP,
     EventStatus,
@@ -16,7 +16,7 @@ from app.app import (
 )
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from app.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
+from src.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 

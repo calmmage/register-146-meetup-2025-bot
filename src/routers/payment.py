@@ -16,10 +16,10 @@ from datetime import datetime
 from loguru import logger
 from textwrap import dedent
 
-from app.app import App, GraduateType
-from app.router import is_admin, commands_menu, get_event_date_display
-from app.routers.admin import PaymentInfo
-from app.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
+from src.app import App, GraduateType
+from src.router import is_admin, commands_menu, get_event_date_display
+from src.routers.admin import PaymentInfo
+from src.user_interactions import ask_user_raw, ask_user_choice, ask_user_choice_raw
 from botspot.utils import send_safe
 
 # Create router
@@ -674,7 +674,7 @@ async def process_payment(
 async def parse_payment_info(
     response, has_photo: bool, has_pdf: bool, bot
 ) -> PaymentInfo:
-    from app.routers.admin import extract_payment_from_image
+    from src.routers.admin import extract_payment_from_image
 
     # Get the file
     if has_photo:
@@ -723,7 +723,7 @@ async def pay_handler(message: Message, state: FSMContext):
         return
 
     # Filter registrations that require payment using event data
-    from app.router import is_event_free
+    from src.router import is_event_free
 
     payment_registrations = []
     for reg in registrations:

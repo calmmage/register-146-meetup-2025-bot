@@ -10,10 +10,10 @@ from loguru import logger
 from textwrap import dedent
 from typing import Dict, List, Optional
 
-from app.app import App, RegisteredUser, GraduateType
-from app.routers.admin import admin_handler
+from src.app import App, RegisteredUser, GraduateType
+from src.routers.admin import admin_handler
 from botspot import commands_menu
-from app.user_interactions import ask_user, ask_user_choice
+from src.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 
 router = Router()
@@ -228,7 +228,7 @@ async def handle_registered_user(
             await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
-            from app.routers.payment import process_payment
+            from src.routers.payment import process_payment
 
             await state.update_data(
                 original_user_id=message.from_user.id,
@@ -266,7 +266,7 @@ async def _edit_guests(
     message: Message, state: FSMContext, reg: Dict, event: Dict, app: App
 ):
     """Allow user to add/change/remove guests on an existing registration."""
-    from app.user_interactions import ask_user_raw
+    from src.user_interactions import ask_user_raw
 
     assert message.from_user is not None
     user_id = message.from_user.id
@@ -1045,7 +1045,7 @@ async def register_user(
             guest_price = app.calculate_guest_price(selected_event, reg_amount)
 
             for i in range(1, guest_count + 1):
-                from app.user_interactions import ask_user_raw
+                from src.user_interactions import ask_user_raw
 
                 name_resp = await ask_user_raw(
                     message.chat.id,
@@ -1116,7 +1116,7 @@ async def register_user(
     if selected_event:
         city_prep = selected_event.get("city_prepositional", reg_city_name)
     elif location:
-        from app.app import CITY_PREPOSITIONAL_MAP
+        from src.app import CITY_PREPOSITIONAL_MAP
 
         city_prep = CITY_PREPOSITIONAL_MAP.get(location, location)
 
@@ -1169,7 +1169,7 @@ async def register_user(
                 confirmation_msg + "\nСейчас пришлем информацию об оплате за гостей...",
             )
 
-            from app.routers.payment import process_payment
+            from src.routers.payment import process_payment
 
             await state.update_data(
                 original_user_id=user_id, original_username=username
@@ -1234,7 +1234,7 @@ async def register_user(
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 
-        from app.routers.payment import process_payment
+        from src.routers.payment import process_payment
 
         await state.update_data(original_user_id=user_id, original_username=username)
 

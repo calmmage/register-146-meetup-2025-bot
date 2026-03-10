@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, GraduateType
+from src.app import App, GraduateType
 
 
 class TestApp:
@@ -17,10 +17,10 @@ class TestApp:
         mock_db.get_collection.return_value = self.mock_collection
 
         # Create a patcher for get_database
-        self.db_patcher = patch("app.app.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.src.get_database", return_value=mock_db)
         self.db_patcher.start()
 
-        # Create app instance
+        # Create src instance
         self.app = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_spreadsheet_id",
@@ -60,7 +60,7 @@ class TestApp:
         assert self.app._collection == self.mock_collection
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_to_chat_logs(self, mock_get_dependency_manager, mock_send_safe):
         """Test logging to the logs chat"""
@@ -82,7 +82,7 @@ class TestApp:
         assert result == "mock_message"
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_to_chat_events(
         self, mock_get_dependency_manager, mock_send_safe
@@ -106,7 +106,7 @@ class TestApp:
         assert result == "mock_message"
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_to_chat_invalid_type(
         self, mock_get_dependency_manager, mock_send_safe
@@ -128,7 +128,7 @@ class TestApp:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_registration_step(
         self, mock_get_dependency_manager, mock_send_safe
@@ -161,7 +161,7 @@ class TestApp:
         assert result == "mock_message"
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_registration_completed(
         self, mock_get_dependency_manager, mock_send_safe
@@ -201,7 +201,7 @@ class TestApp:
         assert "Москва" in message
 
     @pytest.mark.asyncio
-    @patch("app.app.send_safe")
+    @patch("src.src.send_safe")
     @patch("botspot.core.dependency_manager.get_dependency_manager")
     async def test_log_registration_canceled(
         self, mock_get_dependency_manager, mock_send_safe

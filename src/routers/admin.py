@@ -11,10 +11,10 @@ from aiogram.types import (
 from litellm import acompletion
 from loguru import logger
 from pydantic import BaseModel
-from app.app import App
+from src.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from app.user_interactions import ask_user_choice, ask_user_raw
+from src.user_interactions import ask_user_choice, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
@@ -32,7 +32,7 @@ router = Router()
 
 
 async def admin_handler(message: Message, state: FSMContext, app: App):
-    from app.routers.stats import (
+    from src.routers.stats import (
         show_stats,
         show_simple_stats,
         show_year_stats,
@@ -88,21 +88,21 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
     elif response == "payment_stats":
         await show_payment_stats(message, app=app)
     elif response == "test_user_selection":
-        from app.routers.crm import test_user_selection_handler
+        from src.routers.crm import test_user_selection_handler
 
         await test_user_selection_handler(message, state, app=app)
     elif response == "manage_events":
-        from app.routers.events import manage_events_handler
+        from src.routers.events import manage_events_handler
 
         await manage_events_handler(message, state, app=app)
     # elif response == "send_feedback_request":
-    #     from app.routers.crm import send_feedback_request_handler
+    #     from src.routers.crm import send_feedback_request_handler
 
     #     await send_feedback_request_handler(message, state)
     # elif response == "mark_payment":
     # await mark_payment_handler(message, state)
     elif response == "notify_users":
-        from app.routers.crm import notify_users_handler
+        from src.routers.crm import notify_users_handler
 
         await notify_users_handler(message, state, app=app)
     # For "register", continue with normal flow
@@ -204,7 +204,7 @@ async def export_handler(message: Message, state: FSMContext, app: App):
 
 
 def _format_graduate_type(grad_type: str, plural=False):
-    from app.app import GRADUATE_TYPE_MAP, GRADUATE_TYPE_MAP_PLURAL
+    from src.app import GRADUATE_TYPE_MAP, GRADUATE_TYPE_MAP_PLURAL
 
     if plural:
         return GRADUATE_TYPE_MAP_PLURAL[grad_type.upper()]

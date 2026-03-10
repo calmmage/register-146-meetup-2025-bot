@@ -3,8 +3,8 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App
-from app.export import SheetExporter
+from src.app import App
+from src.export import SheetExporter
 
 
 class TestSheetExporter:
@@ -20,10 +20,10 @@ class TestSheetExporter:
         mock_db.get_collection.return_value = self.mock_collection
 
         # Create a patcher for get_database
-        self.db_patcher = patch("app.app.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.src.get_database", return_value=mock_db)
         self.db_patcher.start()
 
-        # Create app instance
+        # Create src instance
         self.app = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_spreadsheet_id",
@@ -31,7 +31,7 @@ class TestSheetExporter:
             payment_name="Test User",
         )
 
-        # Create exporter with the mocked app
+        # Create exporter with the mocked src
         self.exporter = SheetExporter("mock_spreadsheet_id", app=self.app)
 
         # Sample user data
@@ -73,9 +73,9 @@ class TestSheetExporter:
         # Stop all patchers
         self.db_patcher.stop()
 
-    @patch("app.export.gspread.authorize")
-    @patch("app.export.Credentials.from_service_account_info")
-    @patch("app.export.os.getenv")
+    @patch("src.export.gspread.authorize")
+    @patch("src.export.Credentials.from_service_account_info")
+    @patch("src.export.os.getenv")
     def test_get_client_base64_credentials(
         self, mock_getenv, mock_credentials, mock_authorize
     ):
@@ -107,9 +107,9 @@ class TestSheetExporter:
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
-    @patch("app.export.gspread.authorize")
-    @patch("app.export.Credentials.from_service_account_info")
-    @patch("app.export.os.getenv")
+    @patch("src.export.gspread.authorize")
+    @patch("src.export.Credentials.from_service_account_info")
+    @patch("src.export.os.getenv")
     def test_get_client_json_credentials(
         self, mock_getenv, mock_credentials, mock_authorize
     ):
@@ -143,10 +143,10 @@ class TestSheetExporter:
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
-    @patch("app.export.gspread.authorize")
-    @patch("app.export.Credentials.from_service_account_file")
-    @patch("app.export.os.path.exists")
-    @patch("app.export.os.getenv")
+    @patch("src.export.gspread.authorize")
+    @patch("src.export.Credentials.from_service_account_file")
+    @patch("src.export.os.path.exists")
+    @patch("src.export.os.getenv")
     def test_get_client_credentials_file(
         self, mock_getenv, mock_path_exists, mock_credentials, mock_authorize
     ):
@@ -178,8 +178,8 @@ class TestSheetExporter:
         mock_authorize.assert_called_with("mock_credentials")
         assert client == "mock_authorized_client"
 
-    @patch("app.export.os.getenv")
-    @patch("app.export.os.path.exists")
+    @patch("src.export.os.getenv")
+    @patch("src.export.os.path.exists")
     def test_get_client_no_credentials(self, mock_path_exists, mock_getenv):
         """Test _get_client with no credentials available"""
         # Setup mocks
@@ -194,8 +194,8 @@ class TestSheetExporter:
         assert "No Google credentials found" in str(exc_info.value)
 
     # @pytest.mark.asyncio
-    # @patch("app.export.SheetExporter._get_client")
-    # @patch("app.export.logger")
+    # @patch("src.export.SheetExporter._get_client")
+    # @patch("src.export.logger")
     # async def test_export_registered_users_success(self, mock_logger, mock_get_client):
     #     """Test successful export to Google Sheets with clearing sheet first"""
     #     # Set up mock users for collection.find().to_list()
@@ -244,38 +244,38 @@ class TestSheetExporter:
 
     # TODO: Fix mocking of async methods for export
     # @pytest.mark.asyncio
-    # @patch("app.export.SheetExporter._get_client")
-    # @patch("app.export.logger")
+    # @patch("src.export.SheetExporter._get_client")
+    # @patch("src.export.logger")
     def test_export_registered_users_no_users(self):
         """This test is disabled until we fix the mocking"""
         pass
 
     # TODO: Fix mocking of async methods for export
     # @pytest.mark.asyncio
-    # @patch("app.export.logger")
+    # @patch("src.export.logger")
     def test_export_registered_users_error(self):
         """This test is disabled until we fix the mocking"""
         pass
 
     # TODO: Fix StringIO import path and mock chain
     # @pytest.mark.asyncio
-    # @patch("app.export.csv.writer")
-    # @patch("io.StringIO")  # This is the correct path, was trying to patch app.export.StringIO
-    # @patch("app.export.logger")
+    # @patch("src.export.csv.writer")
+    # @patch("io.StringIO")  # This is the correct path, was trying to patch src.export.StringIO
+    # @patch("src.export.logger")
     def test_export_to_csv_success(self):
         """This test is disabled until we fix the mocking"""
         pass
 
     # TODO: Fix mocking of async methods for export
     # @pytest.mark.asyncio
-    # @patch("app.export.logger")
+    # @patch("src.export.logger")
     def test_export_to_csv_no_users(self):
         """This test is disabled until we fix the mocking"""
         pass
 
     # TODO: Fix mocking of async methods for export
     # @pytest.mark.asyncio
-    # @patch("app.export.logger")
+    # @patch("src.export.logger")
     def test_export_to_csv_error(self):
         """This test is disabled until we fix the mocking"""
         pass

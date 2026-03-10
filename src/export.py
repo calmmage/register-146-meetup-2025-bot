@@ -6,7 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from loguru import logger
 
-from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+from src.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 from botspot import get_database
 
 # Define the scopes for Google Sheets API

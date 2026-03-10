@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from app.app import (
+from src.app import (
     App,
     GraduateType,
     EventStatus,
@@ -22,7 +22,7 @@ from app.app import (
 def app():
     mock_db = MagicMock()
     mock_db.get_collection.return_value = MagicMock()
-    with patch("app.app.get_database", return_value=mock_db):
+    with patch("src.src.get_database", return_value=mock_db):
         return App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_sheet",

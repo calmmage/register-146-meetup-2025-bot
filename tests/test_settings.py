@@ -2,7 +2,7 @@ import os
 import pytest
 from unittest.mock import patch
 
-from app.app import AppSettings
+from src.app import AppSettings
 
 
 class TestAppSettings:
@@ -59,7 +59,7 @@ class TestAppSettings:
     #     # Need to mock environment variables to test defaults properly
     #     pass
 
-    # TODO: Fix validation test for app settings
+    # TODO: Fix validation test for src settings
     # @patch.dict(os.environ, {
     #    "TELEGRAM_BOT_TOKEN": "",
     #    "PAYMENT_PHONE_NUMBER": "1234567890",

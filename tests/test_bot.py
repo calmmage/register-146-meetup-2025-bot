@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 @pytest.fixture
 def mock_bot():
     """Mock Bot instance"""
-    with patch("app.bot.Bot") as mock_bot_cls:
+    with patch("src.bot.Bot") as mock_bot_cls:
         bot_instance = AsyncMock()
         mock_bot_cls.return_value = bot_instance
         yield bot_instance
@@ -14,7 +14,7 @@ def mock_bot():
 @pytest.fixture
 def mock_dispatcher():
     """Mock Dispatcher instance"""
-    with patch("app.bot.dp") as mock_dp:
+    with patch("src.bot.dp") as mock_dp:
         mock_dp.run_polling = AsyncMock()
         yield mock_dp
 
@@ -22,7 +22,7 @@ def mock_dispatcher():
 @pytest.fixture
 def mock_bot_manager():
     """Mock BotManager instance"""
-    with patch("app.bot.BotManager") as mock_bm_cls:
+    with patch("src.bot.BotManager") as mock_bm_cls:
         bm_instance = MagicMock()
         bm_instance.setup_dispatcher = MagicMock()
         mock_bm_cls.return_value = bm_instance
@@ -32,7 +32,7 @@ def mock_bot_manager():
 @pytest.fixture
 def mock_logger():
     """Mock logger setup"""
-    with patch("app.bot.setup_logger") as mock_setup:
+    with patch("src.bot.setup_logger") as mock_setup:
         yield mock_setup
 
 

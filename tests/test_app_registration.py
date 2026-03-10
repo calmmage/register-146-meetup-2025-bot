@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, RegisteredUser, GraduateType
+from src.app import App, RegisteredUser, GraduateType
 
 
 class TestAppRegistration:
@@ -24,10 +24,10 @@ class TestAppRegistration:
         }.get(name, AsyncMock())
 
         # Create a patcher for get_database
-        self.db_patcher = patch("app.app.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.src.get_database", return_value=mock_db)
         self.db_patcher.start()
 
-        # Create app instance
+        # Create src instance
         self.app = App(
             telegram_bot_token="mock_token",
             payment_phone_number="1234567890",

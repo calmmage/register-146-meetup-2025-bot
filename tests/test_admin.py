@@ -2,9 +2,9 @@ import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import User
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.app import App
+from src.app import App
 
-from app.routers.admin import (
+from src.routers.admin import (
     admin_handler,
 )
 
@@ -27,21 +27,21 @@ def mock_state():
 
 @pytest.fixture
 def mock_app():
-    # Configure app specific mocks
+    # Configure src specific mocks
     app = AsyncMock(spec=App)
     return app
 
 
 @pytest.fixture
 def mock_send_safe():
-    with patch("app.routers.admin.send_safe") as mock_send:
+    with patch("src.routers.admin.send_safe") as mock_send:
         mock_send.return_value = AsyncMock()
         yield mock_send
 
 
 @pytest.fixture
 def mock_ask_user_choice():
-    with patch("app.routers.admin.ask_user_choice") as mock_ask:
+    with patch("src.routers.admin.ask_user_choice") as mock_ask:
         mock_ask.return_value = "export"  # Default choice
         yield mock_ask
 
@@ -54,7 +54,7 @@ async def test_admin_handler_export(
     mock_ask_user_choice.return_value = "export"
 
     # Mock the export_handler function
-    with patch("app.routers.admin.export_handler") as mock_export:
+    with patch("src.routers.admin.export_handler") as mock_export:
         mock_export.return_value = AsyncMock()
 
         # Call the handler
@@ -89,7 +89,7 @@ async def test_admin_handler_view_stats(
     mock_ask_user_choice.return_value = "view_stats"
 
     # Mock the show_stats function
-    with patch("app.routers.stats.show_stats") as mock_stats:
+    with patch("src.routers.stats.show_stats") as mock_stats:
         mock_stats.return_value = AsyncMock()
 
         # Call the handler
@@ -102,7 +102,7 @@ async def test_admin_handler_view_stats(
         assert result == "view_stats"
 
 
-# TODO: Fix app import path issue
+# TODO: Fix src import path issue
 # @pytest.mark.asyncio
 # async def test_export_handler_sheets(
 #     mock_message, mock_state, mock_app, mock_send_safe, mock_ask_user_choice
@@ -112,7 +112,7 @@ async def test_admin_handler_view_stats(
 #     pass
 
 
-# TODO: Fix app import path issue
+# TODO: Fix src import path issue
 # @pytest.mark.asyncio
 # async def test_export_handler_csv(
 #     mock_message, mock_state, mock_app, mock_send_safe, mock_ask_user_choice
@@ -122,7 +122,7 @@ async def test_admin_handler_view_stats(
 #     pass
 
 
-# TODO: Fix app import path issue
+# TODO: Fix src import path issue
 # @pytest.mark.asyncio
 # async def test_show_stats(
 #     mock_message, mock_app, mock_send_safe

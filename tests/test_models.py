@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.app import RegisteredUser, GraduateType
+from src.app import RegisteredUser, GraduateType
 
 
 class TestRegisteredUser:

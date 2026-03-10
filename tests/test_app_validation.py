@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from app.app import App
+from src.app import App
 
 
 class TestAppValidation:
@@ -9,7 +9,7 @@ class TestAppValidation:
     def setup_method(self):
         """Set up test environment before each test"""
         # Mock database connection
-        with patch("app.app.get_database"):
+        with patch("src.src.get_database"):
             self.app = App(
                 telegram_bot_token="mock_token",
                 payment_phone_number="1234567890",
@@ -52,7 +52,7 @@ class TestAppValidation:
             assert is_valid is True
             assert error == ""
 
-    @patch("app.app.datetime")
+    @patch("src.src.datetime")
     def test_validate_graduation_year_invalid(self, mock_datetime):
         """Test validate_graduation_year with invalid input"""
         # Mock current year to be 2025 for consistent tests
@@ -112,7 +112,7 @@ class TestAppValidation:
             assert is_valid is expected_valid
             assert error == expected_error
 
-    @patch("app.app.datetime")
+    @patch("src.src.datetime")
     def test_parse_graduation_year_and_class_letter(self, mock_datetime):
         """Test parse_graduation_year_and_class_letter function"""
         # Mock current year to be 2025 for consistent tests

@@ -4,11 +4,11 @@ from aiogram.types import Message
 from loguru import logger
 from typing import Dict, Any, Optional
 
-from app.routers.admin import router
-from app.app import App
+from src.routers.admin import router
+from src.app import App
 from botspot import commands_menu
 from botspot.components.qol.bot_commands_menu import Visibility
-from app.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
+from src.user_interactions import ask_user_choice, ask_user_confirmation, ask_user_raw
 from botspot.utils import send_safe
 from botspot.utils.admin_filter import AdminFilter
 
@@ -605,7 +605,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 #         target_users = [admin_data]
 #     else:
 #         # Real users for production run
-#         target_users = await app.get_users_without_feedback(city if city != "all" else None)
+#         target_users = await src.get_users_without_feedback(city if city != "all" else None)
 
 #     # Check if we have users matching criteria
 #     if not target_users:
@@ -661,7 +661,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 #         validation_report += f"...и еще {len(target_users) - 20} пользователей\n"
 
 #     # Send report to validation chat before starting the actual messages
-#     await app.log_to_chat(validation_report, "events")
+#     await src.log_to_chat(validation_report, "events")
 
 #     # Start sending the messages
 #     sent_count = 0
@@ -747,7 +747,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
 #             # Notify validation chat about sent message sequence
 #             validation_message = f"✅ Запрос обратной связи отправлен пользователю {user.get('full_name')} (@{user.get('username') or user_id})\n🏙️ {user.get('target_city', 'Город не указан')}"
-#             await app.log_to_chat(validation_message, "events")
+#             await src.log_to_chat(validation_message, "events")
 
 #         except Exception as e:
 #             logger.error(f"Failed to send feedback request to user {user_id}: {e}")
@@ -755,7 +755,7 @@ async def notify_early_payment_handler(message: Message, state: FSMContext, app:
 
 #             # Log error to validation chat
 #             error_message = f"❌ Ошибка отправки запроса обратной связи пользователю {user.get('full_name')} (@{user.get('username') or user_id}): {str(e)}"
-#             await app.log_to_chat(error_message, "errors")
+#             await src.log_to_chat(error_message, "errors")
 
 #     # Update status message with results
 #     result_text = (

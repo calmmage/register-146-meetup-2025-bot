@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from app.export import SheetExporter
+from src.export import SheetExporter
 
 
 class TestExportFunctions:
@@ -37,7 +37,7 @@ class TestExportFunctions:
     @pytest.mark.asyncio
     async def test_export_to_csv(self, mock_app):
         """Test export_to_csv function"""
-        # Create exporter instance with mock app
+        # Create exporter instance with mock src
         exporter = SheetExporter("test_sheet_id", app=mock_app)
 
         # Call export_to_csv

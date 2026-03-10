@@ -23,7 +23,7 @@ def mock_state():
 @pytest.fixture
 def mock_app():
     mock_app = MagicMock()
-    # Configure async app mocks with AsyncMock
+    # Configure async src mocks with AsyncMock
     mock_app.get_user_registration = AsyncMock(return_value=None)
     mock_app.get_user_registrations = AsyncMock(return_value=[])
     mock_app.log_registration_step = AsyncMock(return_value=None)
@@ -38,21 +38,21 @@ def mock_app():
 
 @pytest.fixture
 def mock_send_safe():
-    with patch("app.router.send_safe") as mock_send:
+    with patch("src.router.send_safe") as mock_send:
         mock_send.return_value = AsyncMock()
         yield mock_send
 
 
 @pytest.fixture
 def mock_ask_user_choice():
-    with patch("app.router.ask_user_choice") as mock_ask:
+    with patch("src.router.ask_user_choice") as mock_ask:
         mock_ask.return_value = AsyncMock()
         yield mock_ask
 
 
 @pytest.fixture
 def mock_ask_user():
-    with patch("app.router.ask_user") as mock_ask:
+    with patch("src.router.ask_user") as mock_ask:
         mock_ask.return_value = AsyncMock()
         yield mock_ask
 
@@ -68,7 +68,7 @@ def _mock_botspot_dependencies():
 
 @pytest.fixture
 def mock_is_admin():
-    with patch("app.router.is_admin") as mock:
+    with patch("src.router.is_admin") as mock:
         mock.return_value = False
         yield mock
 
@@ -82,7 +82,7 @@ async def test_start_handler_existing_summer_user(
     _mock_botspot_dependencies,
     mock_is_admin,
 ):
-    from app.router import start_handler
+    from src.router import start_handler
 
     # Configure mock: user has archived summer 2025 registration but no active ones
     mock_app.get_enabled_events = AsyncMock(
@@ -107,7 +107,7 @@ async def test_start_handler_existing_summer_user(
     )
 
     # Mock ask_user_choice to simulate user cancelling
-    with patch("app.router.ask_user_choice") as mock_ask:
+    with patch("src.router.ask_user_choice") as mock_ask:
         mock_ask.return_value = "cancel"
 
         # Call the handler
@@ -120,7 +120,7 @@ async def test_start_handler_existing_summer_user(
 
 # TODO: Fix deep call chain issues with register_user flow
 # @pytest.mark.asyncio
-# @patch("app.router.process_payment")
+# @patch("src.router.process_payment")
 # async def test_register_user_flow(
 #     mock_process_payment,
 #     mock_message,
@@ -140,7 +140,7 @@ async def test_start_handler_existing_summer_user(
 async def test_cancel_registration_handler_no_registrations(
     mock_message, mock_state, mock_app, mock_send_safe, _mock_botspot_dependencies
 ):
-    from app.router import cancel_registration_handler
+    from src.router import cancel_registration_handler
 
     # Configure the mocks for a user with no registrations
     mock_app.get_user_registrations.return_value = []

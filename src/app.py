@@ -69,7 +69,7 @@ CITY_PREPOSITIONAL_MAP = {
 
 
 class AppSettings(BaseSettings):
-    """Basic app configuration"""
+    """Basic src configuration"""
 
     telegram_bot_token: SecretStr
     spreadsheet_id: Optional[str] = None
@@ -130,7 +130,7 @@ class App:
     events_collection_name = "events"
 
     def __init__(self, **kwargs):
-        from app.export import SheetExporter
+        from src.export import SheetExporter
 
         self.settings = AppSettings(**kwargs)
         self.sheet_exporter = SheetExporter(
@@ -144,7 +144,7 @@ class App:
 
     async def startup(self):
         """Run startup tasks like fixing the database and initializing collections."""
-        logger.info("Running app startup tasks...")
+        logger.info("Running src startup tasks...")
 
         # Initialize collections
         _ = self.collection
@@ -153,7 +153,7 @@ class App:
         _ = self.events_col
 
         # Run database migrations (includes seeding new events + archiving old ones)
-        from app.migrations import run_migrations
+        from src.migrations import run_migrations
 
         await run_migrations(self)
 

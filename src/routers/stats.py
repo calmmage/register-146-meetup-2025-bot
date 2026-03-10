@@ -6,9 +6,9 @@ import seaborn as sns
 from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from matplotlib import pyplot as plt
-from app.app import App
-from app.routers.admin import _format_graduate_type
-from app.routers.crm import router
+from src.app import App
+from src.routers.admin import _format_graduate_type
+from src.routers.crm import router
 from botspot import commands_menu, send_safe
 from botspot.components.qol.bot_commands_menu import Visibility
 from botspot.utils.admin_filter import AdminFilter
@@ -28,7 +28,7 @@ def get_median(ratios):
 async def show_stats(message: Message, app: App):
     """Показать статистику регистраций"""
 
-    from app.app import PAYMENT_STATUS_MAP
+    from src.app import PAYMENT_STATUS_MAP
 
     # Initialize stats text
     stats_text = "<b>📊 Статистика регистраций</b> (включая удаленных)\n\n"
@@ -500,7 +500,7 @@ async def show_stats(message: Message, app: App):
 @router.message(Command("simple_stats"), AdminFilter())
 async def show_simple_stats(message: Message, app: App):
     """Показать краткую статистику регистраций"""
-    from app.app import PAYMENT_STATUS_MAP
+    from src.app import PAYMENT_STATUS_MAP
 
     stats_text = "<b>📊 Краткая статистика регистраций</b> (включая удаленных)\n\n"
 

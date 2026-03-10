@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from app.routers.events import (
+from src.routers.events import (
     _suggest_event_name,
     _format_pricing,
     _format_event_summary,
@@ -11,9 +11,9 @@ from app.routers.events import (
     MONTH_NAMES_RU,
     DAY_OF_WEEK_RU,
 )
-from app.routers.admin import _format_graduate_type
-from app.routers.crm import apply_message_templates
-from app.routers.stats import get_median
+from src.routers.admin import _format_graduate_type
+from src.routers.crm import apply_message_templates
+from src.routers.stats import get_median
 
 
 class TestSuggestEventName:
