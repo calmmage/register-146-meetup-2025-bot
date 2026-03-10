@@ -596,7 +596,9 @@ async def register_user(
 
     # Get existing registrations to avoid duplicates
     existing_registrations = await app.get_user_registrations(user_id)
-    existing_event_ids = [reg["event_id"] for reg in existing_registrations if reg.get("event_id")]
+    existing_event_ids = [
+        reg["event_id"] for reg in existing_registrations if reg.get("event_id")
+    ]
 
     # step 1 - greet user, ask location
     # Load available events from DB
@@ -718,7 +720,7 @@ async def register_user(
                 "step": "city_selection",
                 "city": city_name,
                 "event_id": str(selected_event["_id"]) if selected_event else None,
-                "existing_cities": existing_cities,
+                "existing_event_ids": existing_event_ids,
             },
             user_id,
             username,
@@ -728,9 +730,7 @@ async def register_user(
 
     # Determine the city name for display
     reg_city_name = (
-        selected_event["city"]
-        if selected_event
-        else (location if location else "")
+        selected_event["city"] if selected_event else (location if location else "")
     )
 
     # If we have info to reuse, skip asking for name and class
