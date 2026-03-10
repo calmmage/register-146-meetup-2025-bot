@@ -301,6 +301,30 @@ class TestCalculateGuestPrice:
         event = {}
         assert app.calculate_guest_price(event, 1500) == 1500
 
+    def test_early_bird_applied(self, app):
+        event = {
+            "guest_price_minimum": 1000,
+            "early_bird_discount": 500,
+            "early_bird_deadline": datetime(2099, 1, 1),
+        }
+        # max(1000, 2000) = 2000, minus 500 = 1500
+        assert app.calculate_guest_price(event, 2000) == 1500
+
+    def test_early_bird_expired(self, app):
+        event = {
+            "guest_price_minimum": 1000,
+            "early_bird_discount": 500,
+            "early_bird_deadline": datetime(2020, 1, 1),
+        }
+        assert app.calculate_guest_price(event, 2000) == 2000
+
+    def test_early_bird_floor_zero(self, app):
+        event = {
+            "early_bird_discount": 9999,
+            "early_bird_deadline": datetime(2099, 1, 1),
+        }
+        assert app.calculate_guest_price(event, 500) == 0
+
 
 class TestIsEventPassed:
     def test_past_event(self, app):

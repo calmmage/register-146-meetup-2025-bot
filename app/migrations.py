@@ -441,3 +441,29 @@ async def update_event_details_and_perm_pricing(app):
     )
     if perm_result.modified_count > 0:
         logger.info("Updated Perm event: time, pricing, early bird.")
+
+
+# ============================================================
+# Migration: Bump Moscow & SPb base price (+500) for correct discount math
+# ============================================================
+@migration("006_bump_moscow_spb_base_price")
+async def bump_moscow_spb_base_price(app):
+    """Increase base price by 500 for Moscow and SPb so early bird discount is applied to higher base.
+
+    Moscow: 1500 → 2000 (early bird 500 → effective 1500)
+    SPb: 1000 → 1500 (early bird 500 → effective 1000)
+    Perm stays unchanged.
+    """
+    moscow_result = await app.events_col.update_one(
+        {"city": "Москва", "date": datetime(2026, 3, 21, 18, 0)},
+        {"$set": {"price_formula_base": 2000}},
+    )
+    if moscow_result.modified_count > 0:
+        logger.info("Bumped Moscow base price: 1500 → 2000.")
+
+    spb_result = await app.events_col.update_one(
+        {"city": "Санкт-Петербург", "date": datetime(2026, 3, 28, 17, 0)},
+        {"$set": {"price_formula_base": 1500}},
+    )
+    if spb_result.modified_count > 0:
+        logger.info("Bumped SPb base price: 1000 → 1500.")

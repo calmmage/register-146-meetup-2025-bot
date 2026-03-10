@@ -40,3 +40,4 @@ class TestMigrationRegistry:
         assert "001_archive_2025_events" in names
         assert "002_seed_2026_spring_events" in names
         assert "003_add_guest_fields" in names
+        assert "006_bump_moscow_spb_base_price" in names
