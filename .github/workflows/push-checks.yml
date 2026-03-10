@@ -1,18 +1,14 @@
-name: Code Quality
+name: Push Checks
 
-on:
-  push:
-    branches: [ main, dev ]
-  pull_request:
-    branches: [ main, dev ]
+on: [ push ]
 
 jobs:
-  test:
-    name: Tests
+  type-check:
+    name: Pyright
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ "3.12", "3.13" ]
+        python-version: [ "3.13" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,12 +23,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups
 
-      - name: Test with pytest
-        run: uv run pytest tests/
+      - name: Run Pyright type checker
+        run: uv run pyright
+        continue-on-error: true
 
-  lint:
-    name: Lint
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ "3.13" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,18 +41,11 @@ jobs:
         with:
           version: "latest"
 
-      - name: Set up Python
-        run: uv python install 3.13
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv sync --all-groups
 
-      - name: Run Ruff linter
-        run: uv run ruff check .
-
-      - name: Run Ruff formatter check
-        run: uv run ruff format --check .
-
-      - name: Run Pyright type checker
-        run: uv run pyright
-        continue-on-error: true
+      - name: Run tests
+        run: uv run pytest tests/

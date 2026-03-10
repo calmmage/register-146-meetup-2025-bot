@@ -327,17 +327,17 @@ class App:
             years_since = max(0, ref_year - graduation_year)
             formula_amount = base + rate * (years_since // step)
 
-            # Cap for old graduates (15+ years)
             regular_amount = formula_amount
-            if years_since > 15:
-                regular_amount = base + rate * (15 // step)
 
-            # Non-graduates get fixed recommended amount
+            # Non-graduates: use guest_price_minimum if set, else formula for ~15 years ago
             if graduate_type == GraduateType.NON_GRADUATE.value:
-                if base >= 1000:
-                    return 4000, 0, 4000, 4000
+                guest_min = event.get("guest_price_minimum", 0)
+                if guest_min > 0:
+                    non_grad_amount = guest_min
                 else:
-                    return 2000, 0, 2000, 2000
+                    ref_years = 15
+                    non_grad_amount = base + rate * (ref_years // step)
+                return non_grad_amount, 0, non_grad_amount, non_grad_amount
 
             # Early bird discount
             early_bird_discount = event.get("early_bird_discount", 0)
@@ -360,10 +360,23 @@ class App:
     def calculate_guest_price(self, event: Dict, registrant_price: int) -> int:
         """Calculate the price for a single guest.
 
-        Formula: max(guest_price_minimum, registrant_price)
+        Formula: max(guest_price_minimum, registrant_price) - early_bird_discount
+        Early bird discount is applied to the final guest price too.
         """
         minimum = event.get("guest_price_minimum", 0)
-        return max(minimum, registrant_price)
+        price = max(minimum, registrant_price)
+
+        # Apply early bird discount to guest price
+        early_bird_discount = event.get("early_bird_discount", 0)
+        early_bird_deadline = event.get("early_bird_deadline")
+        if (
+            early_bird_deadline
+            and datetime.now() < early_bird_deadline
+            and early_bird_discount > 0
+        ):
+            price = max(0, price - early_bird_discount)
+
+        return price
 
     async def _update_event_statuses(self):
         """Mark events as 'passed' if their date is in the past."""

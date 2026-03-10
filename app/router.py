@@ -262,6 +262,106 @@ async def handle_registered_user(
             )
 
 
+async def _edit_guests(
+    message: Message, state: FSMContext, reg: Dict, event: Dict, app: App
+):
+    """Allow user to add/change/remove guests on an existing registration."""
+    from app.user_interactions import ask_user_raw
+
+    assert message.from_user is not None
+    user_id = message.from_user.id
+    username = message.from_user.username or ""
+    city = reg["target_city"]
+
+    max_guests = event.get("max_guests_per_person", 3)
+    existing_guests = reg.get("guests", [])
+
+    # Build guest count choices
+    guest_choices = {"0": "Убрать всех гостей" if existing_guests else "Нет гостей"}
+    for i in range(1, max_guests + 1):
+        label = f"+{i}"
+        if i == len(existing_guests):
+            label += " (текущее)"
+        guest_choices[str(i)] = label
+
+    guest_count_resp = await ask_user_choice(
+        message.chat.id,
+        f"👥 Сейчас гостей: {len(existing_guests)}. Сколько гостей вы хотите?",
+        choices=guest_choices,
+        state=state,
+        timeout=None,
+    )
+
+    guest_count = (
+        int(guest_count_resp) if guest_count_resp and guest_count_resp.isdigit() else 0
+    )
+
+    if guest_count == 0:
+        # Remove all guests
+        await app.save_registration_guests(user_id, city, [])
+        await send_safe(message.chat.id, "👥 Гости убраны.")
+        await app.save_event_log(
+            "edit_guests",
+            {"action": "remove_all_guests", "city": city},
+            user_id,
+            username,
+        )
+        return
+
+    # Calculate guest price
+    graduation_year = reg.get("graduation_year", 2000)
+    graduate_type = reg.get("graduate_type", GraduateType.GRADUATE.value)
+    reg_amount, _, _, _ = app.calculate_event_payment(
+        event, graduation_year, graduate_type
+    )
+    guest_price = app.calculate_guest_price(event, reg_amount)
+
+    # Collect guest names
+    guests = []
+    for i in range(1, guest_count + 1):
+        # Pre-fill with existing name if available
+        default_hint = ""
+        if i <= len(existing_guests):
+            default_hint = f" (было: {existing_guests[i - 1]['name']})"
+
+        name_resp = await ask_user_raw(
+            message.chat.id,
+            f"Имя гостя {i}{default_hint}:",
+            state=state,
+            timeout=None,
+        )
+        guest_name = ""
+        if name_resp and name_resp.text:
+            guest_name = name_resp.text.strip()
+        if len(guest_name) < 2:
+            guest_name = f"Гость {i}"
+
+        guests.append({"name": guest_name, "price": guest_price})
+
+    # Save
+    await app.save_registration_guests(user_id, city, guests)
+
+    # Show summary
+    guest_summary = f"👥 Гости ({len(guests)}):\n"
+    for i, g in enumerate(guests, 1):
+        guest_summary += f"  {i}. {g['name']} — {g['price']}₽\n"
+    guest_total = sum(g["price"] for g in guests)
+    guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
+    await send_safe(message.chat.id, guest_summary)
+
+    await app.save_event_log(
+        "edit_guests",
+        {
+            "action": "update_guests",
+            "city": city,
+            "guest_count": len(guests),
+            "guests": [g["name"] for g in guests],
+        },
+        user_id,
+        username,
+    )
+
+
 async def manage_registrations(
     message: Message, state: FSMContext, registrations, app: App
 ):
@@ -358,6 +458,12 @@ async def manage_registrations(
         reg = next(r for r in registrations if r["target_city"] == city)
         event = await app.get_event_for_registration(reg)
 
+        # Show current guests in info
+        existing_guests = reg.get("guests", [])
+        guests_info = ""
+        if existing_guests:
+            guests_info = f"\n            Гости ({len(existing_guests)}): {', '.join(g['name'] for g in existing_guests)}"
+
         info_text = dedent(
             f"""
             Регистрация в городе {city}:
@@ -365,19 +471,26 @@ async def manage_registrations(
             ФИО: {reg["full_name"]}
             Год выпуска: {reg["graduation_year"]}
             Класс: {reg["class_letter"]}
-            Дата: {get_event_date_display(event)}
+            Дата: {get_event_date_display(event)}{guests_info}
 
             Что вы хотите сделать?
             """
         )
 
+        choices = {}
+        # Add "edit guests" option if the event supports guests
+        if event and event.get("guests_enabled"):
+            if existing_guests:
+                choices["guests"] = "👥 Изменить гостей"
+            else:
+                choices["guests"] = "👥 Добавить гостей"
+        choices["cancel"] = "Отменить регистрацию"
+        choices["back"] = "Вернуться назад"
+
         action = await ask_user_choice(
             message.chat.id,
             info_text,
-            choices={
-                "cancel": "Отменить регистрацию",
-                "back": "Вернуться назад",
-            },
+            choices=choices,
             state=state,
             timeout=None,
         )
@@ -393,6 +506,14 @@ async def manage_registrations(
                 message.from_user.id,
                 message.from_user.username,
             )
+
+        if action == "guests":
+            await _edit_guests(message, state, reg, event, app)
+            # Refresh registrations and return to management
+            remaining = await app.get_user_active_registrations(message.from_user.id)
+            if remaining:
+                await manage_registrations(message, state, remaining, app=app)
+            return
 
         if action == "cancel":
             await app.delete_user_registration(message.from_user.id, city)

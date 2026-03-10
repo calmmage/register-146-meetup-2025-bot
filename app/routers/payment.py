@@ -225,32 +225,25 @@ async def process_payment(
                 and early_bird_discount_amount > 0
             )
 
-            formula_message = ""
-            if formula_amount > regular_amount:
-                formula_message = (
-                    f"Рекомендованный взнос по формуле: {formula_amount} руб."
-                )
-
             if is_early:
                 # Format deadline for display
                 deadline_display = early_bird_deadline.strftime("%d.%m")
                 payment_msg_part2 = dedent(
                     f"""
-                    Для вас минимальный взнос: {regular_amount} руб. {formula_message}
+                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
 
-                    При ранней регистрации (до {deadline_display}) — скидка {early_bird_discount_amount}₽!
-                    Минимальный взнос при ранней регистрации — {discounted_amount} руб.
+                    При ранней регистрации (до {deadline_display}) скидка {early_bird_discount_amount} руб!
+                    Стоимость билета при ранней регистрации - {discounted_amount} руб.
 
-                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    Очень ждём вас на весенней встрече! 😊
                     """
                 )
             else:
                 payment_msg_part2 = dedent(
                     f"""
-                    Для вас минимальный взнос: {regular_amount} руб.
-                    {formula_message}
+                    Стоимость билета для вашего года выпуска: {regular_amount} руб.
 
-                    Но если перевести больше, то на мероприятие сможет прийти еще один первокурсник 😊
+                    Очень ждём вас на весенней встрече! 😊
                     """
                 )
 

@@ -104,7 +104,7 @@ def mock_ask_user_raw():
 
 
 @pytest.fixture
-def mock_botspot_dependencies():
+def _mock_botspot_dependencies():
     with patch("botspot.core.dependency_manager.get_dependency_manager") as mock_deps:
         mock_manager = MagicMock()
         mock_manager.bot = AsyncMock()
@@ -126,7 +126,7 @@ def mock_admin_check():
 #     mock_app,
 #     mock_send_safe,
 #     mock_ask_user_choice_raw,
-#     mock_botspot_dependencies,
+#     _mock_botspot_dependencies,
 # ):
 #     # Configure the mocks for "pay later" option
 #     mock_ask_user_choice_raw.return_value = "pay_later"
@@ -173,7 +173,7 @@ async def test_pay_handler_no_registrations(
 
 @pytest.mark.asyncio
 async def test_pay_handler_with_registration(
-    mock_message, mock_state, mock_app, mock_send_safe, mock_botspot_dependencies
+    mock_message, mock_state, mock_app, mock_send_safe, _mock_botspot_dependencies
 ):
     from app.app import TargetCity, GraduateType
     from app.routers.payment import (
@@ -209,7 +209,7 @@ async def test_pay_handler_with_registration(
 # @patch("app.routers.payment.app")
 # async def test_confirm_payment_callback(
 #     patched_app,
-#     mock_callback_query, mock_state, mock_app, mock_ask_user_raw, mock_botspot_dependencies, mock_send_safe
+#     mock_callback_query, mock_state, mock_app, mock_ask_user_raw, _mock_botspot_dependencies, mock_send_safe
 # ):
 #     # This test is too complex with deep mock chains - needs rework
 #     # We'll test the individual components instead for now
