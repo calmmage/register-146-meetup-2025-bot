@@ -22,7 +22,7 @@ from src.app import (
 def app():
     mock_db = MagicMock()
     mock_db.get_collection.return_value = MagicMock()
-    with patch("src.src.get_database", return_value=mock_db):
+    with patch("src.app.get_database", return_value=mock_db):
         return App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_sheet",

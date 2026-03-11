@@ -20,7 +20,7 @@ class TestSheetExporter:
         mock_db.get_collection.return_value = self.mock_collection
 
         # Create a patcher for get_database
-        self.db_patcher = patch("src.src.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.app.get_database", return_value=mock_db)
         self.db_patcher.start()
 
         # Create src instance

@@ -30,7 +30,7 @@ def app():
 
     mock_db.get_collection = get_collection
 
-    with patch("src.src.get_database", return_value=mock_db):
+    with patch("src.app.get_database", return_value=mock_db):
         a = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_sheet",
@@ -353,7 +353,7 @@ class TestSaveFeedback:
         app.collection.find_one = AsyncMock(return_value={"full_name": "Иванов Иван"})
         app.event_logs.insert_one = AsyncMock()
 
-        with patch("src.src.get_database") as mock_db:
+        with patch("src.app.get_database") as mock_db:
             mock_feedback_col = AsyncMock()
             mock_feedback_col.insert_one = AsyncMock(
                 return_value=MagicMock(inserted_id="fb123")
@@ -367,7 +367,7 @@ class TestSaveFeedback:
         app.collection.find_one = AsyncMock(return_value=None)
         app.event_logs.insert_one = AsyncMock()
 
-        with patch("src.src.get_database") as mock_db:
+        with patch("src.app.get_database") as mock_db:
             mock_feedback_col = AsyncMock()
             mock_feedback_col.insert_one = AsyncMock(
                 return_value=MagicMock(inserted_id="fb456")

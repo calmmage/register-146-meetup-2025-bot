@@ -42,7 +42,7 @@ def mock_callback_query():
 
 @pytest.fixture
 def mock_app():
-    with patch("src.routers.payment.src") as mock_app:
+    with patch("src.routers.payment.app") as mock_app:
         # Configure src mocks with AsyncMock for async methods
         mock_app.get_user_registrations = AsyncMock(return_value=[])
         mock_app.get_user_registration = AsyncMock(return_value=None)
@@ -204,7 +204,7 @@ async def test_pay_handler_with_registration(
 
 # TODO: Fix complex integration test with proper mock chain
 # @pytest.mark.asyncio
-# @patch("src.routers.payment.src")
+# @patch("src.routers.payment.app")
 # async def test_confirm_payment_callback(
 #     patched_app,
 #     mock_callback_query, mock_state, mock_app, mock_ask_user_raw, _mock_botspot_dependencies, mock_send_safe
@@ -216,7 +216,7 @@ async def test_pay_handler_with_registration(
 
 # TODO: Fix this test with proper mocking
 # @pytest.mark.asyncio
-# @patch("src.routers.payment.src")
+# @patch("src.routers.payment.app")
 # async def test_decline_payment_callback(
 #     patched_app,
 #     mock_callback_query, mock_state, mock_app
