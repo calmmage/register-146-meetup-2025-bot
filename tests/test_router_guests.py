@@ -30,7 +30,7 @@ def mock_app():
     app.get_user_active_registrations = AsyncMock(return_value=[])
     app.get_event_for_registration = AsyncMock(return_value=None)
     app.calculate_event_payment = MagicMock(return_value=(3000, 0, 3000, 3000))
-    app.calculate_guest_price = MagicMock(return_value=3000)
+    app.calculate_guest_price = MagicMock(return_value=(3000, 3000))
     return app
 
 
@@ -176,7 +176,7 @@ async def test_edit_guests_early_bird_price(
 
     # Simulate discounted prices from src methods
     mock_app.calculate_event_payment.return_value = (3000, 500, 2500, 3000)
-    mock_app.calculate_guest_price.return_value = 2500
+    mock_app.calculate_guest_price.return_value = (3000, 2500)
 
     name_resp = MagicMock()
     name_resp.text = "Гость Один"
@@ -201,10 +201,12 @@ async def test_edit_guests_early_bird_price(
     mock_app.calculate_guest_price.assert_called_once_with(base_event, 3000)
 
     saved_guests = mock_app.save_registration_guests.call_args[0][2]
-    assert saved_guests[0]["price"] == 2500
+    assert saved_guests[0]["price"] == 3000
+    assert saved_guests[0]["price_discounted"] == 2500
 
-    # Verify summary mentions discounted price
+    # Verify summary mentions both prices
     summary_text = mock_send.call_args_list[-1][0][1]
+    assert "3000₽" in summary_text
     assert "2500₽" in summary_text
 
 

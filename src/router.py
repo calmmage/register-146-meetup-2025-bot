@@ -315,7 +315,9 @@ async def _edit_guests(
     reg_amount, _, _, _ = app.calculate_event_payment(
         event, graduation_year, graduate_type
     )
-    guest_price = app.calculate_guest_price(event, reg_amount)
+    guest_price_regular, guest_price_discounted = app.calculate_guest_price(
+        event, reg_amount
+    )
 
     # Collect guest names
     guests = []
@@ -337,7 +339,11 @@ async def _edit_guests(
         if len(guest_name) < 2:
             guest_name = f"Гость {i}"
 
-        guests.append({"name": guest_name, "price": guest_price})
+        guests.append({
+            "name": guest_name,
+            "price": guest_price_regular,
+            "price_discounted": guest_price_discounted,
+        })
 
     # Save
     await app.save_registration_guests(user_id, reg_event_id, guests)
@@ -347,7 +353,16 @@ async def _edit_guests(
     for i, g in enumerate(guests, 1):
         guest_summary += f"  {i}. {g['name']} — {g['price']}₽\n"
     guest_total = sum(g["price"] for g in guests)
-    guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
+    guest_total_discounted = sum(
+        g.get("price_discounted", g["price"]) for g in guests
+    )
+    if guest_total != guest_total_discounted:
+        guest_summary += (
+            f"\nОбщая стоимость за гостей: {guest_total}₽"
+            f"\nПри ранней регистрации: {guest_total_discounted}₽"
+        )
+    else:
+        guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
     await send_safe(message.chat.id, guest_summary)
 
     await app.save_event_log(
@@ -1042,7 +1057,9 @@ async def register_user(
                 )
             else:
                 reg_amount = 0
-            guest_price = app.calculate_guest_price(selected_event, reg_amount)
+            guest_price_regular, guest_price_discounted = (
+                app.calculate_guest_price(selected_event, reg_amount)
+            )
 
             for i in range(1, guest_count + 1):
                 from src.user_interactions import ask_user_raw
@@ -1059,14 +1076,27 @@ async def register_user(
                 if len(guest_name) < 2:
                     guest_name = f"Гость {i}"
 
-                guests.append({"name": guest_name, "price": guest_price})
+                guests.append({
+                    "name": guest_name,
+                    "price": guest_price_regular,
+                    "price_discounted": guest_price_discounted,
+                })
 
             # Show guest summary
             guest_summary = f"👥 Гости ({len(guests)}):\n"
             for i, g in enumerate(guests, 1):
                 guest_summary += f"  {i}. {g['name']} — {g['price']}₽\n"
             guest_total = sum(g["price"] for g in guests)
-            guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
+            guest_total_discounted = sum(
+                g.get("price_discounted", g["price"]) for g in guests
+            )
+            if guest_total != guest_total_discounted:
+                guest_summary += (
+                    f"\nОбщая стоимость за гостей: {guest_total}₽"
+                    f"\nПри ранней регистрации: {guest_total_discounted}₽"
+                )
+            else:
+                guest_summary += f"\nОбщая стоимость за гостей: {guest_total}₽"
             await send_safe(message.chat.id, guest_summary)
 
         # Log guest step
@@ -1215,11 +1245,15 @@ async def register_user(
             )
         )
 
-        # Add guest total to payment amounts
-        guest_total = sum(g["price"] for g in guests) if guests else 0
-        regular_amount += guest_total
-        discounted_amount += guest_total
-        formula_amount += guest_total
+        # Add guest totals to payment amounts
+        if guests:
+            guest_total_regular = sum(g["price"] for g in guests)
+            guest_total_discounted = sum(
+                g.get("price_discounted", g["price"]) for g in guests
+            )
+            regular_amount += guest_total_regular
+            discounted_amount += guest_total_discounted
+            formula_amount += guest_total_regular
 
         await app.save_payment_info(
             user_id=user_id,
