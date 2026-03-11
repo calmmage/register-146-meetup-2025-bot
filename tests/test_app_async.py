@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, RegisteredUser, FeedbackData
+from src.app import App, RegisteredUser, FeedbackData
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def app():
 
     mock_db.get_collection = get_collection
 
-    with patch("app.app.get_database", return_value=mock_db):
+    with patch("src.app.get_database", return_value=mock_db):
         a = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_sheet",
@@ -59,6 +59,7 @@ class TestSaveRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
         )
         await app.save_registered_user(user, user_id=12345, username="ivan")
         app.collection.insert_one.assert_called_once()
@@ -76,6 +77,7 @@ class TestSaveRegisteredUser:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
         )
         await app.save_registered_user(user, user_id=12345, username="ivan")
         app.collection.update_one.assert_called_once()
@@ -128,21 +130,31 @@ class TestGetUserRegistrations:
 
 class TestDeleteUserRegistration:
     @pytest.mark.asyncio
-    async def test_delete_with_city(self, app):
+    async def test_delete_with_event_id(self, app):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"user_id": 123, "target_city": "Москва"}]
+            return_value=[
+                {
+                    "user_id": 123,
+                    "target_city": "Москва",
+                    "event_id": "aabbccddeeff00112233aabb",
+                }
+            ]
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.collection.find_one = AsyncMock(
-            return_value={"user_id": 123, "target_city": "Москва"}
+            return_value={
+                "user_id": 123,
+                "target_city": "Москва",
+                "event_id": "aabbccddeeff00112233aabb",
+            }
         )
         app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
         app.deleted_users.insert_one = AsyncMock()
         app.event_logs.insert_one = AsyncMock()
 
         await app.delete_user_registration(
-            123, city="Москва", username="test", full_name="Test"
+            123, event_id="aabbccddeeff00112233aabb", username="test", full_name="Test"
         )
         app.event_logs.insert_one.assert_called()
 
@@ -237,7 +249,7 @@ class TestSavePaymentInfo:
 
         await app.save_payment_info(
             user_id=123,
-            city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             discounted_amount=1800,
             regular_amount=2000,
             screenshot_message_id=999,
@@ -253,7 +265,7 @@ class TestSavePaymentInfo:
         app.collection.update_one = AsyncMock()
         app.event_logs.insert_one = AsyncMock()
 
-        await app.save_payment_info(user_id=123, city="Москва")
+        await app.save_payment_info(user_id=123, event_id="aabbccddeeff00112233aabb")
         app.collection.update_one.assert_called_once()
 
 
@@ -271,7 +283,7 @@ class TestUpdatePaymentStatus:
 
         await app.update_payment_status(
             user_id=123,
-            city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             status="confirmed",
             payment_amount=2000,
             admin_id=999,
@@ -294,7 +306,7 @@ class TestUpdatePaymentStatus:
 
         await app.update_payment_status(
             user_id=123,
-            city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             status="confirmed",
             payment_amount=500,
         )
@@ -309,7 +321,7 @@ class TestUpdatePaymentStatus:
 
         await app.update_payment_status(
             user_id=123,
-            city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             status="declined",
             admin_comment="Скриншот нечитаемый",
         )
@@ -341,7 +353,7 @@ class TestSaveFeedback:
         app.collection.find_one = AsyncMock(return_value={"full_name": "Иванов Иван"})
         app.event_logs.insert_one = AsyncMock()
 
-        with patch("app.app.get_database") as mock_db:
+        with patch("src.app.get_database") as mock_db:
             mock_feedback_col = AsyncMock()
             mock_feedback_col.insert_one = AsyncMock(
                 return_value=MagicMock(inserted_id="fb123")
@@ -355,7 +367,7 @@ class TestSaveFeedback:
         app.collection.find_one = AsyncMock(return_value=None)
         app.event_logs.insert_one = AsyncMock()
 
-        with patch("app.app.get_database") as mock_db:
+        with patch("src.app.get_database") as mock_db:
             mock_feedback_col = AsyncMock()
             mock_feedback_col.insert_one = AsyncMock(
                 return_value=MagicMock(inserted_id="fb456")
@@ -402,16 +414,16 @@ class TestGetUsersBase:
         mock_cursor.to_list = AsyncMock(return_value=[])
         app.collection.find = MagicMock(return_value=mock_cursor)
 
-        result = await app.get_unpaid_users(city="MOSCOW")
+        result = await app.get_unpaid_users(event_id="aabbccddeeff00112233aabb")
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_filter_by_city(self, app):
+    async def test_filter_by_event_id(self, app):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
         app.collection.find = MagicMock(return_value=mock_cursor)
 
-        await app.get_all_users(city="PERM")
+        await app.get_all_users(event_id="aabbccddeeff00112233aabb")
         query = app.collection.find.call_args[0][0]
         assert "$and" in query
 
@@ -438,16 +450,24 @@ class TestFixDatabase:
 
 class TestMoveUserToDeleted:
     @pytest.mark.asyncio
-    async def test_move_with_city(self, app):
+    async def test_move_with_event_id(self, app):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(
-            return_value=[{"user_id": 123, "target_city": "Москва"}]
+            return_value=[
+                {
+                    "user_id": 123,
+                    "target_city": "Москва",
+                    "event_id": "aabbccddeeff00112233aabb",
+                }
+            ]
         )
         app.collection.find = MagicMock(return_value=mock_cursor)
         app.deleted_users.insert_one = AsyncMock()
         app.collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
 
-        result = await app.move_user_to_deleted(123, city="Москва")
+        result = await app.move_user_to_deleted(
+            123, event_id="aabbccddeeff00112233aabb"
+        )
         assert result is True
         app.deleted_users.insert_one.assert_called_once()
 

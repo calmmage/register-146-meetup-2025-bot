@@ -42,8 +42,8 @@ def mock_callback_query():
 
 @pytest.fixture
 def mock_app():
-    with patch("app.routers.payment.app") as mock_app:
-        # Configure app mocks with AsyncMock for async methods
+    with patch("src.routers.payment.app") as mock_app:
+        # Configure src mocks with AsyncMock for async methods
         mock_app.get_user_registrations = AsyncMock(return_value=[])
         mock_app.get_user_registration = AsyncMock(return_value=None)
         mock_app.save_payment_info = AsyncMock()
@@ -79,21 +79,21 @@ def mock_app():
 
 @pytest.fixture
 def mock_send_safe():
-    with patch("app.routers.payment.send_safe") as mock_send:
+    with patch("src.routers.payment.send_safe") as mock_send:
         mock_send.return_value = AsyncMock()
         yield mock_send
 
 
 @pytest.fixture
 def mock_ask_user_choice_raw():
-    with patch("app.routers.payment.ask_user_choice_raw") as mock_ask:
+    with patch("src.routers.payment.ask_user_choice_raw") as mock_ask:
         mock_ask.return_value = "pay_later"  # Default to "pay later" button
         yield mock_ask
 
 
 @pytest.fixture
 def mock_ask_user_raw():
-    with patch("app.routers.payment.ask_user_raw") as mock_ask:
+    with patch("src.routers.payment.ask_user_raw") as mock_ask:
         mock_response = AsyncMock(spec=Message)
         mock_response.text = "2000"
         mock_ask.return_value = mock_response
@@ -111,7 +111,7 @@ def _mock_botspot_dependencies():
 
 @pytest.fixture
 def mock_admin_check():
-    with patch("app.routers.payment.is_admin") as mock_is_admin:
+    with patch("src.routers.payment.is_admin") as mock_is_admin:
         mock_is_admin.return_value = True
         yield mock_is_admin
 
@@ -127,8 +127,8 @@ def mock_admin_check():
 # ):
 #     # Configure the mocks for "pay later" option
 #     mock_ask_user_choice_raw.return_value = "pay_later"
-#     from app.app import TargetCity, GraduateType
-#     from app.routers.payment import (
+#     from src.src import TargetCity, GraduateType
+#     from src.routers.payment import (
 #         process_payment,
 #     )
 #
@@ -155,7 +155,7 @@ async def test_pay_handler_no_registrations(
 ):
     # Configure the mock for a user with no registrations
     mock_app.get_user_registrations.return_value = []
-    from app.routers.payment import (
+    from src.routers.payment import (
         pay_handler,
     )
 
@@ -172,8 +172,8 @@ async def test_pay_handler_no_registrations(
 async def test_pay_handler_with_registration(
     mock_message, mock_state, mock_app, mock_send_safe, _mock_botspot_dependencies
 ):
-    from app.app import GraduateType
-    from app.routers.payment import (
+    from src.app import GraduateType
+    from src.routers.payment import (
         pay_handler,
     )
 
@@ -183,27 +183,28 @@ async def test_pay_handler_with_registration(
         "graduation_year": 2010,
         "class_letter": "A",
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "graduate_type": GraduateType.GRADUATE.value,
     }
     mock_app.get_user_registrations.return_value = [mock_registration]
 
     # Mock the process_payment function
-    with patch("app.routers.payment.process_payment") as mock_process:
+    with patch("src.routers.payment.process_payment") as mock_process:
         mock_process.return_value = AsyncMock()
 
         # Call the handler
         await pay_handler(mock_message, mock_state)
 
-        # Verify process_payment was called with correct args
+        # Verify process_payment was called with correct args (event_id instead of city)
         mock_process.assert_called_once()
         args = mock_process.call_args[0]
-        assert args[2] == "Москва"
+        assert args[2] == "aabbccddeeff00112233aabb"
         assert args[3] == 2010
 
 
 # TODO: Fix complex integration test with proper mock chain
 # @pytest.mark.asyncio
-# @patch("app.routers.payment.app")
+# @patch("src.routers.payment.app")
 # async def test_confirm_payment_callback(
 #     patched_app,
 #     mock_callback_query, mock_state, mock_app, mock_ask_user_raw, _mock_botspot_dependencies, mock_send_safe
@@ -215,7 +216,7 @@ async def test_pay_handler_with_registration(
 
 # TODO: Fix this test with proper mocking
 # @pytest.mark.asyncio
-# @patch("app.routers.payment.app")
+# @patch("src.routers.payment.app")
 # async def test_decline_payment_callback(
 #     patched_app,
 #     mock_callback_query, mock_state, mock_app

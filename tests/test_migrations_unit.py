@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.migrations import Migration, MIGRATION_REGISTRY
+from src.migrations import Migration, MIGRATION_REGISTRY
 
 
 class TestMigration:

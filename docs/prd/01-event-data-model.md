@@ -9,7 +9,7 @@ Introduce an `Event` Pydantic model and a corresponding MongoDB `events` collect
 Event data is currently hardcoded in multiple parallel dictionaries and an enum:
 
 ```python
-# app.py
+# src.py
 class TargetCity(Enum):           # City identifiers
     PERM = "Пермь"
     ...

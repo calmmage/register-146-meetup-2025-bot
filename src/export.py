@@ -6,7 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from loguru import logger
 
-from app.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
+from src.app import App, GRADUATE_TYPE_MAP, PAYMENT_STATUS_MAP
 from botspot import get_database
 
 # Define the scopes for Google Sheets API
@@ -212,17 +212,17 @@ class SheetExporter:
 
         # Update all sheets with user data
         if main_rows:
-            main_sheet.update("A2", main_rows)
+            main_sheet.update(main_rows, "A2")
 
         # Update city sheets
         for city, rows in city_rows.items():
             if rows:
-                city_sheets[city].update("A2", rows)
+                city_sheets[city].update(rows, "A2")
 
         # Update graduate type sheets
         for graduate_type, rows in type_rows.items():
             if rows:
-                type_sheets[graduate_type].update("A2", rows)
+                type_sheets[graduate_type].update(rows, "A2")
 
         message = (
             f"Успешно экспортировано {len(main_rows)} пользователей в Google Таблицы\n"
@@ -510,7 +510,7 @@ class SheetExporter:
 
         # Update sheet with feedback data
         if feedback_rows:
-            feedback_sheet.update("A2", feedback_rows)
+            feedback_sheet.update(feedback_rows, "A2")
 
         message = (
             f"Успешно экспортировано {len(feedback_rows)} отзывов в Google Таблицы\n"

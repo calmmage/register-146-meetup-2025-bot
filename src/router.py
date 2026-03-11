@@ -10,10 +10,10 @@ from loguru import logger
 from textwrap import dedent
 from typing import Dict, List, Optional
 
-from app.app import App, RegisteredUser, GraduateType
-from app.routers.admin import admin_handler
+from src.app import App, RegisteredUser, GraduateType
+from src.routers.admin import admin_handler
 from botspot import commands_menu
-from app.user_interactions import ask_user, ask_user_choice
+from src.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe, is_admin
 
 router = Router()
@@ -228,7 +228,7 @@ async def handle_registered_user(
             await cancel_registration_handler(message, state, app)
 
         elif response == "pay":
-            from app.routers.payment import process_payment
+            from src.routers.payment import process_payment
 
             await state.update_data(
                 original_user_id=message.from_user.id,
@@ -266,12 +266,13 @@ async def _edit_guests(
     message: Message, state: FSMContext, reg: Dict, event: Dict, app: App
 ):
     """Allow user to add/change/remove guests on an existing registration."""
-    from app.user_interactions import ask_user_raw
+    from src.user_interactions import ask_user_raw
 
     assert message.from_user is not None
     user_id = message.from_user.id
     username = message.from_user.username or ""
     city = reg["target_city"]
+    reg_event_id = reg["event_id"]
 
     max_guests = event.get("max_guests_per_person", 3)
     existing_guests = reg.get("guests", [])
@@ -298,7 +299,7 @@ async def _edit_guests(
 
     if guest_count == 0:
         # Remove all guests
-        await app.save_registration_guests(user_id, city, [])
+        await app.save_registration_guests(user_id, reg_event_id, [])
         await send_safe(message.chat.id, "👥 Гости убраны.")
         await app.save_event_log(
             "edit_guests",
@@ -339,7 +340,7 @@ async def _edit_guests(
         guests.append({"name": guest_name, "price": guest_price})
 
     # Save
-    await app.save_registration_guests(user_id, city, guests)
+    await app.save_registration_guests(user_id, reg_event_id, guests)
 
     # Show summary
     guest_summary = f"👥 Гости ({len(guests)}):\n"
@@ -368,11 +369,12 @@ async def manage_registrations(
     """Allow user to manage multiple registrations"""
     assert message.from_user is not None
 
-    # Create choices for each city
+    # Create choices for each registration (keyed by event_id)
     choices = {}
     for reg in registrations:
         city = reg["target_city"]
-        choices[city] = f"Управлять регистрацией в городе {city}"
+        reg_eid = reg["event_id"]
+        choices[reg_eid] = f"Управлять регистрацией в городе {city}"
 
     choices["all"] = "Отменить все регистрации"
     choices["back"] = "Вернуться назад"
@@ -452,10 +454,11 @@ async def manage_registrations(
         await handle_registered_user(message, state, registrations[0], app)
 
     else:
-        # Manage specific city registration
-        city = response
-        assert city is not None
-        reg = next(r for r in registrations if r["target_city"] == city)
+        # Manage specific registration by event_id
+        selected_event_id = response
+        assert selected_event_id is not None
+        reg = next(r for r in registrations if r["event_id"] == selected_event_id)
+        city = reg["target_city"]
         event = await app.get_event_for_registration(reg)
 
         # Show current guests in info
@@ -508,6 +511,12 @@ async def manage_registrations(
             )
 
         if action == "guests":
+            if event is None:
+                await send_safe(
+                    message.chat.id,
+                    "Произошла ошибка: не удалось найти мероприятие.",
+                )
+                return
             await _edit_guests(message, state, reg, event, app)
             # Refresh registrations and return to management
             remaining = await app.get_user_active_registrations(message.from_user.id)
@@ -516,7 +525,7 @@ async def manage_registrations(
             return
 
         if action == "cancel":
-            await app.delete_user_registration(message.from_user.id, city)
+            await app.delete_user_registration(message.from_user.id, selected_event_id)
 
             await app.log_registration_canceled(
                 message.from_user.id,
@@ -593,7 +602,9 @@ async def register_user(
 
     # Get existing registrations to avoid duplicates
     existing_registrations = await app.get_user_registrations(user_id)
-    existing_cities = [reg["target_city"] for reg in existing_registrations]
+    existing_event_ids = [
+        reg["event_id"] for reg in existing_registrations if reg.get("event_id")
+    ]
 
     # step 1 - greet user, ask location
     # Load available events from DB
@@ -641,7 +652,7 @@ async def register_user(
         available_events = [
             e
             for e in enabled_events
-            if not app.is_event_passed(e) and e.get("city", "") not in existing_cities
+            if not app.is_event_passed(e) and str(e["_id"]) not in existing_event_ids
         ]
 
         if not available_events:
@@ -715,7 +726,7 @@ async def register_user(
                 "step": "city_selection",
                 "city": city_name,
                 "event_id": str(selected_event["_id"]) if selected_event else None,
-                "existing_cities": existing_cities,
+                "existing_event_ids": existing_event_ids,
             },
             user_id,
             username,
@@ -725,9 +736,7 @@ async def register_user(
 
     # Determine the city name for display
     reg_city_name = (
-        selected_event["city"]
-        if selected_event
-        else (location if location else "")
+        selected_event["city"] if selected_event else (location if location else "")
     )
 
     # If we have info to reuse, skip asking for name and class
@@ -966,6 +975,7 @@ async def register_user(
             log_messages[user_id].append(log_msg)
 
     # Determine the target_city value
+    target_city_value = ""
     if location:
         target_city_value = location
     elif selected_event:
@@ -982,7 +992,10 @@ async def register_user(
         )
 
     # Save the registration with event_id
-    event_id = str(selected_event["_id"]) if selected_event else None
+    event_id = str(selected_event["_id"]) if selected_event else ""
+    assert full_name is not None, "full_name must be set by this point"
+    assert graduation_year is not None, "graduation_year must be set by this point"
+    assert class_letter is not None, "class_letter must be set by this point"
     registered_user = RegisteredUser(
         full_name=full_name,
         graduation_year=graduation_year,
@@ -1032,7 +1045,7 @@ async def register_user(
             guest_price = app.calculate_guest_price(selected_event, reg_amount)
 
             for i in range(1, guest_count + 1):
-                from app.user_interactions import ask_user_raw
+                from src.user_interactions import ask_user_raw
 
                 name_resp = await ask_user_raw(
                     message.chat.id,
@@ -1079,7 +1092,7 @@ async def register_user(
     # Log to events chat
     await app.log_registration_completed(
         user_id,
-        username,
+        username or "",
         full_name,
         graduation_year,
         class_letter,
@@ -1091,19 +1104,19 @@ async def register_user(
     # Clear log messages
     await delete_log_messages(user_id)
 
-    # Determine the city string for DB operations
-    city_for_db = reg_city_name
+    # Determine event_id for DB operations
+    event_id_for_db = str(selected_event["_id"]) if selected_event else ""
 
     # Save guest data to registration
     if guests:
-        await app.save_registration_guests(user_id, city_for_db, guests)
+        await app.save_registration_guests(user_id, event_id_for_db, guests)
 
     # Determine prepositional city name for confirmation
     city_prep = ""
     if selected_event:
         city_prep = selected_event.get("city_prepositional", reg_city_name)
     elif location:
-        from app.app import CITY_PREPOSITIONAL_MAP
+        from src.app import CITY_PREPOSITIONAL_MAP
 
         city_prep = CITY_PREPOSITIONAL_MAP.get(location, location)
 
@@ -1146,7 +1159,7 @@ async def register_user(
 
             await app.update_payment_status(
                 user_id=user_id,
-                city=city_for_db,
+                event_id=event_id_for_db,
                 status="not paid",
                 payment_amount=0,
             )
@@ -1156,7 +1169,7 @@ async def register_user(
                 confirmation_msg + "\nСейчас пришлем информацию об оплате за гостей...",
             )
 
-            from app.routers.payment import process_payment
+            from src.routers.payment import process_payment
 
             await state.update_data(
                 original_user_id=user_id, original_username=username
@@ -1164,7 +1177,7 @@ async def register_user(
             await process_payment(
                 message,
                 state,
-                city_for_db,
+                event_id_for_db,
                 graduation_year,
                 graduate_type=graduate_type.value,
                 guests=guests,
@@ -1172,7 +1185,7 @@ async def register_user(
         else:
             await app.update_payment_status(
                 user_id=user_id,
-                city=city_for_db,
+                event_id=event_id_for_db,
                 status="confirmed",
                 admin_comment=comment,
                 payment_amount=0,
@@ -1187,6 +1200,15 @@ async def register_user(
             await app.export_registered_users_to_google_sheets()
     else:
         # Regular flow - needs payment
+        if not selected_event:
+            logger.error(f"No event found for registration: user_id={user_id}")
+            await send_safe(
+                message.chat.id,
+                "Произошла ошибка: не удалось найти мероприятие. Пожалуйста, попробуйте ещё раз.",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+
         regular_amount, discount, discounted_amount, formula_amount = (
             app.calculate_event_payment(
                 selected_event, graduation_year, graduate_type.value
@@ -1201,7 +1223,7 @@ async def register_user(
 
         await app.save_payment_info(
             user_id=user_id,
-            city=city_for_db,
+            event_id=event_id_for_db,
             discounted_amount=discounted_amount,
             regular_amount=regular_amount,
             formula_amount=formula_amount,
@@ -1212,14 +1234,14 @@ async def register_user(
         confirmation_msg += "Сейчас пришлем информацию об оплате..."
         await send_safe(message.chat.id, confirmation_msg)
 
-        from app.routers.payment import process_payment
+        from src.routers.payment import process_payment
 
         await state.update_data(original_user_id=user_id, original_username=username)
 
         await process_payment(
             message,
             state,
-            city_for_db,
+            event_id_for_db,
             graduation_year,
             graduate_type=graduate_type.value,
             guests=guests,
@@ -1284,6 +1306,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
         # User has only one registration, ask for confirmation
         reg = registrations[0]
         city = reg["target_city"]
+        reg_event_id = reg["event_id"]
         full_name = reg["full_name"]
         event = await app.get_event_for_registration(reg)
 
@@ -1308,7 +1331,7 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
 
         if response == "yes":
             # Cancel registration
-            await app.delete_user_registration(user_id, city)
+            await app.delete_user_registration(user_id, reg_event_id)
 
             # Log cancellation
             await app.log_registration_canceled(
@@ -1334,8 +1357,9 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
         choices = {}
         for reg in registrations:
             city = reg["target_city"]
+            eid = reg["event_id"]
             event = await app.get_event_for_registration(reg)
-            choices[city] = f"{city} ({get_event_date_display(event)})"
+            choices[eid] = f"{city} ({get_event_date_display(event)})"
 
         choices["all"] = "Отменить все регистрации"
         choices["cancel"] = "Ничего не отменять"
@@ -1378,13 +1402,14 @@ async def cancel_registration_handler(message: Message, state: FSMContext, app: 
                 reply_markup=ReplyKeyboardRemove(),
             )
         else:
-            # Cancel specific city registration
-            city = response
-            reg = next(r for r in registrations if r["target_city"] == city)
+            # Cancel specific registration by event_id
+            selected_eid = response
+            reg = next(r for r in registrations if r["event_id"] == selected_eid)
             full_name = reg["full_name"]
+            city = reg["target_city"]
 
             # Cancel registration
-            await app.delete_user_registration(user_id, city)
+            await app.delete_user_registration(user_id, selected_eid)
 
             # Log cancellation
             await app.log_registration_canceled(

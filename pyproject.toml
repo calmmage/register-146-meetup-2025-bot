@@ -42,7 +42,7 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["src"]
 
 [dependency-groups]
 extras = [

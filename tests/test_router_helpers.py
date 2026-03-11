@@ -1,7 +1,7 @@
 """Tests for router helper functions."""
 
-from app.app import GraduateType
-from app.router import get_event_date_display, get_event_city, is_event_free
+from src.app import GraduateType
+from src.router import get_event_date_display, get_event_city, is_event_free
 
 
 class TestGetEventDateDisplay:

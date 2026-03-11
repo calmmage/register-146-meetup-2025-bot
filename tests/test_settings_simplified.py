@@ -1,4 +1,4 @@
-from app.app import AppSettings
+from src.app import AppSettings
 
 
 class TestSimplifiedSettings:

@@ -147,7 +147,7 @@ from aiogram.types import Message
 from botspot.utils import is_admin
 from loguru import logger
 
-from app.app import App, Event, EventStatus, PricingType
+from src.app import App, Event, EventStatus, PricingType
 
 events_router = Router()
 

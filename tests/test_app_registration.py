@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App, RegisteredUser, GraduateType
+from src.app import App, RegisteredUser, GraduateType
 
 
 class TestAppRegistration:
@@ -24,10 +24,10 @@ class TestAppRegistration:
         }.get(name, AsyncMock())
 
         # Create a patcher for get_database
-        self.db_patcher = patch("app.app.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.app.get_database", return_value=mock_db)
         self.db_patcher.start()
 
-        # Create app instance
+        # Create src instance
         self.app = App(
             telegram_bot_token="mock_token",
             payment_phone_number="1234567890",
@@ -46,6 +46,7 @@ class TestAppRegistration:
             graduation_year=2010,
             class_letter="А",
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             user_id=123456,
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
@@ -109,6 +110,7 @@ class TestAppRegistration:
             graduation_year=2010,
             class_letter="А",  # Changed from Б to А
             target_city="Москва",
+            event_id="aabbccddeeff00112233aabb",
             user_id=123456,
             username="ivan_ivanov",
             graduate_type=GraduateType.GRADUATE,
@@ -222,19 +224,19 @@ class TestAppRegistration:
             assert registration is None
 
     @pytest.mark.asyncio
-    async def test_delete_user_registration_specific_city(self):
-        """Test deleting a user's registration for a specific city"""
+    async def test_delete_user_registration_specific_event(self):
+        """Test deleting a user's registration for a specific event"""
         # Mock move_user_to_deleted to return True
         with patch.object(
             self.app, "move_user_to_deleted", AsyncMock(return_value=True)
         ) as mock_move:
             # Call the method
             result = await self.app.delete_user_registration(
-                123456, city="Москва"
+                123456, event_id="aabbccddeeff00112233aabb"
             )
 
             # Verify the move_user_to_deleted was called with correct parameters
-            mock_move.assert_called_once_with(123456, "Москва")
+            mock_move.assert_called_once_with(123456, "aabbccddeeff00112233aabb")
 
             # Verify the result
             assert result is True
@@ -272,13 +274,14 @@ class TestAppRegistration:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_move_user_to_deleted_specific_city(self):
-        """Test moving a user to deleted_users collection for a specific city"""
+    async def test_move_user_to_deleted_specific_event(self):
+        """Test moving a user to deleted_users collection for a specific event"""
         # Mock the retrieve user record
         user_record = {
             "_id": "mock_id",
             "user_id": 123456,
             "target_city": "Москва",
+            "event_id": "aabbccddeeff00112233aabb",
             "full_name": "Test User",
         }
 
@@ -296,11 +299,13 @@ class TestAppRegistration:
         self.mock_deleted_users.insert_one = AsyncMock()
 
         # Call the method
-        result = await self.app.move_user_to_deleted(123456, "Москва")
+        result = await self.app.move_user_to_deleted(
+            123456, event_id="aabbccddeeff00112233aabb"
+        )
 
         # Verify that the record was retrieved with correct query
         self.mock_collection.find.assert_called_once_with(
-            {"user_id": 123456, "target_city": "Москва"}
+            {"user_id": 123456, "event_id": "aabbccddeeff00112233aabb"}
         )
 
         # Verify that the record was inserted into deleted_users
@@ -308,7 +313,7 @@ class TestAppRegistration:
 
         # Verify deletion was called with the right parameters
         self.mock_collection.delete_one.assert_called_once_with(
-            {"user_id": 123456, "target_city": "Москва"}
+            {"user_id": 123456, "event_id": "aabbccddeeff00112233aabb"}
         )
 
         # Verify the result

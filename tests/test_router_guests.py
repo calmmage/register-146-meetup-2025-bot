@@ -38,6 +38,7 @@ def mock_app():
 def base_reg():
     return {
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "graduation_year": 2010,
         "class_letter": "А",
         "graduate_type": "GRADUATE",
@@ -74,15 +75,15 @@ async def test_edit_guests_add_new(
     mock_name_resp.text = "Иван Иванов"
 
     with (
-        patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="2"),
-        patch("app.router.send_safe", new_callable=AsyncMock),
+        patch("src.router.ask_user_choice", new_callable=AsyncMock, return_value="2"),
+        patch("src.router.send_safe", new_callable=AsyncMock),
         patch(
-            "app.user_interactions.ask_user_raw",
+            "src.user_interactions.ask_user_raw",
             new_callable=AsyncMock,
             return_value=mock_name_resp,
         ),
     ):
-        from app.router import _edit_guests
+        from src.router import _edit_guests
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
@@ -109,14 +110,16 @@ async def test_edit_guests_remove_all(
     base_reg["guests"] = [{"name": "Гость", "price": 3000}]
 
     with (
-        patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="0"),
-        patch("app.router.send_safe", new_callable=AsyncMock) as mock_send,
+        patch("src.router.ask_user_choice", new_callable=AsyncMock, return_value="0"),
+        patch("src.router.send_safe", new_callable=AsyncMock) as mock_send,
     ):
-        from app.router import _edit_guests
+        from src.router import _edit_guests
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
-    mock_app.save_registration_guests.assert_awaited_once_with(12345, "Москва", [])
+    mock_app.save_registration_guests.assert_awaited_once_with(
+        12345, "aabbccddeeff00112233aabb", []
+    )
     mock_send.assert_awaited_once()
     assert "убраны" in mock_send.call_args[0][1].lower()
 
@@ -144,11 +147,11 @@ async def test_edit_guests_update_existing(
         return new_name_resp
 
     with (
-        patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="1"),
-        patch("app.router.send_safe", new_callable=AsyncMock),
-        patch("app.user_interactions.ask_user_raw", side_effect=_capture_ask_raw),
+        patch("src.router.ask_user_choice", new_callable=AsyncMock, return_value="1"),
+        patch("src.router.send_safe", new_callable=AsyncMock),
+        patch("src.user_interactions.ask_user_raw", side_effect=_capture_ask_raw),
     ):
-        from app.router import _edit_guests
+        from src.router import _edit_guests
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
@@ -171,7 +174,7 @@ async def test_edit_guests_early_bird_price(
     base_event["early_bird_discount"] = 500
     base_event["early_bird_deadline"] = datetime.now() + timedelta(days=7)
 
-    # Simulate discounted prices from app methods
+    # Simulate discounted prices from src methods
     mock_app.calculate_event_payment.return_value = (3000, 500, 2500, 3000)
     mock_app.calculate_guest_price.return_value = 2500
 
@@ -179,15 +182,15 @@ async def test_edit_guests_early_bird_price(
     name_resp.text = "Гость Один"
 
     with (
-        patch("app.router.ask_user_choice", new_callable=AsyncMock, return_value="1"),
-        patch("app.router.send_safe", new_callable=AsyncMock) as mock_send,
+        patch("src.router.ask_user_choice", new_callable=AsyncMock, return_value="1"),
+        patch("src.router.send_safe", new_callable=AsyncMock) as mock_send,
         patch(
-            "app.user_interactions.ask_user_raw",
+            "src.user_interactions.ask_user_raw",
             new_callable=AsyncMock,
             return_value=name_resp,
         ),
     ):
-        from app.router import _edit_guests
+        from src.router import _edit_guests
 
         await _edit_guests(mock_message, mock_state, base_reg, base_event, mock_app)
 
@@ -213,6 +216,7 @@ async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_
     """manage_registrations shows guest names for a selected city registration."""
     reg = {
         "target_city": "Москва",
+        "event_id": "aabbccddeeff00112233aabb",
         "full_name": "Тест Тестов",
         "graduation_year": 2010,
         "class_letter": "А",
@@ -238,15 +242,15 @@ async def test_manage_registrations_shows_guests(mock_message, mock_state, mock_
         ask_choice_calls.append(text)
         call_count += 1
         if call_count == 1:
-            return "Москва"  # select city
+            return "aabbccddeeff00112233aabb"  # select event by event_id
         return "back"  # then go back
 
     with (
-        patch("app.router.ask_user_choice", side_effect=_fake_ask_choice),
-        patch("app.router.send_safe", new_callable=AsyncMock),
-        patch("app.router.handle_registered_user", new_callable=AsyncMock),
+        patch("src.router.ask_user_choice", side_effect=_fake_ask_choice),
+        patch("src.router.send_safe", new_callable=AsyncMock),
+        patch("src.router.handle_registered_user", new_callable=AsyncMock),
     ):
-        from app.router import manage_registrations
+        from src.router import manage_registrations
 
         await manage_registrations(mock_message, mock_state, [reg], mock_app)
 

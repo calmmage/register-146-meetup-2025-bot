@@ -3,8 +3,8 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from app.app import App
-from app.export import SheetExporter
+from src.app import App
+from src.export import SheetExporter
 
 
 class TestSheetExporterSimplified:
@@ -23,10 +23,10 @@ class TestSheetExporterSimplified:
         mock_db.get_collection.return_value = self.mock_collection
 
         # Create a patcher for get_database
-        self.db_patcher = patch("app.app.get_database", return_value=mock_db)
+        self.db_patcher = patch("src.app.get_database", return_value=mock_db)
         self.db_patcher.start()
 
-        # Create app instance
+        # Create src instance
         self.app = App(
             telegram_bot_token="mock_token",
             spreadsheet_id="mock_spreadsheet_id",
@@ -34,7 +34,7 @@ class TestSheetExporterSimplified:
             payment_name="Test User",
         )
 
-        # Create exporter with the mocked app
+        # Create exporter with the mocked src
         self.exporter = SheetExporter("mock_spreadsheet_id", app=self.app)
 
     def teardown_method(self):
@@ -43,7 +43,7 @@ class TestSheetExporterSimplified:
         self.db_patcher.stop()
 
     @pytest.mark.asyncio
-    @patch("app.export.logger")
+    @patch("src.export.logger")
     async def test_export_to_csv_empty(self, mock_logger):
         """Test export_to_csv with empty result"""
         # No setup needed - our collection is already mocked to return empty list
@@ -56,9 +56,9 @@ class TestSheetExporterSimplified:
         assert csv_content is None
         mock_logger.info.assert_called_once_with("Нет пользователей для экспорта")
 
-    @patch("app.export.gspread.authorize")
-    @patch("app.export.Credentials.from_service_account_info")
-    @patch("app.export.os.getenv")
+    @patch("src.export.gspread.authorize")
+    @patch("src.export.Credentials.from_service_account_info")
+    @patch("src.export.os.getenv")
     def test_get_client_base64_credentials(
         self, mock_getenv, mock_credentials, mock_authorize
     ):

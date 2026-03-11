@@ -69,7 +69,7 @@ CITY_PREPOSITIONAL_MAP = {
 
 
 class AppSettings(BaseSettings):
-    """Basic app configuration"""
+    """Basic src configuration"""
 
     telegram_bot_token: SecretStr
     spreadsheet_id: Optional[str] = None
@@ -90,8 +90,8 @@ class RegisteredUser(BaseModel):
     full_name: str
     graduation_year: int
     class_letter: str
-    target_city: str
-    event_id: Optional[str] = None
+    target_city: str  # Denormalized display data from event
+    event_id: str  # Primary routing key — references events collection
     user_id: Optional[int] = None
     username: Optional[str] = None
     graduate_type: GraduateType = GraduateType.GRADUATE
@@ -130,10 +130,12 @@ class App:
     events_collection_name = "events"
 
     def __init__(self, **kwargs):
-        from app.export import SheetExporter
+        from src.export import SheetExporter
 
         self.settings = AppSettings(**kwargs)
-        self.sheet_exporter = SheetExporter(self.settings.spreadsheet_id, app=self)
+        self.sheet_exporter = SheetExporter(
+            self.settings.spreadsheet_id or "", app=self
+        )
 
         self._collection = None
         self._event_logs = None
@@ -142,7 +144,7 @@ class App:
 
     async def startup(self):
         """Run startup tasks like fixing the database and initializing collections."""
-        logger.info("Running app startup tasks...")
+        logger.info("Running src startup tasks...")
 
         # Initialize collections
         _ = self.collection
@@ -151,7 +153,7 @@ class App:
         _ = self.events_col
 
         # Run database migrations (includes seeding new events + archiving old ones)
-        from app.migrations import run_migrations
+        from src.migrations import run_migrations
 
         await run_migrations(self)
 
@@ -422,11 +424,11 @@ class App:
             "graduate_type": data.get("graduate_type"),
         }
 
-        # Check if user is already registered for this specific city
+        # Check if user is already registered for this specific event
         is_update = False
         if user_id is not None:
             existing = await self.collection.find_one(
-                {"user_id": user_id, "target_city": data["target_city"]}
+                {"user_id": user_id, "event_id": data["event_id"]}
             )
 
             if existing:
@@ -447,17 +449,17 @@ class App:
         await self.save_event_log("user_registration", log_data, user_id, username)
 
     async def save_registration_guests(
-        self, user_id: int, city: str, guests: List[Dict]
+        self, user_id: int, event_id: str, guests: List[Dict]
     ):
         """Save guest list to an existing registration.
 
         Args:
             user_id: Telegram user ID
-            city: target_city value
+            event_id: Event ID from events collection
             guests: list of {"name": str, "price": int}
         """
         await self.collection.update_one(
-            {"user_id": user_id, "target_city": city},
+            {"user_id": user_id, "event_id": event_id},
             {"$set": {"guests": guests, "guest_count": len(guests)}},
         )
 
@@ -474,7 +476,7 @@ class App:
     async def delete_user_registration(
         self,
         user_id: int,
-        city: Optional[str] = None,
+        event_id: Optional[str] = None,
         username: Optional[str] = None,
         full_name: Optional[str] = None,
     ):
@@ -483,21 +485,21 @@ class App:
 
         Args:
             user_id: The user's Telegram ID
-            city: Optional city to delete specific registration. If None, deletes all.
+            event_id: Optional event_id to delete specific registration. If None, deletes all.
             username: Optional user's Telegram username for logging
             full_name: Optional user's full name for logging
         """
         # Log the deletion event
         log_data = {"action": "delete_registration"}
-        if city:
-            log_data["city"] = city
+        if event_id:
+            log_data["event_id"] = event_id
         if full_name:
             log_data["full_name"] = full_name
 
         await self.save_event_log("user_deletion", log_data, user_id, username)
 
         # Move the user to deleted_users collection
-        return await self.move_user_to_deleted(user_id, city)
+        return await self.move_user_to_deleted(user_id, event_id)
 
     def validate_full_name(self, full_name: str) -> Tuple[bool, str]:
         """
@@ -721,7 +723,7 @@ class App:
         class_letter: str,
         city: str,
         graduate_type: str = GraduateType.GRADUATE.value,
-        guests: List[Dict] = None,
+        guests: Optional[List[Dict]] = None,
     ) -> None:
         """
         Log a completed registration to the events chat
@@ -795,7 +797,7 @@ class App:
     async def save_payment_info(
         self,
         user_id: int,
-        city: Optional[str] = None,
+        event_id: Optional[str] = None,
         discounted_amount: Optional[int] = None,
         regular_amount: Optional[int] = None,
         screenshot_message_id: Optional[int] = None,
@@ -808,7 +810,7 @@ class App:
 
         Args:
             user_id: The user's Telegram ID
-            city: The city of the event
+            event_id: The event ID
             discounted_amount: The payment amount with early discount
             regular_amount: The regular payment amount without discount
             screenshot_message_id: ID of the message containing the payment screenshot
@@ -831,14 +833,14 @@ class App:
 
         # Get user registration for logging
         user_data = await self.collection.find_one(
-            {"user_id": user_id, "target_city": city}
+            {"user_id": user_id, "event_id": event_id}
         )
         full_name = user_data.get("full_name") if user_data else None
 
         # Log payment info submission
         log_data = {
             "action": "save_payment_info",
-            "city": city,
+            "event_id": event_id,
             "discounted_amount": discounted_amount,
             "regular_amount": regular_amount,
             "has_screenshot": screenshot_message_id is not None,
@@ -851,14 +853,14 @@ class App:
 
         # Update the database
         await self.collection.update_one(
-            {"user_id": user_id, "target_city": city},
+            {"user_id": user_id, "event_id": event_id},
             {"$set": update_data},
         )
 
     async def update_payment_status(
         self,
         user_id: int,
-        city: Optional[str] = None,
+        event_id: Optional[str] = None,
         status: Optional[str] = None,
         admin_comment: Optional[str] = None,
         payment_amount: Optional[int] = None,
@@ -870,7 +872,7 @@ class App:
 
         Args:
             user_id: The user's Telegram ID
-            city: The city of the event
+            event_id: The event ID
             status: The new payment status (confirmed, declined, pending)
             admin_comment: Optional comment from admin
             payment_amount: Amount paid by the user (in rubles)
@@ -889,14 +891,14 @@ class App:
         registration = None
         if payment_amount is not None or status:
             registration = await self.collection.find_one(
-                {"user_id": user_id, "target_city": city}
+                {"user_id": user_id, "event_id": event_id}
             )
 
         # Prepare log data
         log_data = {
             "action": "update_payment_status",
             "user_id": user_id,
-            "city": city,
+            "event_id": event_id,
             "new_status": status,
         }
 
@@ -955,11 +957,11 @@ class App:
 
         # Update the database
         await self.collection.update_one(
-            {"user_id": user_id, "target_city": city}, {"$set": update_data}
+            {"user_id": user_id, "event_id": event_id}, {"$set": update_data}
         )
 
     async def normalize_graduate_types(
-        self, admin_id: int = None, admin_username: str = None
+        self, admin_id: Optional[int] = None, admin_username: Optional[str] = None
     ):
         """One-time fix to normalize all graduate_type values to uppercase in the database."""
         result = await self.collection.update_many(
@@ -986,7 +988,6 @@ class App:
     async def _get_users_base(
         self,
         payment_status: Optional[str] = None,
-        city: Optional[str] = None,
         event_id: Optional[str] = None,
     ) -> List[Dict]:
         """
@@ -994,8 +995,7 @@ class App:
 
         Args:
             payment_status: Filter by payment status ("confirmed", "pending", "declined", None for any)
-            city: Filter by city enum key (legacy, e.g. "MOSCOW") or None for all
-            event_id: Filter by event_id (preferred over city)
+            event_id: Filter by event_id or None for all
 
         Returns:
             List of user registrations matching the criteria
@@ -1011,20 +1011,9 @@ class App:
         elif payment_status == "paid":
             and_conditions.append({"payment_status": "confirmed"})
 
-        # Filter by event_id (preferred) or legacy city
+        # Filter by event_id
         if event_id and event_id != "all":
             and_conditions.append({"event_id": event_id})
-        elif city and city != "all":
-            # Legacy: map city key to actual value
-            city_mapping = {
-                "MOSCOW": "Москва",
-                "PERM": "Пермь",
-                "SAINT_PETERSBURG": "Санкт-Петербург",
-                "BELGRADE": "Белград",
-                "PERM_SUMMER_2025": "Пермь (Летняя встреча 2025)",
-            }
-            if city in city_mapping:
-                and_conditions.append({"target_city": city_mapping[city]})
 
         # Add the conditions to the query if we have any
         if and_conditions:
@@ -1033,36 +1022,15 @@ class App:
         cursor = self.collection.find(query)
         return await cursor.to_list(length=None)
 
-    async def get_unpaid_users(
-        self, city: Optional[str] = None, event_id: Optional[str] = None
-    ) -> List[Dict]:
-        """
-        Get all users who have not paid yet (payment_status is not "confirmed")
-
-        Args:
-            city: Optional city to filter by (legacy)
-            event_id: Optional event_id to filter by (preferred)
-
-        Returns:
-            List of user registrations with unpaid status
-        """
-        return await self._get_users_base(
-            payment_status="unpaid", city=city, event_id=event_id
-        )
+    async def get_unpaid_users(self, event_id: Optional[str] = None) -> List[Dict]:
+        """Get all users who have not paid yet (payment_status is not "confirmed")"""
+        return await self._get_users_base(payment_status="unpaid", event_id=event_id)
 
     async def get_users_without_feedback(
-        self, city: Optional[str] = None
+        self, event_id: Optional[str] = None
     ) -> List[Dict]:
-        """
-        Get all users who have not provided feedback yet
-
-        Args:
-            city: Optional city to filter by
-
-        Returns:
-            List of user registrations without feedback
-        """
-        all_users = await self._get_users_base(city=city)
+        """Get all users who have not provided feedback yet."""
+        all_users = await self._get_users_base(event_id=event_id)
         users_without_feedback = []
 
         for user in all_users:
@@ -1071,17 +1039,11 @@ class App:
 
         return users_without_feedback
 
-    async def get_users_with_feedback(self, city: Optional[str] = None) -> List[Dict]:
-        """
-        Get all users who have provided feedback
-
-        Args:
-            city: Optional city to filter by
-
-        Returns:
-            List of user registrations with feedback
-        """
-        all_users = await self._get_users_base(city=city)
+    async def get_users_with_feedback(
+        self, event_id: Optional[str] = None
+    ) -> List[Dict]:
+        """Get all users who have provided feedback."""
+        all_users = await self._get_users_base(event_id=event_id)
         users_with_feedback = []
 
         for user in all_users:
@@ -1090,37 +1052,13 @@ class App:
 
         return users_with_feedback
 
-    async def get_paid_users(
-        self, city: Optional[str] = None, event_id: Optional[str] = None
-    ) -> List[Dict]:
-        """
-        Get all users who have paid (payment_status is "confirmed")
+    async def get_paid_users(self, event_id: Optional[str] = None) -> List[Dict]:
+        """Get all users who have paid (payment_status is "confirmed")."""
+        return await self._get_users_base(payment_status="paid", event_id=event_id)
 
-        Args:
-            city: Optional city to filter by (legacy)
-            event_id: Optional event_id to filter by (preferred)
-
-        Returns:
-            List of user registrations with paid status
-        """
-        return await self._get_users_base(
-            payment_status="paid", city=city, event_id=event_id
-        )
-
-    async def get_all_users(
-        self, city: Optional[str] = None, event_id: Optional[str] = None
-    ) -> List[Dict]:
-        """
-        Get all users regardless of payment status.
-
-        Args:
-            city: Optional city to filter by (legacy)
-            event_id: Optional event_id to filter by (preferred)
-
-        Returns:
-            List of all user registrations
-        """
-        return await self._get_users_base(city=city, event_id=event_id)
+    async def get_all_users(self, event_id: Optional[str] = None) -> List[Dict]:
+        """Get all users regardless of payment status."""
+        return await self._get_users_base(event_id=event_id)
 
     async def _fix_database(self) -> Dict[str, int]:
         """
@@ -1272,22 +1210,22 @@ class App:
         return str(result.inserted_id)
 
     async def move_user_to_deleted(
-        self, user_id: int, city: Optional[str] = None
+        self, user_id: int, event_id: Optional[str] = None
     ) -> bool:
         """
         Move a user from registered_users to deleted_users collection
 
         Args:
             user_id: The user's Telegram ID
-            city: Optional city to move specific registration. If None, moves all registrations.
+            event_id: Optional event_id to move specific registration. If None, moves all registrations.
 
         Returns:
             Boolean indicating whether any records were moved
         """
         # Build query
-        query = {"user_id": user_id}
-        if city:
-            query["target_city"] = city
+        query: dict[str, int | str] = {"user_id": user_id}
+        if event_id:
+            query["event_id"] = event_id
 
         # Find records to move
         cursor = self.collection.find(query)
@@ -1295,7 +1233,7 @@ class App:
 
         if not records:
             logger.warning(
-                f"No records found to move for user_id={user_id}, city={city}"
+                f"No records found to move for user_id={user_id}, event_id={event_id}"
             )
             return False
 
@@ -1308,7 +1246,7 @@ class App:
         if len(records) == 1:
             await self.deleted_users.insert_one(records[0])
             logger.info(
-                f"Moved 1 record to deleted_users: user_id={user_id}, city={city}"
+                f"Moved 1 record to deleted_users: user_id={user_id}, event_id={event_id}"
             )
         else:
             await self.deleted_users.insert_many(records)
@@ -1317,7 +1255,7 @@ class App:
             )
 
         # Now that records are backed up, delete from main collection
-        if city:
+        if event_id:
             result = await self.collection.delete_one(query)
         else:
             result = await self.collection.delete_many(query)
