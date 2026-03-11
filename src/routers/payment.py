@@ -481,7 +481,7 @@ async def process_payment(
                 user_info += f"👥 Гости ({len(guests)}):\n"
                 for g in guests:
                     user_info += f"  • {g['name']} — {g['price']} руб.\n"
-                user_info += f"💰 Итого: {total_with_guests} руб.\n"
+                user_info += f"💰 Итого: {total_regular_with_guests} руб.\n"
             else:
                 user_info += f"💰 Сумма к оплате: {needs_to_pay}\n"
 
