@@ -154,9 +154,13 @@ async def process_payment(
             guests = registration_data.get("guests", [])
     guests = guests or []
 
-    # Calculate guest total
+    # Calculate guest totals (regular and discounted)
     guest_total = sum(g.get("price", 0) for g in guests)
-    total_with_guests = regular_amount + guest_total
+    guest_total_discounted = sum(
+        g.get("price_discounted", g.get("price", 0)) for g in guests
+    )
+    total_regular_with_guests = regular_amount + guest_total
+    total_discounted_with_guests = discounted_amount + guest_total_discounted
 
     # Only show instructions if not skipped
     if not skip_instructions:
@@ -254,7 +258,13 @@ async def process_payment(
             guest_msg = f"\n👥 Гости ({len(guests)}):\n"
             for i, g in enumerate(guests, 1):
                 guest_msg += f"  {i}. {g['name']} — {g['price']} руб.\n"
-            guest_msg += f"\n💰 Итого с гостями: {total_with_guests} руб."
+            if is_early and total_regular_with_guests != total_discounted_with_guests:
+                guest_msg += (
+                    f"\n💰 Итого с гостями: {total_regular_with_guests} руб."
+                    f"\n💰 При ранней регистрации: {total_discounted_with_guests} руб."
+                )
+            else:
+                guest_msg += f"\n💰 Итого с гостями: {total_regular_with_guests} руб."
             await send_safe(message.chat.id, guest_msg)
             await asyncio.sleep(2)
 

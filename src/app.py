@@ -349,14 +349,17 @@ class App:
 
         return 0, 0, 0, 0
 
-    def calculate_guest_price(self, event: Dict, registrant_price: int) -> int:
+    def calculate_guest_price(
+        self, event: Dict, registrant_price: int
+    ) -> Tuple[int, int]:
         """Calculate the price for a single guest.
 
-        Formula: max(guest_price_minimum, registrant_price) - early_bird_discount
-        Early bird discount is applied to the final guest price too.
+        Returns: (regular_price, discounted_price)
+        regular_price = max(guest_price_minimum, registrant_price)
+        discounted_price = regular_price - early_bird_discount (if applicable)
         """
         minimum = event.get("guest_price_minimum", 0)
-        price = max(minimum, registrant_price)
+        regular_price = max(minimum, registrant_price)
 
         # Apply early bird discount to guest price
         early_bird_discount = event.get("early_bird_discount", 0)
@@ -366,9 +369,11 @@ class App:
             and datetime.now() < early_bird_deadline
             and early_bird_discount > 0
         ):
-            price = max(0, price - early_bird_discount)
+            discounted_price = max(0, regular_price - early_bird_discount)
+        else:
+            discounted_price = regular_price
 
-        return price
+        return regular_price, discounted_price
 
     async def _update_event_statuses(self):
         """Mark events as 'passed' if their date is in the past."""
