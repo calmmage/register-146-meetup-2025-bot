@@ -34,7 +34,7 @@ async def show_stats(message: Message, app: App):
     stats_text = "<b>📊 Статистика регистраций</b> (включая удаленных)\n\n"
 
     # Build event_id → display name map
-    all_events = await app.get_all_events()
+    all_events = await app.get_enabled_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
     free_event_ids = {
         str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
@@ -505,7 +505,7 @@ async def show_simple_stats(message: Message, app: App):
     stats_text = "<b>📊 Краткая статистика регистраций</b> (включая удаленных)\n\n"
 
     # Build event_id → display name map
-    all_events = await app.get_all_events()
+    all_events = await app.get_enabled_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
     free_event_ids = {
         str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
@@ -962,7 +962,7 @@ async def show_year_stats(message: Message, app: App):
         return
 
     # Build event_id → display name map
-    all_events = await app.get_all_events()
+    all_events = await app.get_enabled_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
 
     # Group registrations by city (from event) and year for text stats
@@ -1189,7 +1189,7 @@ async def show_five_year_stats(message: Message, app: App):
         return
 
     # Build event_id → city name map
-    all_events = await app.get_all_events()
+    all_events = await app.get_enabled_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
 
     # Convert MongoDB records to pandas DataFrame - ONLY ACTIVE USERS for visualization
