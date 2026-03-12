@@ -33,11 +33,18 @@ async def show_stats(message: Message, app: App):
     # Initialize stats text
     stats_text = "<b>📊 Статистика регистраций</b> (включая удаленных)\n\n"
 
-    # Build event_id → display name map
-    all_events = await app.get_enabled_events()
+    # Build event_id → display name map (all events so IDs always resolve)
+    all_events = await app.get_all_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+    enabled_event_ids = {
+        str(e["_id"])
+        for e in all_events
+        if e.get("enabled") and e.get("status") == "upcoming"
+    }
     free_event_ids = {
-        str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
+        str(e["_id"])
+        for e in all_events
+        if e.get("pricing_type") == "free" and str(e["_id"]) in enabled_event_ids
     }
 
     # 1. Count registrations by event for both active and deleted users
@@ -67,6 +74,11 @@ async def show_stats(message: Message, app: App):
             city_stats_combined[eid]["deleted"] = count
         else:
             city_stats_combined[eid] = {"active": 0, "deleted": count}
+
+    # Filter to only active/enabled events
+    city_stats_combined = {
+        k: v for k, v in city_stats_combined.items() if k in enabled_event_ids
+    }
 
     stats_text += "<b>🌆 По городам:</b>\n"
     total_active = 0
@@ -354,6 +366,11 @@ async def show_stats(message: Message, app: App):
         else:
             payment_stats_combined[eid] = {"active": None, "deleted": stat}
 
+    # Filter to only active/enabled events
+    payment_stats_combined = {
+        k: v for k, v in payment_stats_combined.items() if k in enabled_event_ids
+    }
+
     stats_text += "<b>💰 Статистика оплат:</b>\n"
     total_paid_active = 0
     total_paid_deleted = 0
@@ -504,11 +521,18 @@ async def show_simple_stats(message: Message, app: App):
 
     stats_text = "<b>📊 Краткая статистика регистраций</b> (включая удаленных)\n\n"
 
-    # Build event_id → display name map
-    all_events = await app.get_enabled_events()
+    # Build event_id → display name map (all events so IDs always resolve)
+    all_events = await app.get_all_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+    enabled_event_ids = {
+        str(e["_id"])
+        for e in all_events
+        if e.get("enabled") and e.get("status") == "upcoming"
+    }
     free_event_ids = {
-        str(e["_id"]) for e in all_events if e.get("pricing_type") == "free"
+        str(e["_id"])
+        for e in all_events
+        if e.get("pricing_type") == "free" and str(e["_id"]) in enabled_event_ids
     }
 
     # 1. Count registrations by event for both active and deleted users
@@ -538,6 +562,11 @@ async def show_simple_stats(message: Message, app: App):
             city_stats_combined[eid]["deleted"] = count
         else:
             city_stats_combined[eid] = {"active": 0, "deleted": count}
+
+    # Filter to only active/enabled events
+    city_stats_combined = {
+        k: v for k, v in city_stats_combined.items() if k in enabled_event_ids
+    }
 
     stats_text += "<b>🌆 По городам:</b>\n"
     total_active = 0
@@ -787,6 +816,11 @@ async def show_simple_stats(message: Message, app: App):
         else:
             payment_stats_combined[eid] = {"active": None, "deleted": stat}
 
+    # Filter to only active/enabled events
+    payment_stats_combined = {
+        k: v for k, v in payment_stats_combined.items() if k in enabled_event_ids
+    }
+
     stats_text += "<b>💰 Статусы оплат:</b>\n"
     total_active_confirmed = 0
     total_active_pending = 0
@@ -961,13 +995,19 @@ async def show_year_stats(message: Message, app: App):
         )
         return
 
-    # Build event_id → display name map
-    all_events = await app.get_enabled_events()
+    # Build event_id → display name map (all events so IDs always resolve)
+    all_events = await app.get_all_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
 
     # Group registrations by city (from event) and year for text stats
-    # Collect unique city names dynamically from events
-    cities = sorted({e.get("city", str(e["_id"])) for e in all_events})
+    # Collect unique city names from enabled events only
+    cities = sorted(
+        {
+            e.get("city", str(e["_id"]))
+            for e in all_events
+            if e.get("enabled") and e.get("status") == "upcoming"
+        }
+    )
     city_year_counts = {}
     city_year_counts_deleted = {}
 
@@ -1188,12 +1228,19 @@ async def show_five_year_stats(message: Message, app: App):
         )
         return
 
-    # Build event_id → city name map
-    all_events = await app.get_enabled_events()
+    # Build event_id → city name map (all events so IDs always resolve)
+    all_events = await app.get_all_events()
     event_name_map = {str(e["_id"]): e.get("city", str(e["_id"])) for e in all_events}
+    enabled_event_ids = {
+        str(e["_id"])
+        for e in all_events
+        if e.get("enabled") and e.get("status") == "upcoming"
+    }
 
     # Convert MongoDB records to pandas DataFrame - ONLY ACTIVE USERS for visualization
     df = pd.DataFrame(active_registrations)
+    # Filter to only registrations for enabled events
+    df = df[df["event_id"].isin(enabled_event_ids)]
 
     # Обработка годов выпуска
     df["graduation_year"] = pd.to_numeric(df["graduation_year"], errors="coerce")
