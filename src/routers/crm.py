@@ -315,6 +315,140 @@ async def notify_users_handler(message: Message, state: FSMContext, app: App):
     await status_msg.edit_text(result_text)
 
 
+async def announce_new_season_handler(message: Message, state: FSMContext, app: App):
+    """Announce new meetup season to all known users with a link to details."""
+    if not message.from_user:
+        await send_safe(message.chat.id, "❌ Ошибка: не удалось определить отправителя")
+        return
+
+    # Get upcoming events for context
+    enabled_events = await app.get_enabled_events()
+    if not enabled_events:
+        await send_safe(
+            message.chat.id,
+            "⚠️ Нет активных встреч. Сначала создайте встречи через /create_event",
+        )
+        return
+
+    # Show current events for reference
+    events_preview = "📅 Текущие активные встречи:\n"
+    for ev in enabled_events:
+        events_preview += f"  • {ev.get('city', '?')} ({ev.get('date_display', '?')})\n"
+
+    await send_safe(message.chat.id, events_preview)
+
+    # Ask for the link to the post/channel
+    link_resp = await ask_user_raw(
+        message.chat.id,
+        "🔗 Введите ссылку на пост в чате/канале с деталями встреч:",
+        state=state,
+        timeout=None,
+    )
+    if not link_resp or not link_resp.text:
+        await send_safe(message.chat.id, "Операция отменена.")
+        return
+
+    post_link = link_resp.text.strip()
+
+    # Build the announcement message
+    events_list = ""
+    for ev in enabled_events:
+        venue = ev.get("venue") or "Уточняется"
+        address = ev.get("address") or ""
+        venue_line = venue
+        if address:
+            venue_line += f", {address}"
+        events_list += (
+            f"🏙️ {ev.get('city', '?')} ({ev.get('date_display', '?')})\n"
+            f"   📍 {venue_line}\n"
+        )
+
+    default_message = (
+        f"👋 Привет! Новый сезон встреч выпускников школы 146 начинается!\n\n"
+        f"{events_list}\n"
+        f"Регистрация открыта — детали тут:\n{post_link}\n\n"
+        f"Чтобы зарегистрироваться, просто напишите боту /start"
+    )
+
+    # Let admin customize the message
+    custom_resp = await ask_user_choice(
+        message.chat.id,
+        f"📝 Текст сообщения:\n\n{default_message}\n\nИспользовать этот текст или написать свой?",
+        choices={
+            "use_default": "Использовать этот текст",
+            "custom": "Написать свой текст",
+            "cancel": "Отмена",
+        },
+        state=state,
+        timeout=None,
+    )
+
+    if custom_resp == "cancel":
+        await send_safe(message.chat.id, "Операция отменена.")
+        return
+
+    if custom_resp == "custom":
+        text_resp = await ask_user_raw(
+            message.chat.id,
+            "Введите текст сообщения (поддерживается HTML):",
+            state=state,
+            timeout=None,
+        )
+        if not text_resp or not text_resp.html_text:
+            await send_safe(message.chat.id, "Операция отменена.")
+            return
+        announcement_text = text_resp.html_text
+    else:
+        announcement_text = default_message
+
+    # Get all unique user IDs from all registrations (current + archived)
+    all_user_ids = await app.collection.distinct("user_id")
+    if not all_user_ids:
+        await send_safe(message.chat.id, "❌ Нет пользователей для рассылки.")
+        return
+
+    # Confirm before sending
+    confirm = await ask_user_confirmation(
+        message.chat.id,
+        f"⚠️ Отправить анонс {len(all_user_ids)} пользователям?\n\n"
+        f"Текст:\n{announcement_text}",
+        state=state,
+    )
+
+    if not confirm:
+        await send_safe(message.chat.id, "Операция отменена.")
+        return
+
+    # Log to validation chat
+    await app.log_to_chat(
+        f"📢 <b>АНОНС НОВОГО СЕЗОНА</b>\n\n"
+        f"👤 Инициатор: {message.from_user.username or message.from_user.id}\n"
+        f"🎯 Получателей: {len(all_user_ids)}\n\n"
+        f"📋 Текст:\n{announcement_text}",
+        "events",
+    )
+
+    # Send to all users
+    status_msg = await send_safe(message.chat.id, "⏳ Отправка анонса...")
+    sent_count = 0
+    failed_count = 0
+
+    for uid in all_user_ids:
+        try:
+            await send_safe(uid, announcement_text)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send season announcement to user {uid}: {e}")
+            failed_count += 1
+
+    await status_msg.edit_text(
+        f"✅ Анонс отправлен!\n\n"
+        f"📊 Статистика:\n"
+        f"- Успешно: {sent_count}\n"
+        f"- Ошибок: {failed_count}"
+    )
+
+
 @commands_menu.add_command(
     "test_user_selection",
     "Тест выборки пользователей",

@@ -1755,9 +1755,13 @@ async def start_handler(message: Message, state: FSMContext, app: App):
             events_text = "👋 Добро пожаловать!\n\nБлижайшие встречи выпускников:\n\n"
             for event in upcoming_events:
                 venue = event.get("venue") or "Уточняется"
+                address = event.get("address") or ""
+                venue_line = venue
+                if address:
+                    venue_line += f", {address}"
                 events_text += (
                     f"🏙️ {event['city']} ({event.get('date_display', '')})\n"
-                    f"   📍 {venue}\n\n"
+                    f"   📍 {venue_line}\n\n"
                 )
             events_text += "Хотите зарегистрироваться?"
 

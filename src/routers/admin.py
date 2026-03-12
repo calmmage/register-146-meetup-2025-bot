@@ -52,6 +52,7 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
             "view_simple_stats": "Посмотреть статистику (кратко)",
             "other": "Другие действия",
             "notify_users": "Рассылка пользователям",
+            "announce_season": "Анонс нового сезона встреч",
         },
         state=state,
         timeout=None,
@@ -105,6 +106,10 @@ async def admin_handler(message: Message, state: FSMContext, app: App):
         from src.routers.crm import notify_users_handler
 
         await notify_users_handler(message, state, app=app)
+    elif response == "announce_season":
+        from src.routers.crm import announce_new_season_handler
+
+        await announce_new_season_handler(message, state, app=app)
     # For "register", continue with normal flow
     return response
 
