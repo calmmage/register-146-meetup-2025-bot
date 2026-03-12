@@ -350,7 +350,12 @@ async def announce_new_season_handler(message: Message, state: FSMContext, app: 
 
     post_link = link_resp.text.strip()
 
-    # Build the announcement message
+    # Build the announcement message following the TL;DR principle:
+    # First line = compact summary visible in Telegram preview
+    # Then details below
+    cities = [ev.get("city", "?") for ev in enabled_events]
+    cities_str = ", ".join(cities)
+
     events_list = ""
     for ev in enabled_events:
         venue = ev.get("venue") or "Уточняется"
@@ -364,10 +369,10 @@ async def announce_new_season_handler(message: Message, state: FSMContext, app: 
         )
 
     default_message = (
-        f"👋 Привет! Новый сезон встреч выпускников школы 146 начинается!\n\n"
+        f"Встречи 146 — {cities_str} — приходи!\n\n"
         f"{events_list}\n"
         f"Регистрация открыта — детали тут:\n{post_link}\n\n"
-        f"Чтобы зарегистрироваться, просто напишите боту /start"
+        f"Чтобы зарегистрироваться, напиши боту /start"
     )
 
     # Let admin customize the message
