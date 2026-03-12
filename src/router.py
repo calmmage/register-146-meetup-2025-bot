@@ -339,11 +339,13 @@ async def _edit_guests(
         if len(guest_name) < 2:
             guest_name = f"Гость {i}"
 
-        guests.append({
-            "name": guest_name,
-            "price": guest_price_regular,
-            "price_discounted": guest_price_discounted,
-        })
+        guests.append(
+            {
+                "name": guest_name,
+                "price": guest_price_regular,
+                "price_discounted": guest_price_discounted,
+            }
+        )
 
     # Save
     await app.save_registration_guests(user_id, reg_event_id, guests)
@@ -353,9 +355,7 @@ async def _edit_guests(
     for i, g in enumerate(guests, 1):
         guest_summary += f"  {i}. {g['name']} — {g['price']}₽\n"
     guest_total = sum(g["price"] for g in guests)
-    guest_total_discounted = sum(
-        g.get("price_discounted", g["price"]) for g in guests
-    )
+    guest_total_discounted = sum(g.get("price_discounted", g["price"]) for g in guests)
     if guest_total != guest_total_discounted:
         guest_summary += (
             f"\nОбщая стоимость за гостей: {guest_total}₽"
@@ -1057,8 +1057,8 @@ async def register_user(
                 )
             else:
                 reg_amount = 0
-            guest_price_regular, guest_price_discounted = (
-                app.calculate_guest_price(selected_event, reg_amount)
+            guest_price_regular, guest_price_discounted = app.calculate_guest_price(
+                selected_event, reg_amount
             )
 
             for i in range(1, guest_count + 1):
@@ -1076,11 +1076,13 @@ async def register_user(
                 if len(guest_name) < 2:
                     guest_name = f"Гость {i}"
 
-                guests.append({
-                    "name": guest_name,
-                    "price": guest_price_regular,
-                    "price_discounted": guest_price_discounted,
-                })
+                guests.append(
+                    {
+                        "name": guest_name,
+                        "price": guest_price_regular,
+                        "price_discounted": guest_price_discounted,
+                    }
+                )
 
             # Show guest summary
             guest_summary = f"👥 Гости ({len(guests)}):\n"
@@ -1753,9 +1755,13 @@ async def start_handler(message: Message, state: FSMContext, app: App):
             events_text = "👋 Добро пожаловать!\n\nБлижайшие встречи выпускников:\n\n"
             for event in upcoming_events:
                 venue = event.get("venue") or "Уточняется"
+                address = event.get("address") or ""
+                venue_line = venue
+                if address:
+                    venue_line += f", {address}"
                 events_text += (
                     f"🏙️ {event['city']} ({event.get('date_display', '')})\n"
-                    f"   📍 {venue}\n\n"
+                    f"   📍 {venue_line}\n\n"
                 )
             events_text += "Хотите зарегистрироваться?"
 

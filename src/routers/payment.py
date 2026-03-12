@@ -275,7 +275,7 @@ async def process_payment(
         payment_msg_part3 = dedent(
             f"""
             Реквизиты для оплаты:
-            В Тинькофф банк по номеру телефона
+            В Сбербанк по номеру телефона
             Номер телефона - {app.settings.payment_phone_number}
             Получатель - {app.settings.payment_name}
             """
