@@ -252,7 +252,7 @@ async def normalize_db(message: Message, app: App):
 async def extract_payment_from_image(
     file_bytes: bytes, file_type: str = "image/jpeg"
 ) -> PaymentInfo:
-    """Extract payment amount from an image or PDF using GPT-4 Vision via litellm"""
+    """Extract payment amount from an image or PDF using Claude Vision via litellm"""
     try:
         # Define the system prompt for payment extraction
         system_prompt = """You are a payment receipt analyzer.
@@ -284,7 +284,7 @@ async def extract_payment_from_image(
 
         # Make the API call with the Pydantic model
         response = await acompletion(
-            model="claude-3-5-sonnet-20240620",
+            model="anthropic/claude-sonnet-4-6",
             messages=messages,
             max_tokens=100,
             response_format=PaymentInfo,
@@ -297,7 +297,7 @@ async def extract_payment_from_image(
 
 
 @commands_menu.add_command(
-    "parse_payment", "Анализ платежа с помощью GPT-4", visibility=Visibility.ADMIN_ONLY
+    "parse_payment", "Анализ платежа с помощью Claude", visibility=Visibility.ADMIN_ONLY
 )
 @router.message(Command("parse_payment"), AdminFilter())
 async def parse_payment_handler(message: Message, state: FSMContext):
